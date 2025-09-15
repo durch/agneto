@@ -1,20 +1,16 @@
-import type { LLMProvider, Msg } from "./index.js";
-import { query } from "@anthropic-ai/claude-code";
+export type Role = "system" | "user" | "assistant";
+export type Msg = { role: Role; content: string };
 
-const anthropic: LLMProvider = {
-    name: "claude-code-headless",
-    async query({ cwd, messages, mode }) {
-        // Map our “mode” to a permission if you want (plan/propose/review).
-        const res: any = await query({
-            cwd,
-            messages: messages.map(m => ({ role: m.role, content: m.content })),
-            // permission: mode === "plan" ? "plan" : undefined,
-            // You can also restrict tools here later with allowedTools.
-        });
+export interface LLMProvider {
+    name: string;
+    query(opts: {
+        cwd: string;
+        messages: Msg[];
+        mode?: "plan" | "default" | "acceptEdits";
+        allowedTools?: string[];     // e.g., ["ReadFile","ListDir","Grep"]
+    }): Promise<string>;
+}
 
-        // Normalize to string; Claude Code returns structured output.
-        return (res?.output ?? res?.messages?.at(-1)?.content ?? "").toString();
-    },
-};
-
-export default anthropic;
+export async function selectProvider(): Promise<LLMProvider> {
+    return (await import("./anthropic.js")).default;
+}

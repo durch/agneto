@@ -3,14 +3,23 @@ import { runTask } from "./orchestrator.js";
 
 const program = new Command();
 program
-    .name("agentic-dev")
-    .description("Planner→Coder→Reviewer loop (sandboxed)")
+    .name("agneto")
+    .description("Interactive AI development assistant with Planner→Coder→Reviewer loop")
     .argument("<task-id>", "unique id, e.g., t-001")
     .argument("<task>", "human task description in quotes")
-    .action(async (taskId, task) => {
+    .option("--auto-merge", "automatically merge to master when complete")
+    .option("--non-interactive", "skip interactive planning (for CI/automation)")
+    .action(async (taskId, task, options) => {
         try {
-            const { cwd } = await runTask(taskId, task);
-            console.log(`\nWorktree: ${cwd}\nNext: open it in your editor, or re-run with a new task.`);
+            const { cwd, completedSteps, totalSteps } = await runTask(taskId, task, {
+                autoMerge: options.autoMerge,
+                nonInteractive: options.nonInteractive
+            });
+
+            if (!options.autoMerge) {
+                console.log(`\nWorktree: ${cwd}`);
+                console.log(`Progress: ${completedSteps}/${totalSteps} steps completed`);
+            }
         } catch (e) {
             console.error(e);
             process.exit(1);

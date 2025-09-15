@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 task="${1:?usage: npm run new-task -- <task-id> [base-branch]}"
-base="${2:-origin/main}"
+base="${2:-origin/master}"
 branch="sandbox/$task"
 dir=".worktrees/$task"
 
