@@ -6,7 +6,7 @@ import { proposeChange } from "./agents/coder.js";
 import { reviewProposal, parseVerdict } from "./agents/reviewer.js";
 import { runSuperReviewer } from "./agents/super-reviewer.js";
 import { ensureWorktree } from "./git/worktrees.js";
-import { applyProposal, mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
+import { mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
 import { log } from "./ui/log.js";
 import { readFileSync } from "node:fs";
 import { promptHumanReview, promptForSuperReviewerDecision } from "./ui/human-review.js";
@@ -61,74 +61,83 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
         while (attempts < 3 && !stepCompleted) {
             attempts++;
-            log.coder(`Proposing change (attempt ${attempts})…`);
-            const proposal = (await proposeChange(provider, cwd, planMd, feedback, coderSessionId, coderInitialized) || "").trim();
+            log.coder(`Implementing change (attempt ${attempts})…`);
+            const response = (await proposeChange(provider, cwd, planMd, feedback, coderSessionId, coderInitialized) || "").trim();
             coderInitialized = true;
-            log.coder(`\n${proposal}`);
 
-            if (!proposal || proposal === "COMPLETE" || proposal.trim() === "COMPLETE") {
+            // Check for completion signal
+            if (response === "COMPLETE" || response.includes("COMPLETE")) {
                 log.orchestrator("Coder indicates all planned work is complete.");
                 continueWork = false;
                 stepCompleted = true;
                 break;
             }
 
-            if (!/^FILE:\s/m.test(proposal)) {
-                const msg = "✏️ revise — coder produced no well-formed proposal. Respond with 'COMPLETE' if all plan work is done, or provide a one-file proposal.";
+            // Check if coder made changes (will include CHANGE_APPLIED message)
+            const changeApplied = response.includes("CHANGE_APPLIED:");
+            if (!changeApplied) {
+                // Coder didn't make changes, might need clarification
+                log.coder(`\n${response}`);
+                const msg = "✏️ revise — no changes were made. If all plan work is done, respond with 'COMPLETE', otherwise implement the next change.";
                 log.review(msg);
                 feedback = msg;
                 continue;
             }
 
-            log.review("Reviewing proposal…");
-            const verdictLine = await reviewProposal(provider, cwd, planMd, proposal, reviewerSessionId, reviewerInitialized);
+            // Extract the change description from the response
+            const changeMatch = response.match(/CHANGE_APPLIED:\s*(.+)/i);
+            const changeDescription = changeMatch ? changeMatch[1] : "Changes made";
+            log.coder(`Change applied: ${changeDescription}`);
+
+            log.review("Reviewing changes…");
+            const verdictLine = await reviewProposal(provider, cwd, planMd, changeDescription, reviewerSessionId, reviewerInitialized);
             reviewerInitialized = true;
             const verdict = parseVerdict(verdictLine);
             log.review(verdictLine);
 
             if (verdict === "approve") {
-                log.orchestrator("Applying approved proposal to sandbox…");
-                const changesMade = applyProposal(cwd, proposal);
+                log.orchestrator(`✅ Changes approved and already applied by Coder`);
                 stepCompleted = true;
                 totalChanges++;
-                if (changesMade) {
-                    log.orchestrator(`✅ Change applied successfully`);
-                } else {
-                    log.orchestrator(`✅ No changes needed - already implemented`);
-                }
-
                 // Reset feedback for next step
                 feedback = undefined;
             } else if (verdict === "revise") {
+                // Need to revert the changes and try again
+                log.orchestrator("Reverting changes for revision...");
+                const { execSync } = await import("child_process");
+                execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
                 feedback = verdictLine;
             } else if (verdict === "reject") {
-                // Reject requires fundamental rethinking
+                // Need to revert and fundamentally rethink
+                log.orchestrator("Reverting changes due to rejection...");
+                const { execSync } = await import("child_process");
+                execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
                 feedback = `🔴 REJECTED - Fundamental rethink needed: ${verdictLine}\n\nTake time to megathink about the approach. Read the existing code more carefully. The current approach is wrong, not just incomplete.`;
-                log.orchestrator("Proposal rejected - requesting complete rethink...");
+                log.orchestrator("Changes rejected - requesting complete rethink...");
             } else if (verdict === "needs-human") {
                 // Prompt human for review
                 const humanResult = await promptHumanReview(
-                    proposal,
-                    "Current proposal from plan",
+                    changeDescription,
+                    "Changes made by Coder",
                     verdictLine
                 );
-                
+
                 if (humanResult.decision === "approve") {
-                    log.orchestrator("Human approved proposal. Applying to sandbox…");
-                    const changesMade = applyProposal(cwd, proposal);
+                    log.orchestrator("Human approved changes (already applied by Coder).");
                     stepCompleted = true;
                     totalChanges++;
-                    if (changesMade) {
-                        log.orchestrator(`✅ Change applied successfully`);
-                    } else {
-                        log.orchestrator(`✅ No changes needed - already implemented`);
-                    }
                     feedback = undefined;
                 } else if (humanResult.decision === "retry") {
-                    log.orchestrator("Human requested retry with feedback.");
-                    feedback = humanResult.feedback || "Human requested retry - please revise the proposal";
+                    log.orchestrator("Human requested retry with feedback. Will revert changes.");
+                    // Run git revert to undo the changes
+                    const { execSync } = await import("child_process");
+                    execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
+                    feedback = humanResult.feedback || "Human requested retry - please revise the implementation";
                 } else if (humanResult.decision === "reject") {
-                    log.orchestrator("Human rejected proposal. Skipping this change.");
+                    log.orchestrator("Human rejected changes. Reverting.");
+                    // Run git revert to undo the changes
+                    const { execSync } = await import("child_process");
+                    execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
                     stepCompleted = true;
                     feedback = undefined;
                 }

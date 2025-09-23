@@ -19,20 +19,20 @@ export async function proposeChange(
         // First call: establish context with system prompt and plan
         messages.push(
             { role: "system", content: sys },
-            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\nPlease propose ONE change to implement from this plan, in the exact format.` }
+            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\nPlease implement the next item from this plan using the file manipulation tools.` }
         );
     } else {
         // Subsequent calls: just new user message with any feedback
         const userContent = feedback
-            ? `Reviewer feedback to address:\n${feedback}\n\nPlease propose a revised change in the exact format.`
-            : "Please propose the next change from the plan, in the exact format.";
+            ? `Reviewer feedback to address:\n${feedback}\n\nPlease address this feedback and make the necessary corrections.`
+            : "Please continue with the next item from the plan.";
         messages.push({ role: "user", content: userContent });
     }
 
     return provider.query({
         cwd,
         mode: "default",                     // normal (not plan) so tools can run
-        allowedTools: ["ReadFile","ListDir","Grep","Bash"], // read tools + Bash for testing
+        allowedTools: ["ReadFile","ListDir","Grep","Bash","Write","Edit","MultiEdit"], // All necessary file tools
         sessionId,                           // AIDEV-NOTE: Separate session for coder continuity
         model: "sonnet",
         messages

@@ -1,41 +1,7 @@
 import { execSync } from "node:child_process";
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { dirname } from "node:path";
 
-export function applyProposal(cwd: string, proposal: string): boolean {
-    // AIDEV-NOTE: Critical function - handles file writes from Coder proposals
-    // Check for no-op case first (when implementation is already complete)
-    if (proposal.includes("FILE: NOTHING")) {
-        console.log(`✔️ Step already complete - no changes needed`);
-        return false; // false indicates no changes were made (no-op)
-    }
-
-    // Expect "FILE: <path>\n---8<---\n<patch>\n---8<---"
-    const m = proposal.match(/FILE:\s*(.+)\n---8<---\n([\s\S]*?)\n---8<---/);
-    if (!m) throw new Error("Malformed proposal");
-    const file = m[1].trim(), patch = m[2];
-
-    const fullPath = `${cwd}/${file}`;
-    const fileExists = existsSync(fullPath);
-
-    // Log when we're modifying vs creating files
-    if (fileExists) {
-        console.log(`📝 Modifying existing file: ${file}`);
-    } else {
-        console.log(`✨ Creating new file: ${file}`);
-    }
-
-    // Create directory structure if needed
-    mkdirSync(dirname(fullPath), { recursive: true });
-
-    // AIDEV-NOTE: Must use overwrite mode - append caused duplicate content bug
-    // Write the complete file contents (overwrite, not append)
-    writeFileSync(fullPath, patch.includes("\n") ? patch : `${patch}\n`);
-
-    execSync(`git -C "${cwd}" add -A && git -C "${cwd}" commit -m "agent: apply proposal for ${file}"`, { stdio: "inherit" });
-
-    return true; // true indicates changes were made
-}
+// AIDEV-NOTE: Removed dangerous applyProposal function - Coder now uses Claude's built-in file tools
+// The old implementation was causing file truncation bugs by treating partial content as complete files
 
 export function revertLast(cwd: string) {
     execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });

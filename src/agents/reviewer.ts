@@ -30,7 +30,7 @@ export async function reviewProposal(provider: LLMProvider, cwd: string, planMd:
     const res = await provider.query({
         cwd,
         mode: "default", // Changed from "plan" to allow read tools
-        allowedTools: ["ReadFile", "Grep"], // Read-only tools to verify current state
+        allowedTools: ["ReadFile", "Grep", "Bash"], // Need Bash for git diff
         sessionId,       // AIDEV-NOTE: Separate session for reviewer continuity
         messages
     });
