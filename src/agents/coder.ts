@@ -12,7 +12,7 @@ export async function proposeChange(
     return provider.query({
         cwd,
         mode: "default",                     // normal (not plan) so tools can run, but…
-        allowedTools: ["ReadFile","ListDir","Grep"], // …only read-only tools
+        allowedTools: ["ReadFile","ListDir","Grep","Bash"], // read tools + Bash for testing
         messages: [
             { role: "system", content: sys },
             { role: "user", content: `Plan (Markdown):\n\n${planMd}\n${extra}\nPlease propose ONE change for the first actionable step, in the exact format.` }
