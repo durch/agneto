@@ -14,3 +14,12 @@ export interface SuperReviewerResult {
     summary: string;
     issues?: string[];
 }
+
+// Task refinement types
+export interface RefinedTask {
+    goal: string;
+    context: string;
+    constraints: string[];
+    successCriteria: string[];
+    raw: string; // Original refined output for reference
+}

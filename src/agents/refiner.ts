@@ -1,0 +1,54 @@
+import { readFileSync } from "node:fs";
+import type { LLMProvider } from "../providers/index.js";
+import type { RefinedTask } from "../types.js";
+
+export class RefinerAgent {
+    private provider: LLMProvider;
+    private systemPrompt: string;
+
+    constructor(provider: LLMProvider) {
+        this.provider = provider;
+        this.systemPrompt = readFileSync(new URL("../prompts/refiner.md", import.meta.url), "utf8");
+    }
+
+    async refine(
+        cwd: string,
+        rawTask: string,
+        taskId: string
+    ): Promise<RefinedTask> {
+        const refinedOutput = await this.provider.query({
+            cwd,
+            mode: "plan", // Read-only mode for analysis
+            messages: [
+                { role: "system", content: this.systemPrompt },
+                { role: "user", content: `Task: ${rawTask}\n\nAnalyze and refine this task description.` }
+            ]
+        });
+
+        // Parse the structured output from the refiner
+        return this.parseRefinedTask(refinedOutput.trim());
+    }
+
+    private parseRefinedTask(output: string): RefinedTask {
+        // Parse the refiner's structured output format
+        // Expected format: Goal, Context, Constraints, Success Criteria sections
+        const goal = this.extractSection(output, "Goal") || "";
+        const context = this.extractSection(output, "Context") || "";
+        const constraints = this.extractSection(output, "Constraints")?.split("\n").filter(c => c.trim()) || [];
+        const successCriteria = this.extractSection(output, "Success Criteria")?.split("\n").filter(c => c.trim()) || [];
+
+        return {
+            goal,
+            context,
+            constraints,
+            successCriteria,
+            raw: output
+        };
+    }
+
+    private extractSection(text: string, sectionName: string): string | undefined {
+        const regex = new RegExp(`## ${sectionName}\\s*\\n([^#]+)`, "i");
+        const match = text.match(regex);
+        return match?.[1]?.trim();
+    }
+}

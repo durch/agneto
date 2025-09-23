@@ -4,4 +4,6 @@ export const log = {
     coder:   (s: string) => console.log(chalk.magenta("🤖 Coder:  "), s),
     review:  (s: string) => console.log(chalk.yellow("👀 Reviewer:"), s),
     human:   (s: string) => console.log(chalk.green("🙋 Human:  "), s),
+    info:    (s: string) => console.log(chalk.blue("ℹ️ Info:   "), s),
+    warn:    (s: string) => console.log(chalk.yellowBright("⚠️ Warning:"), s),
 };

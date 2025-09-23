@@ -1,5 +1,7 @@
 import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
+import { RefinerAgent } from "./agents/refiner.js";
+import { interactiveRefinement } from "./ui/refinement-interface.js";
 import { proposeChange } from "./agents/coder.js";
 import { reviewProposal, parseVerdict } from "./agents/reviewer.js";
 import { runSuperReviewer } from "./agents/super-reviewer.js";
@@ -16,10 +18,26 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     // Interactive by default, use --non-interactive to disable
     const interactive = !options?.nonInteractive;
 
-    if (!interactive) {
-        log.planner(`Planning "${humanTask}"…`);
+    // Add task refinement step before planning
+    let taskToUse = humanTask;
+    if (interactive) {
+        log.info("🔍 Refining task description...");
+        const refinerAgent = new RefinerAgent(provider);
+        const refinedTask = await interactiveRefinement(refinerAgent, cwd, humanTask, taskId);
+        
+        if (refinedTask) {
+            // Convert refined task to a structured description for the planner
+            taskToUse = formatRefinedTaskForPlanner(refinedTask);
+            log.human("Using refined task specification for planning.");
+        } else {
+            log.warn("Task refinement cancelled. Using original description.");
+        }
     }
-    const { planMd, planPath } = await runPlanner(provider, cwd, humanTask, taskId, interactive);
+
+    if (!interactive) {
+        log.planner(`Planning "${taskToUse}"…`);
+    }
+    const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive);
     if (!interactive) {
         log.planner(`Saved plan → ${planPath}`);
     }
@@ -206,4 +224,22 @@ function extractStepDescription(planMd: string, stepNumber: number): string {
     }
     
     return `Step ${stepNumber} of the plan`;
+}
+
+function formatRefinedTaskForPlanner(refinedTask: import("./types.js").RefinedTask): string {
+    let formattedTask = refinedTask.goal;
+    
+    if (refinedTask.context) {
+        formattedTask += `\n\nContext: ${refinedTask.context}`;
+    }
+    
+    if (refinedTask.constraints.length > 0) {
+        formattedTask += `\n\nConstraints:\n${refinedTask.constraints.map(c => `- ${c}`).join('\n')}`;
+    }
+    
+    if (refinedTask.successCriteria.length > 0) {
+        formattedTask += `\n\nSuccess Criteria:\n${refinedTask.successCriteria.map(c => `- ${c}`).join('\n')}`;
+    }
+    
+    return formattedTask;
 }
