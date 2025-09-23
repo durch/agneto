@@ -5,7 +5,8 @@ export async function proposeChange(
     provider: LLMProvider,
     cwd: string,
     planMd: string,
-    feedback?: string
+    feedback?: string,
+    sessionId?: string
 ) {
     const sys = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
     const extra = feedback ? `\nReviewer feedback to address:\n${feedback}\n` : "";
@@ -13,6 +14,7 @@ export async function proposeChange(
         cwd,
         mode: "default",                     // normal (not plan) so tools can run, but…
         allowedTools: ["ReadFile","ListDir","Grep","Bash"], // read tools + Bash for testing
+        sessionId,                           // Pass session ID for conversation continuity
         messages: [
             { role: "system", content: sys },
             { role: "user", content: `Plan (Markdown):\n\n${planMd}\n${extra}\nPlease propose ONE change for the first actionable step, in the exact format.` }

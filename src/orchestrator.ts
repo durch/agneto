@@ -15,6 +15,10 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId);
 
+    // Create unique session IDs for each agent
+    const coderSessionId = `${taskId}-coder`;
+    const reviewerSessionId = `${taskId}-reviewer`;
+
     // Interactive by default, use --non-interactive to disable
     const interactive = !options?.nonInteractive;
 
@@ -54,7 +58,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         while (attempts < 3 && !stepCompleted) {
             attempts++;
             log.coder(`Proposing change for step ${completedSteps + 1}/${totalSteps} (attempt ${attempts})…`);
-            const proposal = (await proposeChange(provider, cwd, planMd, feedback) || "").trim();
+            const proposal = (await proposeChange(provider, cwd, planMd, feedback, coderSessionId) || "").trim();
             log.coder(`\n${proposal}`);
 
             if (!proposal || !/^FILE:\s/m.test(proposal)) {
@@ -65,7 +69,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
             }
 
             log.review("Reviewing proposal…");
-            const verdictLine = await reviewProposal(provider, cwd, planMd, proposal);
+            const verdictLine = await reviewProposal(provider, cwd, planMd, proposal, reviewerSessionId);
             const verdict = parseVerdict(verdictLine);
             log.review(verdictLine);
 

@@ -8,6 +8,7 @@ export interface LLMProvider {
         messages: Msg[];
         mode?: "plan" | "default" | "acceptEdits";
         allowedTools?: string[];     // e.g., ["ReadFile","ListDir","Grep"]
+        sessionId?: string;           // Optional session ID for conversation continuity
     }): Promise<string>;
 }
 
