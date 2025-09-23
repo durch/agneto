@@ -179,9 +179,20 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 log.human("Human accepted work despite identified issues. Proceeding with merge options.");
             } else if (humanDecision.decision === "retry") {
                 log.human("Human requested a new development cycle to address issues:");
-                log.human(humanDecision.feedback || "Please address the identified issues");
-                // Recursively call runTask with the feedback as a new task
-                return runTask(taskId, humanDecision.feedback || "Address SuperReviewer feedback", options);
+
+                // Combine SuperReviewer's issues with human feedback for context
+                const issuesContext = superReviewResult.issues
+                    ? `\n\nSuperReviewer identified issues:\n${superReviewResult.issues.map(i => `- ${i}`).join('\n')}`
+                    : "";
+
+                const fullTaskDescription = humanDecision.feedback
+                    ? `${humanDecision.feedback}${issuesContext}`
+                    : `Address the following SuperReviewer feedback: ${superReviewResult.summary}${issuesContext}`;
+
+                log.human(fullTaskDescription);
+
+                // Recursively call runTask with the combined feedback
+                return runTask(taskId, fullTaskDescription, options);
             } else {
                 log.human("Human chose to abandon. Task remains in worktree for manual review.");
                 return { cwd, completedSteps, totalSteps };
