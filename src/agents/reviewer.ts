@@ -16,7 +16,7 @@ export async function reviewProposal(provider: LLMProvider, cwd: string, planMd:
         cwd,
         mode: "default", // Changed from "plan" to allow read tools
         allowedTools: ["ReadFile", "Grep"], // Read-only tools to verify current state
-        sessionId,       // Pass session ID for conversation continuity
+        sessionId,       // AIDEV-NOTE: Shared with Coder for dialogue continuity
         messages: [
             { role: "system", content: sys },
             { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\nReview this proposal:\n${proposal}\n\nReturn one line.` }

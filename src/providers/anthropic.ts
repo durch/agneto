@@ -94,7 +94,6 @@ function runClaudeCLI(
       stdio: ["pipe", "pipe", "inherit"], // Changed first stdio from "ignore" to "pipe"
     });
   } catch (error) {
-    console.debug("Error running claude CLI:", error);
     args.pop(); // remove --resume and sessionId for logging
     args.pop();
     if (sessionId) {

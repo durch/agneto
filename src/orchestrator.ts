@@ -16,9 +16,10 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId);
 
+    // AIDEV-NOTE: Shared session between Coder and Reviewer enables conversation continuity
+    // This allows them to build context, reference previous attempts, and provide progressive feedback
     // Create unique UUID session IDs for each agent (Claude CLI requires valid UUIDs)
-    const coderSessionId = generateUUID();
-    const reviewerSessionId = generateUUID();
+    const sessionId = generateUUID();
 
     // Interactive by default, use --non-interactive to disable
     const interactive = !options?.nonInteractive;
@@ -59,7 +60,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         while (attempts < 3 && !stepCompleted) {
             attempts++;
             log.coder(`Proposing change for step ${completedSteps + 1}/${totalSteps} (attempt ${attempts})…`);
-            const proposal = (await proposeChange(provider, cwd, planMd, feedback, coderSessionId) || "").trim();
+            const proposal = (await proposeChange(provider, cwd, planMd, feedback, sessionId) || "").trim();
             log.coder(`\n${proposal}`);
 
             if (!proposal || !/^FILE:\s/m.test(proposal)) {
@@ -70,7 +71,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
             }
 
             log.review("Reviewing proposal…");
-            const verdictLine = await reviewProposal(provider, cwd, planMd, proposal, reviewerSessionId);
+            const verdictLine = await reviewProposal(provider, cwd, planMd, proposal, sessionId);
             const verdict = parseVerdict(verdictLine);
             log.review(verdictLine);
 

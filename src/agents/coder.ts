@@ -14,7 +14,7 @@ export async function proposeChange(
         cwd,
         mode: "default",                     // normal (not plan) so tools can run, but…
         allowedTools: ["ReadFile","ListDir","Grep","Bash"], // read tools + Bash for testing
-        sessionId,                           // Pass session ID for conversation continuity
+        sessionId,                           // AIDEV-NOTE: Shared with Reviewer for dialogue continuity
         model: "sonnet",
         messages: [
             { role: "system", content: sys },
