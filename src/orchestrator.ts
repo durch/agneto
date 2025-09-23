@@ -61,6 +61,10 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 feedback = undefined;
             } else if (verdict === "revise") {
                 feedback = verdictLine;
+            } else if (verdict === "reject") {
+                // Reject requires fundamental rethinking
+                feedback = `🔴 REJECTED - Fundamental rethink needed: ${verdictLine}\n\nTake time to megathink about the approach. Read the existing code more carefully. The current approach is wrong, not just incomplete.`;
+                log.human("Proposal rejected - requesting complete rethink...");
             } else if (verdict === "needs-human") {
                 // Extract current step description from the plan
                 const stepNumber = completedSteps + 1;

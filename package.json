@@ -6,7 +6,8 @@
     "build": "tsc -p .",
     "start": "tsx src/cli.ts",
     "new-task": "bash scripts/new-task.sh",
-    "cleanup-task": "bash scripts/cleanup-task.sh"
+    "cleanup-task": "bash scripts/cleanup-task.sh",
+    "merge-task": "bash scripts/merge-worktree.sh"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.113",
