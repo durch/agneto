@@ -9,7 +9,7 @@ import { ensureWorktree } from "./git/worktrees.js";
 import { applyProposal, mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
 import { log } from "./ui/log.js";
 import { readFileSync } from "node:fs";
-import { promptHumanReview } from "./ui/human-review.js";
+import { promptHumanReview, promptForSuperReviewerDecision } from "./ui/human-review.js";
 
 export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean }) {
     const provider = await selectProvider();
@@ -168,26 +168,21 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         if (superReviewResult.verdict === "needs-human") {
             log.human("⚠️ SuperReviewer identified issues requiring human review.");
             
-            // Format issues for human review
-            const issuesSummary = superReviewResult.issues 
-                ? `\nIssues found:\n${superReviewResult.issues.map(i => `- ${i}`).join('\n')}`
-                : "";
-            
-            const humanDecision = await promptHumanReview(
-                `SuperReviewer Final Assessment:\n${superReviewResult.summary}${issuesSummary}`,
-                "Final Quality Review",
-                `SuperReviewer verdict: ${superReviewResult.verdict}`
+            // Use the dedicated SuperReviewer decision prompt
+            const humanDecision = await promptForSuperReviewerDecision(
+                superReviewResult.summary,
+                superReviewResult.issues
             );
             
             if (humanDecision.decision === "approve") {
-                log.human("Human approved despite SuperReviewer concerns. Proceeding with merge options.");
+                log.human("Human accepted work despite identified issues. Proceeding with merge options.");
             } else if (humanDecision.decision === "retry") {
-                log.human("Human requested fixes. Starting new development cycle with feedback:");
+                log.human("Human requested a new development cycle to address issues:");
                 log.human(humanDecision.feedback || "Please address the identified issues");
                 // Recursively call runTask with the feedback as a new task
                 return runTask(taskId, humanDecision.feedback || "Address SuperReviewer feedback", options);
             } else {
-                log.human("Human rejected. Task remains in worktree for manual intervention.");
+                log.human("Human chose to abandon. Task remains in worktree for manual review.");
                 return { cwd, completedSteps, totalSteps };
             }
         } else {
