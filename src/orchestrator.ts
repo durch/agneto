@@ -6,6 +6,7 @@ import { ensureWorktree } from "./git/worktrees.js";
 import { applyProposal, mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
 import { log } from "./ui/log.js";
 import { readFileSync } from "node:fs";
+import { promptHumanReview } from "./ui/human-review.js";
 
 export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean }) {
     const provider = await selectProvider();
@@ -60,6 +61,34 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 feedback = undefined;
             } else if (verdict === "revise") {
                 feedback = verdictLine;
+            } else if (verdict === "needs-human") {
+                // Extract current step description from the plan
+                const stepNumber = completedSteps + 1;
+                const stepDescription = extractStepDescription(planMd, stepNumber);
+                
+                // Prompt human for review
+                const humanResult = await promptHumanReview(
+                    proposal,
+                    stepDescription,
+                    verdictLine
+                );
+                
+                if (humanResult.decision === "approve") {
+                    log.human("Human approved proposal. Applying to sandbox…");
+                    applyProposal(cwd, proposal);
+                    completedSteps++;
+                    stepCompleted = true;
+                    log.human(`✅ Step ${completedSteps}/${totalSteps} completed`);
+                    feedback = undefined;
+                } else if (humanResult.decision === "retry") {
+                    log.human("Human requested retry with feedback.");
+                    feedback = humanResult.feedback || "Human requested retry - please revise the proposal";
+                } else if (humanResult.decision === "reject") {
+                    log.human("Human rejected proposal. Skipping this step.");
+                    completedSteps++;
+                    stepCompleted = true;
+                    feedback = undefined;
+                }
             } else {
                 log.human(`Stopping. Verdict = ${verdict}.`);
                 continueWork = false;
@@ -101,4 +130,18 @@ function countStepsInPlan(planMd: string): number {
     // Count numbered steps in the plan (lines starting with digits followed by period)
     const stepMatches = planMd.match(/^\d+\.\s+/gm);
     return stepMatches ? stepMatches.length : 1;
+}
+
+function extractStepDescription(planMd: string, stepNumber: number): string {
+    // Extract the description for a specific step number from the plan
+    const stepRegex = new RegExp(`^${stepNumber}\\.\\s+\\*\\*(.+?)\\*\\*([\\s\\S]*?)(?=^\\d+\\.|^##|$)`, 'gm');
+    const match = stepRegex.exec(planMd);
+    
+    if (match) {
+        const title = match[1];
+        const details = match[2].trim().split('\n').slice(0, 3).join('\n');
+        return `Step ${stepNumber}: ${title}\n${details}`;
+    }
+    
+    return `Step ${stepNumber} of the plan`;
 }
