@@ -15,6 +15,7 @@ export async function proposeChange(
         mode: "default",                     // normal (not plan) so tools can run, but…
         allowedTools: ["ReadFile","ListDir","Grep","Bash"], // read tools + Bash for testing
         sessionId,                           // Pass session ID for conversation continuity
+        model: "sonnet",
         messages: [
             { role: "system", content: sys },
             { role: "user", content: `Plan (Markdown):\n\n${planMd}\n${extra}\nPlease propose ONE change for the first actionable step, in the exact format.` }

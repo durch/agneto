@@ -44,13 +44,17 @@ function flattenMessages(messages: Msg[]): string {
     return result;
 }
 
-function runClaudeCLI(cwd: string, prompt: string, mode: "plan"|"default"|"acceptEdits", allowedTools?: string[], sessionId?: string): string {
+function runClaudeCLI(cwd: string, prompt: string, mode: "plan"|"default"|"acceptEdits", allowedTools?: string[], sessionId?: string, model?: string): string {
     // Build args: -p to print non-interactive; set permission mode; optionally allowed tools
     const args = ["-p", "--permission-mode", mode];
 
     // Add session resumption if sessionId provided
     if (sessionId) {
         args.push("--resume", sessionId);
+    }
+
+    if (model) {
+        args.push("--model", model);
     }
 
     if (allowedTools && allowedTools.length > 0) {
@@ -90,7 +94,7 @@ function runClaudeCLI(cwd: string, prompt: string, mode: "plan"|"default"|"accep
 
 const anthropic: LLMProvider = {
     name: "claude-code-headless-cli",
-    async query({ cwd, messages, mode = "default", allowedTools, sessionId }) {
+    async query({ cwd, messages, mode = "default", allowedTools, sessionId, model }) {
         const prompt = flattenMessages(messages);
         return runClaudeCLI(cwd, prompt, mode, allowedTools, sessionId);
     },

@@ -19,6 +19,7 @@ export class RefinerAgent {
         const refinedOutput = await this.provider.query({
             cwd,
             mode: "plan", // Read-only mode for analysis
+            model: "sonnet",
             messages: [
                 { role: "system", content: this.systemPrompt },
                 { role: "user", content: `Task: ${rawTask}\n\nAnalyze and refine this task description.` }
