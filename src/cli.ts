@@ -39,14 +39,13 @@ Examples:
                 taskDescription = taskOrId;
             }
             
-            const { cwd, completedSteps, totalSteps } = await runTask(taskId, taskDescription, {
+            const { cwd } = await runTask(taskId, taskDescription, {
                 autoMerge: options.autoMerge,
                 nonInteractive: options.nonInteractive
             });
 
             if (!options.autoMerge) {
                 console.log(`\nWorktree: ${cwd}`);
-                console.log(`Progress: ${completedSteps}/${totalSteps} steps completed`);
             }
         } catch (e) {
             console.error(e);

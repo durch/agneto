@@ -16,10 +16,12 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId);
 
-    // AIDEV-NOTE: Shared session between Coder and Reviewer enables conversation continuity
-    // This allows them to build context, reference previous attempts, and provide progressive feedback
-    // Create unique UUID session IDs for each agent (Claude CLI requires valid UUIDs)
-    const sessionId = generateUUID();
+    // AIDEV-NOTE: Separate sessions for Coder and Reviewer for proper semi-stateful behavior
+    // Each agent maintains their own conversation context and system prompt is sent only once
+    const coderSessionId = generateUUID();
+    const reviewerSessionId = generateUUID();
+    let coderInitialized = false;
+    let reviewerInitialized = false;
 
     // Interactive by default, use --non-interactive to disable
     const interactive = !options?.nonInteractive;
@@ -34,7 +36,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         if (refinedTask) {
             // Convert refined task to a structured description for the planner
             taskToUse = formatRefinedTaskForPlanner(refinedTask);
-            log.human("Using refined task specification for planning.");
+            log.orchestrator("Using refined task specification for planning.");
         } else {
             log.warn("Task refinement cancelled. Using original description.");
         }
@@ -48,42 +50,51 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         log.planner(`Saved plan → ${planPath}`);
     }
 
-    let completedSteps = 0;
-    let totalSteps = countStepsInPlan(planMd);
     let continueWork = true;
+    let totalChanges = 0;
+    const maxChanges = 20; // Safety limit to prevent infinite loops
 
-    while (continueWork && completedSteps < totalSteps) {
+    while (continueWork && totalChanges < maxChanges) {
         let attempts = 0;
         let feedback: string | undefined;
         let stepCompleted = false;
 
         while (attempts < 3 && !stepCompleted) {
             attempts++;
-            log.coder(`Proposing change for step ${completedSteps + 1}/${totalSteps} (attempt ${attempts})…`);
-            const proposal = (await proposeChange(provider, cwd, planMd, feedback, sessionId) || "").trim();
+            log.coder(`Proposing change (attempt ${attempts})…`);
+            const proposal = (await proposeChange(provider, cwd, planMd, feedback, coderSessionId, coderInitialized) || "").trim();
+            coderInitialized = true;
             log.coder(`\n${proposal}`);
 
-            if (!proposal || !/^FILE:\s/m.test(proposal)) {
-                const msg = "✏️ revise — coder produced no well-formed proposal. Ask for one-file proposal for current step.";
+            if (!proposal || proposal === "COMPLETE" || proposal.trim() === "COMPLETE") {
+                log.orchestrator("Coder indicates all planned work is complete.");
+                continueWork = false;
+                stepCompleted = true;
+                break;
+            }
+
+            if (!/^FILE:\s/m.test(proposal)) {
+                const msg = "✏️ revise — coder produced no well-formed proposal. Respond with 'COMPLETE' if all plan work is done, or provide a one-file proposal.";
                 log.review(msg);
                 feedback = msg;
                 continue;
             }
 
             log.review("Reviewing proposal…");
-            const verdictLine = await reviewProposal(provider, cwd, planMd, proposal, sessionId);
+            const verdictLine = await reviewProposal(provider, cwd, planMd, proposal, reviewerSessionId, reviewerInitialized);
+            reviewerInitialized = true;
             const verdict = parseVerdict(verdictLine);
             log.review(verdictLine);
 
             if (verdict === "approve") {
-                log.human("Applying approved proposal to sandbox…");
+                log.orchestrator("Applying approved proposal to sandbox…");
                 const changesMade = applyProposal(cwd, proposal);
-                completedSteps++;
                 stepCompleted = true;
+                totalChanges++;
                 if (changesMade) {
-                    log.human(`✅ Step ${completedSteps}/${totalSteps} completed`);
+                    log.orchestrator(`✅ Change applied successfully`);
                 } else {
-                    log.human(`✅ Step ${completedSteps}/${totalSteps} already complete - no changes needed`);
+                    log.orchestrator(`✅ No changes needed - already implemented`);
                 }
 
                 // Reset feedback for next step
@@ -93,48 +104,43 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
             } else if (verdict === "reject") {
                 // Reject requires fundamental rethinking
                 feedback = `🔴 REJECTED - Fundamental rethink needed: ${verdictLine}\n\nTake time to megathink about the approach. Read the existing code more carefully. The current approach is wrong, not just incomplete.`;
-                log.human("Proposal rejected - requesting complete rethink...");
+                log.orchestrator("Proposal rejected - requesting complete rethink...");
             } else if (verdict === "needs-human") {
-                // Extract current step description from the plan
-                const stepNumber = completedSteps + 1;
-                const stepDescription = extractStepDescription(planMd, stepNumber);
-                
                 // Prompt human for review
                 const humanResult = await promptHumanReview(
                     proposal,
-                    stepDescription,
+                    "Current proposal from plan",
                     verdictLine
                 );
                 
                 if (humanResult.decision === "approve") {
-                    log.human("Human approved proposal. Applying to sandbox…");
+                    log.orchestrator("Human approved proposal. Applying to sandbox…");
                     const changesMade = applyProposal(cwd, proposal);
-                    completedSteps++;
                     stepCompleted = true;
+                    totalChanges++;
                     if (changesMade) {
-                        log.human(`✅ Step ${completedSteps}/${totalSteps} completed`);
+                        log.orchestrator(`✅ Change applied successfully`);
                     } else {
-                        log.human(`✅ Step ${completedSteps}/${totalSteps} already complete - no changes needed`);
+                        log.orchestrator(`✅ No changes needed - already implemented`);
                     }
                     feedback = undefined;
                 } else if (humanResult.decision === "retry") {
-                    log.human("Human requested retry with feedback.");
+                    log.orchestrator("Human requested retry with feedback.");
                     feedback = humanResult.feedback || "Human requested retry - please revise the proposal";
                 } else if (humanResult.decision === "reject") {
-                    log.human("Human rejected proposal. Skipping this step.");
-                    completedSteps++;
+                    log.orchestrator("Human rejected proposal. Skipping this change.");
                     stepCompleted = true;
                     feedback = undefined;
                 }
             } else {
-                log.human(`Stopping. Verdict = ${verdict}.`);
+                log.orchestrator(`Stopping. Verdict = ${verdict}.`);
                 continueWork = false;
                 break;
             }
         }
 
         if (!stepCompleted && attempts >= 3) {
-            log.human(`Failed to complete step ${completedSteps + 1} after 3 attempts.`);
+            log.orchestrator(`Failed to apply changes after 3 attempts.`);
             continueWork = false;
         }
 
@@ -142,19 +148,21 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     }
 
     // Task completion summary
-    log.human(`\n📊 Task Summary: ${completedSteps}/${totalSteps} steps completed`);
+    log.orchestrator(`\n📊 Task execution completed`);
 
-    if (completedSteps === totalSteps) {
-        log.human("🎉 All steps completed successfully!");
-        
+    if (totalChanges >= maxChanges) {
+        log.orchestrator(`⚠️ Reached maximum change limit (${maxChanges}). Stopping execution.`);
+    }
+
+    if (!continueWork || totalChanges >= maxChanges) {
+        log.orchestrator("🎉 All planned changes completed successfully!");
+
         // Run SuperReviewer before merge decision
         log.review("🔍 Running final quality review...");
         const superReviewResult = await runSuperReviewer(
-            provider, 
-            cwd, 
-            planMd,
-            completedSteps,
-            totalSteps
+            provider,
+            cwd,
+            planMd
         );
         
         log.review(`SuperReviewer verdict: ${superReviewResult.verdict}`);
@@ -168,7 +176,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         
         // Handle SuperReviewer verdict
         if (superReviewResult.verdict === "needs-human") {
-            log.human("⚠️ SuperReviewer identified issues requiring human review.");
+            log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
             
             // Use the dedicated SuperReviewer decision prompt
             const humanDecision = await promptForSuperReviewerDecision(
@@ -177,9 +185,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
             );
             
             if (humanDecision.decision === "approve") {
-                log.human("Human accepted work despite identified issues. Proceeding with merge options.");
+                log.orchestrator("Human accepted work despite identified issues. Proceeding with merge options.");
             } else if (humanDecision.decision === "retry") {
-                log.human("Human requested a new development cycle to address issues:");
+                log.orchestrator("Human requested a new development cycle to address issues:");
 
                 // Combine SuperReviewer's issues with human feedback for context
                 const issuesContext = superReviewResult.issues
@@ -190,24 +198,24 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     ? `${humanDecision.feedback}${issuesContext}`
                     : `Address the following SuperReviewer feedback: ${superReviewResult.summary}${issuesContext}`;
 
-                log.human(fullTaskDescription);
+                log.orchestrator(fullTaskDescription);
 
                 // Recursively call runTask with the combined feedback
                 return runTask(taskId, fullTaskDescription, options);
             } else {
-                log.human("Human chose to abandon. Task remains in worktree for manual review.");
-                return { cwd, completedSteps, totalSteps };
+                log.orchestrator("Human chose to abandon. Task remains in worktree for manual review.");
+                return { cwd };
             }
         } else {
-            log.human("✅ SuperReviewer approved - implementation ready for merge!");
+            log.orchestrator("✅ SuperReviewer approved - implementation ready for merge!");
         }
 
         if (options?.autoMerge) {
-            log.human("📦 Auto-merging to master...");
+            log.orchestrator("📦 Auto-merging to master...");
             mergeToMaster(taskId, cwd);
             cleanupWorktree(taskId, cwd);
         } else {
-            log.human(`\nNext steps:
+            log.orchestrator(`\nNext steps:
 1. Review changes in worktree: ${cwd}
 2. Run tests to verify
 3. Merge to master: git merge sandbox/${taskId}
@@ -215,28 +223,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         }
     }
 
-    return { cwd, completedSteps, totalSteps };
+    return { cwd };
 }
 
-function countStepsInPlan(planMd: string): number {
-    // Count numbered steps in the plan (lines starting with digits followed by period)
-    const stepMatches = planMd.match(/^\d+\.\s+/gm);
-    return stepMatches ? stepMatches.length : 1;
-}
-
-function extractStepDescription(planMd: string, stepNumber: number): string {
-    // Extract the description for a specific step number from the plan
-    const stepRegex = new RegExp(`^${stepNumber}\\.\\s+\\*\\*(.+?)\\*\\*([\\s\\S]*?)(?=^\\d+\\.|^##|$)`, 'gm');
-    const match = stepRegex.exec(planMd);
-    
-    if (match) {
-        const title = match[1];
-        const details = match[2].trim().split('\n').slice(0, 3).join('\n');
-        return `Step ${stepNumber}: ${title}\n${details}`;
-    }
-    
-    return `Step ${stepNumber} of the plan`;
-}
 
 function formatRefinedTaskForPlanner(refinedTask: import("./types.js").RefinedTask): string {
     let formattedTask = refinedTask.goal;

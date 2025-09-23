@@ -118,9 +118,9 @@ npm start -- "update dependencies" --auto-merge
 ### Understanding the Output
 ```
 📝 Planner: Planning "your task"...        # Creating the plan
-🤖 Coder: Proposing change for step 1/3... # Reading code, making proposal
+🤖 Coder: Proposing change (attempt 1)...  # Reading code, making proposal
 👀 Reviewer: ✅ approve - correct implementation  # Reviewing proposal
-🙋 Human: Applying approved proposal...    # System applying changes
+🙋 Orchestrator: ✅ Change applied successfully  # System applying changes
 ```
 
 ### Working with Plans
@@ -205,14 +205,16 @@ ls .worktrees/<task-id>/src/  # Is the structure there?
 - Reviewer is conservative by design - this is normal
 - After 3 attempts, it stops - review the feedback
 
-### Coder Says "Nothing to Do" (No-op)
-**Symptom:** Coder outputs `FILE: NOTHING` when implementation already exists
+### Coder Completion Signals
+**Coder can signal completion in two ways:**
 
-**Solutions:**
-- This is CORRECT behavior - the step is already complete
-- System now handles this gracefully (fixed!)
-- Logs show "Step already complete - no changes needed"
-- Continues to next step normally
+1. **Task Complete:** Outputs exactly `COMPLETE` when all plan work is done
+2. **No Changes Needed:** Outputs normal proposal but no actual changes applied
+
+**Both are correct behaviors:**
+- System handles completion gracefully
+- Logs show clear completion status
+- SuperReviewer runs final quality check
 
 ### Git Worktree Issues
 **Symptom:** "fatal: branch already exists" or worktree errors
@@ -257,12 +259,14 @@ RATIONALE: One sentence explaining the change
 
 ### Provider & Claude CLI
 
-The system uses Claude CLI in headless mode:
+The system uses Claude CLI in headless mode with efficient session management:
 - **plan mode**: Read-only for Planner and Task Refiner
 - **default mode**: With tools for Coder, Reviewer, and SuperReviewer
   - Coder tools: ReadFile, ListDir, Grep, Bash
   - Reviewer tools: ReadFile, Grep (to verify file state)
   - SuperReviewer tools: ReadFile, Grep, Bash (for tests/build)
+- **Session continuity**: Each agent maintains separate sessions using `--resume sessionId`
+- **Token efficiency**: System prompts sent only once per session, subsequent calls send just new messages
 - Prompts sent via stdin, not as arguments
 - No JSON parsing - expects plain text responses
 - Tools are Claude's built-in - no custom implementation needed
@@ -347,10 +351,10 @@ Set `DEBUG=true` to see:
 - ⚠️ No built-in test suite yet
 
 ### Common Gotchas
-- Plans must have numbered steps (1., 2., etc.) for counting
-- Coder can't see previous proposals (stateless)
+- Coder works through plan naturally, no forced step ordering
+- Coder and Reviewer maintain separate conversation sessions for efficiency
 - Reviewer doesn't see actual file contents, just the proposal
-- Each retry starts fresh - no memory of previous attempts
+- System prompt sent only once per session, subsequent calls use conversation continuity
 
 ## 🗺️ Roadmap
 
@@ -360,6 +364,9 @@ Set `DEBUG=true` to see:
 - **Auto-generated IDs** - No friction, just provide description
 - **No-op handling** - Gracefully handles "already implemented" cases
 - **Non-interactive merge** - Automatic merge and cleanup
+- **Semantic progress tracking** - No more confusing step numbers
+- **Semi-stateful sessions** - Efficient token usage with separate Coder/Reviewer sessions
+- **Natural plan execution** - Coder works through plan organically
 - Human interaction for needs-human verdict
 - Reject handling with retry and enhanced feedback
 - Bash tool for Coder (testing/verification)
@@ -397,14 +404,17 @@ Set `DEBUG=true` to see:
 10. **Rebase old worktrees before continuing** - They may lack critical fixes
 11. **Use `make` commands** - Shorter and validated parameters
 12. **Claude CLI tools are built-in** - Don't create custom tools, use Bash
-13. **No-ops are OK** - If Coder says "FILE: NOTHING", the work is done
+13. **Completion signals work well** - Coder says "COMPLETE" when all plan work is done
+14. **Sessions are efficient** - System prompts sent only once, saves tokens
+15. **Natural execution** - No forced step ordering, Coder works plan organically
 
 ### What Actually Works Best
 - Task descriptions under 50 words
 - Plans with 3-5 concrete steps
-- One file change per step
+- One file change per proposal
 - Clear verification criteria in plans
 - Using 'simplify' when plan is over 10 steps
+- Let Coder work through plan naturally rather than forcing sequence
 
 ## 🆘 Getting Help
 

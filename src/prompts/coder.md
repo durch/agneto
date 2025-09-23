@@ -33,13 +33,18 @@ When this is a follow-up attempt after reviewer feedback:
 - Explicitly state what you changed from the previous attempt
 - If you disagree with feedback, explain your reasoning respectfully
 
+Review the plan and work through it naturally. When you identify something that needs to be implemented:
+
 Emit ONE proposal in EXACTLY this format:
 
 FILE: <relative/path>
 ---8<---
 <unified diff or full file content to add/patch>
 ---8<---
-RATIONALE: <one short sentence tied to the plan's step, with feedback acknowledgment if applicable>
+RATIONALE: <one short sentence describing what this implements from the plan>
+
+If ALL work in the plan is complete and no further changes are needed, respond with exactly:
+COMPLETE
 
 Do NOT apply changes. Do NOT include other text.
 If the plan is unclear, output NOTHING.

@@ -3,11 +3,9 @@ import type { LLMProvider } from "../providers/index.js";
 import type { SuperReviewerVerdict, SuperReviewerResult } from "../types.js";
 
 export async function runSuperReviewer(
-    provider: LLMProvider, 
-    cwd: string, 
-    planMd: string,
-    completedSteps: number,
-    totalSteps: number
+    provider: LLMProvider,
+    cwd: string,
+    planMd: string
 ): Promise<SuperReviewerResult> {
     const sys = readFileSync(new URL("../prompts/super-reviewer.md", import.meta.url), "utf8");
     
@@ -17,7 +15,7 @@ export async function runSuperReviewer(
         allowedTools: ["ReadFile", "Grep", "Bash"], // Include Bash for test/build verification
         messages: [
             { role: "system", content: sys },
-            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\nCompleted steps: ${completedSteps}/${totalSteps}\n\nPerform comprehensive review and provide verdict.` }
+            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\nPerform comprehensive review and provide verdict on the implementation.` }
         ]
     });
     
