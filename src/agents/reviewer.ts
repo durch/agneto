@@ -9,8 +9,8 @@ export function parseVerdict(line: string): Verdict {
     return "revise";
 }
 
-export async function reviewProposal(provider: LLMProvider, cwd: string, planMd: string, proposal: string, sessionId?: string, isInitialized?: boolean) {
-    // AIDEV-NOTE: Reviewer needs read tools to prevent duplicate approvals
+export async function reviewProposal(provider: LLMProvider, cwd: string, planMd: string, changeDescription: string, sessionId?: string, isInitialized?: boolean) {
+    // AIDEV-NOTE: Reviewer needs read tools and git access to review actual changes
     const sys = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
 
     // AIDEV-NOTE: Semi-stateful session - system prompt only sent on first call
@@ -20,11 +20,11 @@ export async function reviewProposal(provider: LLMProvider, cwd: string, planMd:
         // First call: establish context with system prompt and plan
         messages.push(
             { role: "system", content: sys },
-            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\nReview this proposal:\n${proposal}\n\nReturn one line.` }
+            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\nThe Coder has made changes. They report: "${changeDescription}"\n\nUse git diff to review the actual changes, then return one line with your verdict.` }
         );
     } else {
-        // Subsequent calls: just new proposal to review (session maintains context)
-        messages.push({ role: "user", content: `Review this proposal:\n${proposal}\n\nReturn one line.` });
+        // Subsequent calls: just new changes to review (session maintains context)
+        messages.push({ role: "user", content: `The Coder has made changes. They report: "${changeDescription}"\n\nUse git diff to review the actual changes, then return one line with your verdict.` });
     }
 
     const res = await provider.query({
