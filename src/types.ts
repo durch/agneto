@@ -5,3 +5,12 @@ export interface HumanInteractionResult {
     decision: HumanDecision;
     feedback?: string; // Optional feedback for retry case
 }
+
+// SuperReviewer types
+export type SuperReviewerVerdict = 'approve' | 'needs-human';
+
+export interface SuperReviewerResult {
+    verdict: SuperReviewerVerdict;
+    summary: string;
+    issues?: string[];
+}

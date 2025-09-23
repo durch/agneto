@@ -2,6 +2,7 @@ import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
 import { proposeChange } from "./agents/coder.js";
 import { reviewProposal, parseVerdict } from "./agents/reviewer.js";
+import { runSuperReviewer } from "./agents/super-reviewer.js";
 import { ensureWorktree } from "./git/worktrees.js";
 import { applyProposal, mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
 import { log } from "./ui/log.js";
@@ -121,6 +122,55 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
     if (completedSteps === totalSteps) {
         log.human("🎉 All steps completed successfully!");
+        
+        // Run SuperReviewer before merge decision
+        log.review("🔍 Running final quality review...");
+        const superReviewResult = await runSuperReviewer(
+            provider, 
+            cwd, 
+            planMd,
+            completedSteps,
+            totalSteps
+        );
+        
+        log.review(`SuperReviewer verdict: ${superReviewResult.verdict}`);
+        log.review(`Summary: ${superReviewResult.summary}`);
+        
+        if (superReviewResult.issues) {
+            superReviewResult.issues.forEach(issue => {
+                log.review(`Issue: ${issue}`);
+            });
+        }
+        
+        // Handle SuperReviewer verdict
+        if (superReviewResult.verdict === "needs-human") {
+            log.human("⚠️ SuperReviewer identified issues requiring human review.");
+            
+            // Format issues for human review
+            const issuesSummary = superReviewResult.issues 
+                ? `\nIssues found:\n${superReviewResult.issues.map(i => `- ${i}`).join('\n')}`
+                : "";
+            
+            const humanDecision = await promptHumanReview(
+                `SuperReviewer Final Assessment:\n${superReviewResult.summary}${issuesSummary}`,
+                "Final Quality Review",
+                `SuperReviewer verdict: ${superReviewResult.verdict}`
+            );
+            
+            if (humanDecision.decision === "approve") {
+                log.human("Human approved despite SuperReviewer concerns. Proceeding with merge options.");
+            } else if (humanDecision.decision === "retry") {
+                log.human("Human requested fixes. Starting new development cycle with feedback:");
+                log.human(humanDecision.feedback || "Please address the identified issues");
+                // Recursively call runTask with the feedback as a new task
+                return runTask(taskId, humanDecision.feedback || "Address SuperReviewer feedback", options);
+            } else {
+                log.human("Human rejected. Task remains in worktree for manual intervention.");
+                return { cwd, completedSteps, totalSteps };
+            }
+        } else {
+            log.human("✅ SuperReviewer approved - implementation ready for merge!");
+        }
 
         if (options?.autoMerge) {
             log.human("📦 Auto-merging to master...");
