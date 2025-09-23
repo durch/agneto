@@ -10,14 +10,15 @@ import { applyProposal, mergeToMaster, cleanupWorktree } from "./git/sandbox.js"
 import { log } from "./ui/log.js";
 import { readFileSync } from "node:fs";
 import { promptHumanReview, promptForSuperReviewerDecision } from "./ui/human-review.js";
+import { generateUUID } from "./utils/id-generator.js";
 
 export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean }) {
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId);
 
-    // Create unique session IDs for each agent
-    const coderSessionId = `${taskId}-coder`;
-    const reviewerSessionId = `${taskId}-reviewer`;
+    // Create unique UUID session IDs for each agent (Claude CLI requires valid UUIDs)
+    const coderSessionId = generateUUID();
+    const reviewerSessionId = generateUUID();
 
     // Interactive by default, use --non-interactive to disable
     const interactive = !options?.nonInteractive;
