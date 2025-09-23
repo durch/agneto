@@ -109,7 +109,7 @@ async function interactivePlanning(
     }
 
     if (!approved && iteration >= maxIterations) {
-        log.human(`Reached maximum iterations (${maxIterations}). Using current plan.`);
+        log.orchestrator(`Reached maximum iterations (${maxIterations}). Using current plan.`);
         const useCurrentPlan = await confirmPlanApproval(iteration);
         if (!useCurrentPlan) {
             throw new Error("Planning cancelled after maximum iterations");

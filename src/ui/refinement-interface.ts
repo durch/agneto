@@ -110,7 +110,7 @@ export async function interactiveRefinement(
         const feedback = await getRefinementFeedback();
 
         if (feedback.type === "approve") {
-            log.human("Task refinement approved! 🎯");
+            log.orchestrator("Task refinement approved! 🎯");
             return refinedTask;
         }
 

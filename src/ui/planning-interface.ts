@@ -88,9 +88,9 @@ export async function getPlanFeedback(): Promise<PlanFeedback> {
 
 export async function confirmPlanApproval(iterations: number): Promise<boolean> {
     if (iterations === 0) {
-        log.human("Plan approved on first try! 🎯");
+        log.orchestrator("Plan approved on first try! 🎯");
     } else {
-        log.human(`Plan approved after ${iterations + 1} iterations 📝`);
+        log.orchestrator(`Plan approved after ${iterations + 1} iterations 📝`);
     }
 
     return await confirm({
