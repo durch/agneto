@@ -52,10 +52,14 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
             if (verdict === "approve") {
                 log.human("Applying approved proposal to sandbox…");
-                applyProposal(cwd, proposal);
+                const changesMade = applyProposal(cwd, proposal);
                 completedSteps++;
                 stepCompleted = true;
-                log.human(`✅ Step ${completedSteps}/${totalSteps} completed`);
+                if (changesMade) {
+                    log.human(`✅ Step ${completedSteps}/${totalSteps} completed`);
+                } else {
+                    log.human(`✅ Step ${completedSteps}/${totalSteps} already complete - no changes needed`);
+                }
 
                 // Reset feedback for next step
                 feedback = undefined;
@@ -79,10 +83,14 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 
                 if (humanResult.decision === "approve") {
                     log.human("Human approved proposal. Applying to sandbox…");
-                    applyProposal(cwd, proposal);
+                    const changesMade = applyProposal(cwd, proposal);
                     completedSteps++;
                     stepCompleted = true;
-                    log.human(`✅ Step ${completedSteps}/${totalSteps} completed`);
+                    if (changesMade) {
+                        log.human(`✅ Step ${completedSteps}/${totalSteps} completed`);
+                    } else {
+                        log.human(`✅ Step ${completedSteps}/${totalSteps} already complete - no changes needed`);
+                    }
                     feedback = undefined;
                 } else if (humanResult.decision === "retry") {
                     log.human("Human requested retry with feedback.");

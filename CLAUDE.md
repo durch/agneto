@@ -8,12 +8,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with Ag
 3. **DEBUG=true is your friend** - Use it whenever something seems wrong
 4. **Interactive mode is DEFAULT** - The system will ask for your input on plans
 5. **Worktrees are isolated** - Changes happen in `.worktrees/<task-id>`, not main branch
+6. **Check worktree state before continuing** - Old worktrees may be on outdated master
+7. **Rebase worktrees when needed** - `git rebase master` to get latest fixes
 
 ## 🚀 Quick Start
 
 ### CRITICAL: Before Any Changes
 ```bash
 npm run build  # ALWAYS verify TypeScript compiles first
+```
+
+### With the new Makefile (easier!)
+```bash
+make build     # Build TypeScript
+make task ID=fix-1 DESC="fix the bug"  # Start a task
+make merge ID=fix-1  # Squash merge completed task
+make list      # See all worktrees
 ```
 
 ### If you're here to...
@@ -221,17 +231,20 @@ RATIONALE: One sentence explaining the change
 
 **Reviewer Verdicts:**
 - `✅ approve` - Apply the change
-- `✏️ revise` - Try again with feedback
-- `🟡 needs-human` - Human decision required
-- `🔴 reject` - Stop execution
+- `✏️ revise` - Try again with feedback (minor fixes)
+- `🔴 reject` - Fundamental rethink needed (prompts "megathink")
+- `🟡 needs-human` - Human decision required (approve/retry/skip)
 
 ### Provider & Claude CLI
 
 The system uses Claude CLI in headless mode:
-- **plan mode**: Read-only for Planner/Reviewer
-- **default mode**: With tools for Coder (ReadFile, ListDir, Grep)
+- **plan mode**: Read-only for Planner
+- **default mode**: With tools for Coder and Reviewer
+  - Coder tools: ReadFile, ListDir, Grep, Bash
+  - Reviewer tools: ReadFile, Grep (to verify file state)
 - Prompts sent via stdin, not as arguments
 - No JSON parsing - expects plain text responses
+- Tools are Claude's built-in - no custom implementation needed
 
 ## 🛠️ Development Guide
 
@@ -301,12 +314,16 @@ Set `DEBUG=true` to see:
 - ✅ Multi-step task completion
 - ✅ Clear separation of concerns
 - ✅ Good retry mechanism
+- ✅ Human interaction for needs-human verdict
+- ✅ Reject handling with enhanced feedback
+- ✅ Bash tool for testing and verification
+- ✅ Squash merge tooling for clean history
 
 ### Known Limitations
-- ⚠️ Coder only has read-only tools (no testing)
 - ⚠️ Single file changes only
 - ⚠️ No parallel task execution
 - ⚠️ Limited to Claude CLI capabilities
+- ⚠️ No built-in test suite yet
 
 ### Common Gotchas
 - Plans must have numbered steps (1., 2., etc.) for counting
@@ -316,21 +333,29 @@ Set `DEBUG=true` to see:
 
 ## 🗺️ Roadmap
 
-### Next: Phase 2 - Enhanced Safety
-- Interactive approval for each code change
-- Add RunTests tool for Coder
-- Rollback capability during execution
+### ✅ Completed
+- Human interaction for needs-human verdict
+- Reject handling with retry and enhanced feedback
+- Bash tool for Coder (testing/verification)
+- Squash merge tooling
+- Makefile for easier operations
+- AI playbook integration in prompts
+
+### Next: Test Suite & SuperReviewer
+- Add comprehensive test suite for Agneto itself
+- Complete SuperReviewer implementation (final quality gate)
+- Integration tests for the full flow
 
 ### Future: Phase 3 - Curmudgeon
 - Fourth persona to prevent over-engineering
 - Reviews plans before execution
 - Keeps solutions simple and pragmatic
 
-### Long-term: TUI Interface
-- Three-pane view of all agents
+### Long-term: Enhanced UX
+- TUI Interface with three-pane view
 - Real-time execution monitoring
-- Hotkey controls for approvals
-- Better visibility into agent thinking
+- Parallel task execution
+- Memory between retries (context passing)
 
 ## 🎯 Pro Tips (From Experience)
 
@@ -341,6 +366,9 @@ Set `DEBUG=true` to see:
 5. **Always `git diff master` before merging** - See exactly what changed
 6. **Break large tasks into multiple small ones** - Better success rate
 7. **If reviewer keeps rejecting, the plan needs more detail** - Not a code problem
+8. **Rebase old worktrees before continuing** - They may lack critical fixes
+9. **Use `make` commands** - Shorter and validated parameters
+10. **Claude CLI tools are built-in** - Don't create custom tools, use Bash
 
 ### What Actually Works Best
 - Task descriptions under 50 words
