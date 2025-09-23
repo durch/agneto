@@ -22,7 +22,7 @@ npm run build  # ALWAYS verify TypeScript compiles first
 ```bash
 make build     # Build TypeScript
 make task ID=fix-1 DESC="fix the bug"  # Start a task
-make merge ID=fix-1  # Squash merge completed task
+make merge ID=fix-1  # Auto-merge and cleanup (non-interactive!)
 make list      # See all worktrees
 ```
 
@@ -33,8 +33,8 @@ make list      # See all worktrees
 # STEP 1: Verify the build
 npm run build
 
-# STEP 2: Test with debug output
-DEBUG=true npm start -- test-1 "describe the fix" --non-interactive
+# STEP 2: Test with debug output (auto-generates task ID!)
+DEBUG=true npm start -- "describe the fix" --non-interactive
 
 # STEP 3: If empty responses, check provider
 DEBUG=true npx tsx test-provider.ts
@@ -42,13 +42,15 @@ DEBUG=true npx tsx test-provider.ts
 
 **Add a new feature to Agneto:**
 ```bash
-# STEP 1: Start interactive planning (this is default)
-npm start -- feat-1 "Add feature X"
+# STEP 1: Start interactive planning (ID auto-generated!)
+npm start -- "Add feature X"
 
-# STEP 2: Refine plan when prompted (use 'simplify' if too complex)
-# STEP 3: System executes all steps automatically
-# STEP 4: Review in worktree before merging
-cd .worktrees/feat-1 && git diff master
+# STEP 2: Refine task description if prompted (NEW: Task Refiner!)
+# STEP 3: Refine plan when prompted (use 'simplify' if too complex)
+# STEP 4: System executes all steps automatically
+# STEP 5: SuperReviewer performs final quality check
+# STEP 6: Review in worktree before merging
+cd .worktrees/task-<generated-id> && git diff master
 ```
 
 **Debug empty planner responses:**
@@ -73,19 +75,21 @@ npm start -- <task-id> "continue work"
 
 ## 🎯 How Agneto Works (Essential Understanding)
 
-Agneto is a **human-in-the-loop AI development system** with three personas:
+Agneto is a **human-in-the-loop AI development system** with five personas:
 
-1. **Planner** → Creates structured plans from your task description
-2. **Coder** → Reads the repo and proposes changes (one file at a time)
-3. **Reviewer** → Validates proposals against the plan
+1. **Task Refiner** → Pre-processes vague task descriptions (interactive mode only)
+2. **Planner** → Creates structured plans from your task description
+3. **Coder** → Reads the repo and proposes changes (one file at a time)
+4. **Reviewer** → Validates proposals against the plan
+5. **SuperReviewer** → Final quality gate checking acceptance criteria and tests
 
 **Key Concept:** Everything happens in isolated git worktrees (`.worktrees/<task-id>`), so the main branch is never at risk.
 
 ### The Flow
 ```
-You describe task → Interactive planning → Plan approved →
+You describe task → Task refinement (optional) → Interactive planning → Plan approved →
 For each step: Coder proposes → Reviewer checks → Apply if approved →
-All done → Review in worktree → Merge manually (or --auto-merge)
+All done → SuperReviewer final check → Review in worktree → Merge (auto or manual)
 ```
 
 ### Default Behavior (Important!)
@@ -98,14 +102,17 @@ All done → Review in worktree → Merge manually (or --auto-merge)
 
 ### Running a Task (Most Common)
 ```bash
-# Standard usage - interactive planning, full execution
-npm start -- task-1 "implement user authentication"
+# NEW: No need to specify task ID - auto-generated!
+npm start -- "implement user authentication"
+
+# With custom ID (still supported)
+npm start -- auth-1 "implement user authentication"
 
 # For CI/automation - skip interactive planning
-npm start -- task-1 "fix typo in README" --non-interactive
+npm start -- "fix typo in README" --non-interactive
 
 # Auto-merge when complete (use with caution)
-npm start -- task-1 "update dependencies" --auto-merge
+npm start -- "update dependencies" --auto-merge
 ```
 
 ### Understanding the Output
@@ -137,13 +144,17 @@ Interactive mode offers these options:
 # See all worktrees
 git worktree list
 
-# Clean up a completed task
-npm run cleanup-task task-1
+# Review a worktree before merging
+cd .worktrees/<task-id>
+git log --oneline -5       # Recent commits
+git diff master --stat      # Files changed
+npm run build              # Verify it compiles
 
-# Manually check a worktree
-cd .worktrees/task-1
-git status
-git diff master
+# Merge and auto-cleanup (non-interactive!)
+npm run merge-task <task-id>
+
+# Manual cleanup if needed
+npm run cleanup-task <task-id>
 ```
 
 ## 🚨 Troubleshooting
@@ -194,6 +205,15 @@ ls .worktrees/<task-id>/src/  # Is the structure there?
 - Reviewer is conservative by design - this is normal
 - After 3 attempts, it stops - review the feedback
 
+### Coder Says "Nothing to Do" (No-op)
+**Symptom:** Coder outputs `FILE: NOTHING` when implementation already exists
+
+**Solutions:**
+- This is CORRECT behavior - the step is already complete
+- System now handles this gracefully (fixed!)
+- Logs show "Step already complete - no changes needed"
+- Continues to next step normally
+
 ### Git Worktree Issues
 **Symptom:** "fatal: branch already exists" or worktree errors
 
@@ -238,10 +258,11 @@ RATIONALE: One sentence explaining the change
 ### Provider & Claude CLI
 
 The system uses Claude CLI in headless mode:
-- **plan mode**: Read-only for Planner
-- **default mode**: With tools for Coder and Reviewer
+- **plan mode**: Read-only for Planner and Task Refiner
+- **default mode**: With tools for Coder, Reviewer, and SuperReviewer
   - Coder tools: ReadFile, ListDir, Grep, Bash
   - Reviewer tools: ReadFile, Grep (to verify file state)
+  - SuperReviewer tools: ReadFile, Grep, Bash (for tests/build)
 - Prompts sent via stdin, not as arguments
 - No JSON parsing - expects plain text responses
 - Tools are Claude's built-in - no custom implementation needed
@@ -333,7 +354,12 @@ Set `DEBUG=true` to see:
 
 ## 🗺️ Roadmap
 
-### ✅ Completed
+### ✅ Completed (Recently!)
+- **Task Refiner** - Pre-processes vague task descriptions
+- **SuperReviewer** - Final quality gate after all steps
+- **Auto-generated IDs** - No friction, just provide description
+- **No-op handling** - Gracefully handles "already implemented" cases
+- **Non-interactive merge** - Automatic merge and cleanup
 - Human interaction for needs-human verdict
 - Reject handling with retry and enhanced feedback
 - Bash tool for Coder (testing/verification)
@@ -341,10 +367,10 @@ Set `DEBUG=true` to see:
 - Makefile for easier operations
 - AI playbook integration in prompts
 
-### Next: Test Suite & SuperReviewer
+### Next: Test Suite
 - Add comprehensive test suite for Agneto itself
-- Complete SuperReviewer implementation (final quality gate)
 - Integration tests for the full flow
+- Unit tests for individual agents
 
 ### Future: Phase 3 - Curmudgeon
 - Fourth persona to prevent over-engineering
@@ -359,16 +385,19 @@ Set `DEBUG=true` to see:
 
 ## 🎯 Pro Tips (From Experience)
 
-1. **Start with "Add a hello world function"** - Simplest test that works
-2. **When in doubt, simplify the plan** - Choose "simplify" in interactive mode
-3. **Empty responses = check provider first** - `DEBUG=true npx tsx test-provider.ts`
-4. **Coder proposals fail? Check the plan specificity** - Vague plans = bad proposals
-5. **Always `git diff master` before merging** - See exactly what changed
-6. **Break large tasks into multiple small ones** - Better success rate
-7. **If reviewer keeps rejecting, the plan needs more detail** - Not a code problem
-8. **Rebase old worktrees before continuing** - They may lack critical fixes
-9. **Use `make` commands** - Shorter and validated parameters
-10. **Claude CLI tools are built-in** - Don't create custom tools, use Bash
+1. **Just provide the description** - IDs are auto-generated now!
+2. **Review worktrees before merging** - `cd .worktrees/<id> && git diff master --stat`
+3. **Merge is now automatic** - `npm run merge-task <id>` does everything
+4. **When in doubt, simplify the plan** - Choose "simplify" in interactive mode
+5. **Empty responses = check provider first** - `DEBUG=true npx tsx test-provider.ts`
+6. **Coder proposals fail? Check the plan specificity** - Vague plans = bad proposals
+7. **Always `git diff master` before merging** - See exactly what changed
+8. **Break large tasks into multiple small ones** - Better success rate
+9. **If reviewer keeps rejecting, the plan needs more detail** - Not a code problem
+10. **Rebase old worktrees before continuing** - They may lack critical fixes
+11. **Use `make` commands** - Shorter and validated parameters
+12. **Claude CLI tools are built-in** - Don't create custom tools, use Bash
+13. **No-ops are OK** - If Coder says "FILE: NOTHING", the work is done
 
 ### What Actually Works Best
 - Task descriptions under 50 words

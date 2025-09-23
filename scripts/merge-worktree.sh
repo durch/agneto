@@ -41,14 +41,8 @@ git diff master...$BRANCH --stat
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Ask for confirmation
-read -p "🔄 Merge $BRANCH to master? (y/N) " -n 1 -r
-echo ""
-
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "❌ Merge cancelled"
-    exit 0
-fi
+# No confirmation needed - just merge
+echo "🔄 Merging $BRANCH to master..."
 
 # Save current branch
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -81,23 +75,17 @@ if git merge "$BRANCH" --squash; then
     git commit -m "$COMMIT_MSG" -m "$COMMIT_BODY"
     echo "✅ Successfully squash merged $BRANCH to master"
 
-    # Ask about cleanup
+    # Auto cleanup after merge
     echo ""
-    read -p "🧹 Remove worktree and branch? (y/N) " -n 1 -r
-    echo ""
+    echo "🧹 Cleaning up worktree and branch..."
 
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "🗑️  Removing worktree..."
-        git worktree remove "$WORKTREE_PATH" --force
+    echo "🗑️  Removing worktree..."
+    git worktree remove "$WORKTREE_PATH" --force
 
-        echo "🗑️  Deleting branch..."
-        git branch -D "$BRANCH"
+    echo "🗑️  Deleting branch..."
+    git branch -D "$BRANCH"
 
-        echo "✨ Cleanup complete!"
-    else
-        echo "ℹ️  Worktree and branch preserved. To clean up later, run:"
-        echo "    npm run cleanup-task $TASK_ID"
-    fi
+    echo "✨ Cleanup complete!"
 else
     echo "❌ Merge failed. Resolving conflicts..."
     echo ""
