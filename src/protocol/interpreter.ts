@@ -8,7 +8,6 @@
 import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderResponse, ReviewerResponse } from "./schemas.js";
-import { cleanJsonResponse } from "../utils/json-cleaner.js";
 
 // Interpreter result types
 export interface CoderInterpretation {
@@ -53,19 +52,12 @@ export async function interpretCoderResponse(
       cwd,
       mode: "plan", // Read-only mode, no tools needed
       allowedTools: [],
+      model: "sonnet",
       messages
     });
 
-    // Parse the interpreter's JSON response (clean markdown if present)
-    const parsed = JSON.parse(cleanJsonResponse(response));
-
-    // Validate basic structure
-    if (!parsed.action || !["continue", "complete", "implemented"].includes(parsed.action)) {
-      console.warn("Interpreter returned invalid action:", parsed.action);
-      return null;
-    }
-
-    return parsed as CoderInterpretation;
+    // Parse interpreter's simple keyword response
+    return parseCoderKeywords(response, rawResponse);
 
   } catch (error) {
     console.error("Interpreter failed to parse Coder response:", error);
@@ -102,24 +94,12 @@ export async function interpretReviewerResponse(
       cwd,
       mode: "plan", // Read-only mode, no tools needed
       allowedTools: [],
+      model: "sonnet",
       messages
     });
 
-    // Parse the interpreter's JSON response (clean markdown if present)
-    const parsed = JSON.parse(cleanJsonResponse(response));
-
-    // Validate basic structure
-    if (!parsed.verdict || !["approve", "revise", "reject", "needs_human"].includes(parsed.verdict)) {
-      console.warn("Interpreter returned invalid verdict:", parsed.verdict);
-      return null;
-    }
-
-    // Ensure feedback is present
-    if (!parsed.feedback) {
-      parsed.feedback = "";
-    }
-
-    return parsed as ReviewerInterpretation;
+    // Parse interpreter's simple keyword response
+    return parseReviewerKeywords(response, rawResponse);
 
   } catch (error) {
     console.error("Interpreter failed to parse Reviewer response:", error);
@@ -179,4 +159,131 @@ export function convertReviewerInterpretation(
     feedback: interpretation.feedback,
     continueNext: interpretation.continueNext
   };
+}
+
+/**
+ * Parse Coder interpreter keywords
+ */
+function parseCoderKeywords(response: string, originalResponse: string): CoderInterpretation | null {
+  const lowerResponse = response.toLowerCase().trim();
+
+  if (lowerResponse.includes('complete')) {
+    return { action: "complete" };
+  }
+
+  if (lowerResponse.includes('implemented')) {
+    return {
+      action: "implemented",
+      description: extractDescription(originalResponse),
+      filesChanged: extractFiles(originalResponse)
+    };
+  }
+
+  // Default to continue
+  return {
+    action: "continue",
+    description: extractDescription(originalResponse),
+    steps: extractSteps(originalResponse),
+    files: extractFiles(originalResponse)
+  };
+}
+
+/**
+ * Parse Reviewer interpreter keywords
+ */
+function parseReviewerKeywords(response: string, originalResponse: string): ReviewerInterpretation | null {
+  const lowerResponse = response.toLowerCase().trim();
+  let verdict: "approve" | "revise" | "reject" | "needs_human" = "needs_human";
+  let continueNext: boolean | undefined;
+
+  if (lowerResponse.includes('approve_complete')) {
+    verdict = "approve";
+    continueNext = false;
+  } else if (lowerResponse.includes('approve_continue')) {
+    verdict = "approve";
+    continueNext = true;
+  } else if (lowerResponse.includes('approve')) {
+    verdict = "approve";
+    continueNext = true; // Default to continue for plain approve
+  } else if (lowerResponse.includes('revise')) {
+    verdict = "revise";
+  } else if (lowerResponse.includes('reject')) {
+    verdict = "reject";
+  } else if (lowerResponse.includes('needs_human')) {
+    verdict = "needs_human";
+  }
+  // Default to needs_human
+
+  return {
+    verdict,
+    feedback: originalResponse.trim(),
+    continueNext
+  };
+}
+
+/**
+ * Extract description from response text
+ */
+function extractDescription(response: string): string {
+  // Look for common description patterns
+  const lines = response.split('\n');
+  for (const line of lines) {
+    if (line.toLowerCase().includes('description:') ||
+        line.toLowerCase().includes('summary:') ||
+        line.toLowerCase().includes('implementing:')) {
+      return line.split(':')[1]?.trim() || '';
+    }
+  }
+
+  // Fallback: use first meaningful sentence
+  const sentences = response.split(/[.!?]/);
+  for (const sentence of sentences) {
+    if (sentence.trim().length > 10) {
+      return sentence.trim();
+    }
+  }
+
+  return 'Continue with implementation';
+}
+
+/**
+ * Extract file mentions from response text
+ */
+function extractFiles(response: string): string[] {
+  const files: string[] = [];
+
+  // Look for common file patterns
+  const fileMatches = response.match(/[\w/-]+\.(ts|js|md|json|tsx|jsx)/g);
+  if (fileMatches) {
+    files.push(...fileMatches);
+  }
+
+  // Look for src/ patterns
+  const srcMatches = response.match(/src\/[^\s,]+/g);
+  if (srcMatches) {
+    files.push(...srcMatches);
+  }
+
+  return [...new Set(files)]; // Remove duplicates
+}
+
+/**
+ * Extract steps from response text
+ */
+function extractSteps(response: string): string[] {
+  const steps: string[] = [];
+  const lines = response.split('\n');
+
+  for (const line of lines) {
+    // Look for numbered steps
+    if (/^\s*\d+\./.test(line)) {
+      steps.push(line.replace(/^\s*\d+\.\s*/, '').trim());
+    }
+    // Look for bullet points
+    else if (/^\s*[-*]/.test(line)) {
+      steps.push(line.replace(/^\s*[-*]\s*/, '').trim());
+    }
+  }
+
+  return steps;
 }
