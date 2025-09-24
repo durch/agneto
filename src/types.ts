@@ -49,3 +49,18 @@ export interface ReviewerCodeVerdict {
     verdict: "approve-code" | "revise-code" | "reject-code" | "step-complete" | "task-complete" | "needs-human";
     feedback?: string;
 }
+
+// Bean Counter types for work chunking
+export interface BeanCounterWorkChunk {
+    type: "WORK_CHUNK";
+    description: string;
+    requirements: string[];
+    context: string;
+}
+
+export interface BeanCounterTaskComplete {
+    type: "TASK_COMPLETE";
+    description: string;
+    requirements: string[];
+    context: string;
+}

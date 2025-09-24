@@ -75,21 +75,23 @@ npm start -- <task-id> "continue work"
 
 ## 🎯 How Agneto Works (Essential Understanding)
 
-Agneto is a **human-in-the-loop AI development system** with five personas:
+Agneto is a **human-in-the-loop AI development system** with six personas acting as an **Agile AI Development Team**:
 
 1. **Task Refiner** → Pre-processes vague task descriptions (interactive mode only)
-2. **Planner** → Creates structured plans from your task description
-3. **Coder** → Reads the repo and proposes changes (multi-file support via MultiEdit)
-4. **Reviewer** → Validates proposals against the plan
-5. **SuperReviewer** → Final quality gate checking acceptance criteria and tests
+2. **Planner** → Creates high-level strategic plans from your task description
+3. **Bean Counter** → "Scrum Master" - breaks plans into small chunks, tracks progress, coordinates sprints
+4. **Coder** → Pure implementation executor - implements pre-defined chunks from Bean Counter
+5. **Reviewer** → Validates chunk implementations against requirements
+6. **SuperReviewer** → Final quality gate checking acceptance criteria and tests
 
 **Key Concept:** Everything happens in isolated git worktrees (`.worktrees/<task-id>`), so the main branch is never at risk.
 
-### The Flow
+### The New Flow (Bean Counter Coordinated)
 ```
 You describe task → Task refinement (optional) → Interactive planning → Plan approved →
-For each step: Coder proposes → Reviewer checks → Apply if approved →
-All done → SuperReviewer final check → Review in worktree → Merge (auto or manual)
+Bean Counter: First chunk → Coder: Implements chunk → Reviewer: Approves →
+Bean Counter: Next chunk → Coder: Implements → Reviewer: Approves → [repeat] →
+Bean Counter: Task complete → SuperReviewer final check → Review in worktree → Merge
 ```
 
 ### Default Behavior (Important!)
@@ -117,10 +119,12 @@ npm start -- "update dependencies" --auto-merge
 
 ### Understanding the Output
 ```
-📝 Planner: Planning "your task"...        # Creating the plan
-🤖 Coder: Proposing change (attempt 1)...  # Reading code, making proposal
-👀 Reviewer: ✅ approve - correct implementation  # Reviewing proposal
-🙋 Orchestrator: ✅ Change applied successfully  # System applying changes
+📝 Planner: Planning "your task"...           # Creating high-level plan
+🧮 Bean Counter: Determining work chunk...    # Breaking down into small chunks
+🤖 Coder: Proposing implementation...         # Planning how to implement chunk
+👀 Reviewer: ✅ approve - correct approach     # Reviewing chunk implementation
+🧮 Bean Counter: Next chunk - feature Y...    # Coordinating next sprint
+🙋 Orchestrator: ✅ Change applied successfully # System applying changes
 ```
 
 ### Working with Plans
@@ -234,8 +238,9 @@ rm -rf .worktrees/task-1     # Remove directory
 | File | Purpose | Modify when... |
 |------|---------|----------------|
 | `src/orchestrator.ts` | Main control flow | Changing the task flow |
-| `src/agents/planner.ts` | Planning logic | Improving plan generation |
-| `src/agents/coder.ts` | Code generation | Changing implementation logic |
+| `src/agents/planner.ts` | High-level planning logic | Improving strategic plan generation |
+| `src/agents/bean-counter.ts` | Work chunking & progress tracking | Adjusting chunking strategy |
+| `src/agents/coder.ts` | Implementation execution | Changing implementation logic |
 | `src/agents/reviewer.ts` | Review logic | Adjusting approval criteria |
 | `src/providers/anthropic.ts` | Claude CLI integration | Fixing LLM communication |
 | `src/protocol/interpreter.ts` | Natural language interpreter | Changing response interpretation |
@@ -366,8 +371,10 @@ Set `DEBUG=true` to see:
 ### What Works Well
 - ✅ Interactive planning with feedback loop
 - ✅ Safe sandbox execution
-- ✅ Multi-step task completion
-- ✅ Clear separation of concerns
+- ✅ Bean Counter coordinated work breakdown (prevents loops!)
+- ✅ Small chunk implementation with frequent review cycles
+- ✅ Session-based progress tracking and memory
+- ✅ Clear separation of concerns (strategy vs. execution)
 - ✅ Good retry mechanism
 - ✅ Human interaction for needs-human verdict
 - ✅ Reject handling with enhanced feedback
@@ -380,16 +387,23 @@ Set `DEBUG=true` to see:
 - ⚠️ No built-in test suite yet
 
 ### Common Gotchas
-- Coder works through plan naturally, no forced step ordering
-- Coder and Reviewer maintain completely separate sessions (not shared)
+- **Bean Counter drives all work chunking** - Coder no longer decides what to work on
+- **Three separate sessions** - Bean Counter, Coder, and Reviewer don't share context
+- **Bean Counter maintains progress memory** - Its session accumulates all completed work
+- **Coder is now pure executor** - Receives pre-defined chunks, focuses only on implementation
+- **Small chunks are the goal** - Bean Counter breaks work into frequent review cycles
 - Agents communicate in natural language, interpreter extracts decisions
 - System prompt sent only once per session, subsequent calls use conversation continuity
-- Multi-file changes supported but best to keep changes focused
+- Multi-file changes supported but Bean Counter prefers focused chunks
 - Interpreter uses additional Sonnet calls (minimal cost) for decision extraction
 
 ## 🗺️ Roadmap
 
 ### ✅ Completed (Recently!)
+- **Bean Counter Agent** - "Scrum Master" coordinates work breakdown and prevents loops
+- **Small Chunk Work Cycles** - Frequent review cycles with focused implementations
+- **Session-Based Progress Memory** - Bean Counter maintains persistent progress ledger
+- **Agile AI Team Structure** - Clear role separation: strategy vs. chunking vs. execution
 - **Natural Language Protocol** - Agents respond naturally, interpreter extracts decisions
 - **Stateless Interpreter** - Fast Sonnet calls convert language to structured data
 - **No More JSON Failures** - Robust handling of any response format
@@ -400,9 +414,7 @@ Set `DEBUG=true` to see:
 - **Auto-generated IDs** - No friction, just provide description
 - **No-op handling** - Gracefully handles "already implemented" cases
 - **Non-interactive merge** - Automatic merge and cleanup
-- **Semantic progress tracking** - No more confusing step numbers
-- **Independent sessions** - Coder and Reviewer have separate sessions for clarity
-- **Natural plan execution** - Coder works through plan organically
+- **Independent sessions** - Bean Counter, Coder and Reviewer have separate sessions
 - Human interaction for needs-human verdict
 - Reject handling with retry and enhanced feedback
 - Bash tool for Coder (testing/verification)
@@ -445,12 +457,13 @@ Set `DEBUG=true` to see:
 15. **Natural execution** - No forced step ordering, Coder works plan organically
 
 ### What Actually Works Best
-- Task descriptions under 50 words
-- Plans with 3-5 concrete steps
-- Focused changes (multi-file supported but keep related)
-- Clear verification criteria in plans
-- Using 'simplify' when plan is over 10 steps
-- Let Coder work through plan naturally rather than forcing sequence
+- Task descriptions under 50 words (Bean Counter handles the breakdown)
+- High-level plans with clear goals (Bean Counter creates the steps)
+- Trust the Bean Counter's chunking strategy - it prevents loops and ensures progress
+- Focused changes happen automatically through Bean Counter coordination
+- Clear verification criteria in plans help Bean Counter create better chunks
+- Using 'simplify' when plan is over 10 steps (Bean Counter will still break it down)
+- Bean Counter's session memory prevents getting stuck or repeating work
 
 ## 🆘 Getting Help
 

@@ -1,16 +1,20 @@
 import { log } from "./ui/log.js";
 import type { CoderPlanProposal } from "./types.js";
 
-// State definitions for the coder-reviewer protocol
+// State definitions for the Bean Counter coordinated protocol
+// AIDEV-NOTE: Bean Counter acts as "Scrum Master" - maintains session-based progress ledger,
+// breaks down high-level plans into implementable chunks, coordinates review cycles
+// Flow: BEAN_COUNTING → PLANNING → PLAN_REVIEW → IMPLEMENTING → CODE_REVIEW → back to BEAN_COUNTING
 export enum State {
   // Initial state
   TASK_START = "TASK_START",
 
-  // Phase 1: Planning states
+  // Phase 1: Work Chunking
+  BEAN_COUNTING = "BEAN_COUNTING",
+
+  // Phase 2: Implementation cycle (Bean Counter → Coder → Reviewer → Bean Counter)
   PLANNING = "PLANNING",
   PLAN_REVIEW = "PLAN_REVIEW",
-
-  // Phase 2: Implementation states
   IMPLEMENTING = "IMPLEMENTING",
   CODE_REVIEW = "CODE_REVIEW",
 
@@ -22,6 +26,10 @@ export enum State {
 
 // Events that trigger state transitions
 export enum Event {
+  // Bean Counter events
+  START_CHUNKING = "START_CHUNKING",
+  CHUNK_READY = "CHUNK_READY",
+
   // Planning events
   START_PLANNING = "START_PLANNING",
   PLAN_PROPOSED = "PLAN_PROPOSED",
@@ -50,6 +58,13 @@ export enum Event {
 export interface StateMachineContext {
   // Current plan being worked on
   currentPlan?: CoderPlanProposal;
+
+  // Bean Counter work chunk context
+  currentChunk?: {
+    description: string;
+    requirements: string[];
+    context: string;
+  };
 
   // Feedback for revisions
   planFeedback?: string;
@@ -92,6 +107,10 @@ export class CoderReviewerStateMachine {
 
   getCurrentPlan(): CoderPlanProposal | undefined {
     return this.context.currentPlan;
+  }
+
+  getCurrentChunk(): { description: string; requirements: string[]; context: string; } | undefined {
+    return this.context.currentChunk;
   }
 
   getPlanFeedback(): string | null {
@@ -185,12 +204,24 @@ export class CoderReviewerStateMachine {
 
     switch (this.state) {
       case State.TASK_START:
-        if (event === Event.START_PLANNING) {
-          this.state = State.PLANNING;
+        if (event === Event.START_CHUNKING) {
+          this.state = State.BEAN_COUNTING;
           this.context.planAttempts = 0;
           this.context.codeAttempts = 0;
           this.context.planFeedback = undefined;
           this.context.codeFeedback = undefined;
+          this.context.currentChunk = undefined;
+          return true;
+        }
+        break;
+
+      case State.BEAN_COUNTING:
+        if (event === Event.CHUNK_READY) {
+          this.state = State.PLANNING;
+          this.context.currentChunk = data;
+          return true;
+        } else if (event === Event.TASK_COMPLETED) {
+          this.state = State.TASK_COMPLETE;
           return true;
         }
         break;
@@ -264,8 +295,8 @@ export class CoderReviewerStateMachine {
 
       case State.CODE_REVIEW:
         if (event === Event.CODE_APPROVED) {
-          // Ready for next planning cycle
-          this.state = State.PLANNING;
+          // Ready for Bean Counter to determine next chunk
+          this.state = State.BEAN_COUNTING;
           this.context.planAttempts = 0;  // Reset for new cycle
           this.context.codeAttempts = 0;  // Reset for new cycle
           this.context.currentPlan = undefined;
@@ -285,11 +316,12 @@ export class CoderReviewerStateMachine {
           }
           return true;
         } else if (event === Event.CODE_REJECTED) {
-          // Go back to planning phase
-          this.state = State.PLANNING;
+          // Go back to Bean Counter to re-chunk
+          this.state = State.BEAN_COUNTING;
           this.context.planAttempts = 0;
           this.context.codeAttempts = 0;
           this.context.currentPlan = undefined;
+          this.context.currentChunk = undefined;
           this.context.planFeedback = data; // Use rejection reason as feedback
           return true;
         } else if (event === Event.CODE_NEEDS_HUMAN) {

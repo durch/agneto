@@ -1,9 +1,15 @@
+// AIDEV-NOTE: Orchestrator now uses Bean Counter for work breakdown:
+// Flow: High-level plan (Planner) → Bean Counter chunks work → Coder implements → Reviewer approves → Bean Counter determines next chunk
+// Bean Counter acts as "Scrum Master" maintaining session-based progress ledger and coordinating sprint cycles
+// Coder becomes pure implementation executor, no longer handles chunking decisions
+
 import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
 import { RefinerAgent } from "./agents/refiner.js";
 import { interactiveRefinement } from "./ui/refinement-interface.js";
 import { proposePlan, implementPlan } from "./agents/coder.js";
 import { reviewPlan, reviewCode } from "./agents/reviewer.js";
+import { getInitialChunk, getNextChunk } from "./agents/bean-counter.js";
 import { runSuperReviewer } from "./agents/super-reviewer.js";
 import { ensureWorktree } from "./git/worktrees.js";
 import { mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
@@ -26,10 +32,12 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     // Initialize parent state machine
     const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
 
-    // Separate sessions for Coder and Reviewer
+    // Separate sessions for Bean Counter, Coder and Reviewer
+    const beanCounterSessionId = generateUUID();
     const coderSessionId = generateUUID();
     const reviewerSessionId = generateUUID();
     taskStateMachine.setSessionIds(coderSessionId, reviewerSessionId);
+    let beanCounterInitialized = false;
     let coderInitialized = false;
     let reviewerInitialized = false;
 
@@ -113,7 +121,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // Initialize the execution state machine
                         executionStateMachine = new CoderReviewerStateMachine();
                         taskStateMachine.setExecutionStateMachine(executionStateMachine);
-                        executionStateMachine.transition(Event.START_PLANNING);
+                        executionStateMachine.transition(Event.START_CHUNKING);
                     }
 
                     // Run the execution state machine
@@ -127,12 +135,15 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         provider,
                         cwd,
                         planMd,
+                        beanCounterSessionId,
                         coderSessionId,
                         reviewerSessionId,
+                        beanCounterInitialized,
                         coderInitialized,
                         reviewerInitialized
                     );
 
+                    beanCounterInitialized = executionResult.beanCounterInitialized;
                     coderInitialized = executionResult.coderInitialized;
                     reviewerInitialized = executionResult.reviewerInitialized;
 
@@ -248,11 +259,13 @@ async function runExecutionStateMachine(
     provider: any,
     cwd: string,
     planMd: string,
+    beanCounterSessionId: string,
     coderSessionId: string,
     reviewerSessionId: string,
+    beanCounterInitialized: boolean,
     coderInitialized: boolean,
     reviewerInitialized: boolean
-): Promise<{ coderInitialized: boolean, reviewerInitialized: boolean }> {
+): Promise<{ beanCounterInitialized: boolean, coderInitialized: boolean, reviewerInitialized: boolean }> {
 
     // Run the execution state machine loop
     while (stateMachine.canContinue()) {
@@ -260,6 +273,56 @@ async function runExecutionStateMachine(
             const currentState = stateMachine.getCurrentState();
 
             switch (currentState) {
+                case State.BEAN_COUNTING: {
+                    log.orchestrator("🧮 Bean Counter: Determining work chunk...");
+
+                    let chunk;
+                    if (!beanCounterInitialized) {
+                        // Initial chunking: Break down high-level plan into first chunk
+                        chunk = await getInitialChunk(
+                            provider,
+                            cwd,
+                            planMd,
+                            beanCounterSessionId,
+                            beanCounterInitialized
+                        );
+                        beanCounterInitialized = true;
+                    } else {
+                        // Progressive chunking: Get next chunk based on last approval
+                        // Get the actual approval message from the last code review cycle
+                        const context = stateMachine.getContext();
+                        const lastApprovalMessage = context.codeFeedback || "Previous work was approved";
+
+                        chunk = await getNextChunk(
+                            provider,
+                            cwd,
+                            planMd,
+                            lastApprovalMessage,
+                            beanCounterSessionId,
+                            beanCounterInitialized
+                        );
+                    }
+
+                    if (!chunk) {
+                        log.orchestrator("Failed to get chunk from Bean Counter");
+                        stateMachine.transition(Event.ERROR_OCCURRED, new Error("Bean Counter failed"));
+                        break;
+                    }
+
+                    if (chunk.type === "TASK_COMPLETE") {
+                        log.orchestrator("🎉 Bean Counter: Task completed!");
+                        stateMachine.transition(Event.TASK_COMPLETED);
+                    } else {
+                        log.orchestrator(`📋 Bean Counter: Next chunk - ${chunk.description}`);
+                        stateMachine.transition(Event.CHUNK_READY, {
+                            description: chunk.description,
+                            requirements: chunk.requirements,
+                            context: chunk.context
+                        });
+                    }
+                    break;
+                }
+
                 case State.PLANNING: {
                     // Increment attempts at the start of each try
                     stateMachine.incrementPlanAttempts();
@@ -283,12 +346,19 @@ async function runExecutionStateMachine(
                         log.orchestrator(`📝 Planning next implementation step (attempt ${attempts}/${maxAttempts})...`);
                     }
 
-                    // Coder proposes what to do next
+                    // Coder proposes implementation for the Bean Counter's chunk
+                    const currentChunk = stateMachine.getCurrentChunk();
+                    if (!currentChunk) {
+                        throw new Error("No chunk available from Bean Counter");
+                    }
+
+                    const chunkDescription = `${currentChunk.description}\n\nRequirements:\n${currentChunk.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${currentChunk.context}`;
+
                     const proposal = await proposePlan(
                         provider,
                         cwd,
                         planMd,
-                        feedback ? "" : "Review the plan and propose what to implement next (or respond with COMPLETE if all done)",
+                        chunkDescription,
                         feedback,
                         coderSessionId,
                         coderInitialized
@@ -495,7 +565,7 @@ async function runExecutionStateMachine(
     }
 
     // Return the initialization state
-    return { coderInitialized, reviewerInitialized };
+    return { beanCounterInitialized, coderInitialized, reviewerInitialized };
 }
 
 function formatRefinedTaskForPlanner(refinedTask: import("./types.js").RefinedTask): string {
