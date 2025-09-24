@@ -79,7 +79,7 @@ Agneto is a **human-in-the-loop AI development system** with five personas:
 
 1. **Task Refiner** → Pre-processes vague task descriptions (interactive mode only)
 2. **Planner** → Creates structured plans from your task description
-3. **Coder** → Reads the repo and proposes changes (one file at a time)
+3. **Coder** → Reads the repo and proposes changes (multi-file support via MultiEdit)
 4. **Reviewer** → Validates proposals against the plan
 5. **SuperReviewer** → Final quality gate checking acceptance criteria and tests
 
@@ -206,13 +206,14 @@ ls .worktrees/<task-id>/src/  # Is the structure there?
 - After 3 attempts, it stops - review the feedback
 
 ### Coder Completion Signals
-**Coder can signal completion in two ways:**
+**Coder signals completion via JSON:**
 
-1. **Task Complete:** Outputs exactly `COMPLETE` when all plan work is done
-2. **No Changes Needed:** Outputs normal proposal but no actual changes applied
+```json
+{"action": "complete"}
+```
 
-**Both are correct behaviors:**
-- System handles completion gracefully
+**This triggers:**
+- System recognizes all plan work is done
 - Logs show clear completion status
 - SuperReviewer runs final quality check
 
@@ -234,41 +235,57 @@ rm -rf .worktrees/task-1     # Remove directory
 |------|---------|----------------|
 | `src/orchestrator.ts` | Main control flow | Changing the task flow |
 | `src/agents/planner.ts` | Planning logic | Improving plan generation |
-| `src/agents/coder.ts` | Code generation | Changing proposal format |
+| `src/agents/coder.ts` | Code generation | Changing implementation logic |
 | `src/agents/reviewer.ts` | Review logic | Adjusting approval criteria |
 | `src/providers/anthropic.ts` | Claude CLI integration | Fixing LLM communication |
+| `src/protocol/schemas.ts` | JSON schemas for agents | Changing agent protocols |
+| `src/protocol/validators.ts` | Response validation | Adjusting validation rules |
+| `src/protocol/prompt-template.ts` | Template rendering | Changing prompt injection |
 | `src/ui/planning-interface.ts` | Interactive prompts | Changing feedback types |
 | `src/prompts/*.md` | Agent instructions | Improving agent behavior |
 
-### Data Formats
+### Data Formats (JSON Protocol)
 
-**Coder Proposal Format (MUST be exact):**
-```
-FILE: path/to/file.ts
----8<---
-file contents here
----8<---
-RATIONALE: One sentence explaining the change
+**Coder Response Formats:**
+```json
+// Planning what to do
+{"action": "propose_plan", "data": {"description": "...", "steps": [...], "files": [...]}}
+
+// All work complete
+{"action": "complete"}
+
+// After implementation
+{"action": "implemented", "data": {"description": "...", "filesChanged": [...]}}
 ```
 
-**Reviewer Verdicts:**
-- `✅ approve` - Apply the change
-- `✏️ revise` - Try again with feedback (minor fixes)
-- `🔴 reject` - Fundamental rethink needed (prompts "megathink")
-- `🟡 needs-human` - Human decision required (approve/retry/skip)
+**Reviewer Response Format:**
+```json
+{
+  "action": "review",
+  "verdict": "approve|revise|reject|needs_human",
+  "feedback": "explanation",
+  "continueNext": true  // For approve: true=more steps, false=task done
+}
+```
+
+**Key Features:**
+- JSON schemas injected into prompts at runtime
+- Schema validation with automatic retry on mismatch
+- All CLI calls use `--output-format json` for metadata access
 
 ### Provider & Claude CLI
 
-The system uses Claude CLI in headless mode with efficient session management:
+The system uses Claude CLI in headless mode with JSON output and efficient session management:
+- **JSON output**: All calls use `--output-format json` for structured responses
 - **plan mode**: Read-only for Planner and Task Refiner
 - **default mode**: With tools for Coder, Reviewer, and SuperReviewer
-  - Coder tools: ReadFile, ListDir, Grep, Bash
-  - Reviewer tools: ReadFile, Grep (to verify file state)
+  - Coder tools: ReadFile, ListDir, Grep, Bash, Write, Edit, MultiEdit
+  - Reviewer tools: ReadFile, Grep, Bash (to verify file state)
   - SuperReviewer tools: ReadFile, Grep, Bash (for tests/build)
-- **Session continuity**: Each agent maintains separate sessions using `--resume sessionId`
-- **Token efficiency**: System prompts sent only once per session, subsequent calls send just new messages
-- Prompts sent via stdin, not as arguments
-- No JSON parsing - expects plain text responses
+- **Session separation**: Coder and Reviewer maintain independent sessions
+- **Token efficiency**: System prompts sent only once per session via template injection
+- **Schema validation**: Responses validated against JSON schemas with retry on mismatch
+- **Metadata capture**: Automatic cost, duration, and session ID tracking
 - Tools are Claude's built-in - no custom implementation needed
 
 ## 🛠️ Development Guide
@@ -325,9 +342,15 @@ Set `DEBUG=true` to see:
 - Catches potential issues early
 - Maintains code quality
 
-**One File at a Time**
-- Easier to review
-- Simpler to revert
+**JSON Protocol Instead of Text Parsing**
+- Deterministic communication between agents
+- Schema validation catches errors early
+- Automatic retry on format issues
+- Rich metadata from every CLI call
+
+**Focused Changes**
+- Multi-file support available
+- Easier to review when related
 - Clear git history
 - Reduces blast radius
 
@@ -345,27 +368,30 @@ Set `DEBUG=true` to see:
 - ✅ Squash merge tooling for clean history
 
 ### Known Limitations
-- ⚠️ Single file changes only
 - ⚠️ No parallel task execution
 - ⚠️ Limited to Claude CLI capabilities
 - ⚠️ No built-in test suite yet
 
 ### Common Gotchas
 - Coder works through plan naturally, no forced step ordering
-- Coder and Reviewer maintain separate conversation sessions for efficiency
-- Reviewer doesn't see actual file contents, just the proposal
+- Coder and Reviewer maintain completely separate sessions (not shared)
+- Agents communicate only through JSON protocol with schema validation
 - System prompt sent only once per session, subsequent calls use conversation continuity
+- Multi-file changes supported but best to keep changes focused
 
 ## 🗺️ Roadmap
 
 ### ✅ Completed (Recently!)
+- **JSON Protocol** - All agents use structured JSON with schema validation
+- **Template System** - Runtime injection of schemas into prompts
+- **Multi-file Support** - Coder can modify multiple files via MultiEdit
 - **Task Refiner** - Pre-processes vague task descriptions
 - **SuperReviewer** - Final quality gate after all steps
 - **Auto-generated IDs** - No friction, just provide description
 - **No-op handling** - Gracefully handles "already implemented" cases
 - **Non-interactive merge** - Automatic merge and cleanup
 - **Semantic progress tracking** - No more confusing step numbers
-- **Semi-stateful sessions** - Efficient token usage with separate Coder/Reviewer sessions
+- **Independent sessions** - Coder and Reviewer have separate sessions for clarity
 - **Natural plan execution** - Coder works through plan organically
 - Human interaction for needs-human verdict
 - Reject handling with retry and enhanced feedback
@@ -411,7 +437,7 @@ Set `DEBUG=true` to see:
 ### What Actually Works Best
 - Task descriptions under 50 words
 - Plans with 3-5 concrete steps
-- One file change per proposal
+- Focused changes (multi-file supported but keep related)
 - Clear verification criteria in plans
 - Using 'simplify' when plan is over 10 steps
 - Let Coder work through plan naturally rather than forcing sequence
