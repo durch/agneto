@@ -238,53 +238,59 @@ rm -rf .worktrees/task-1     # Remove directory
 | `src/agents/coder.ts` | Code generation | Changing implementation logic |
 | `src/agents/reviewer.ts` | Review logic | Adjusting approval criteria |
 | `src/providers/anthropic.ts` | Claude CLI integration | Fixing LLM communication |
-| `src/protocol/schemas.ts` | JSON schemas for agents | Changing agent protocols |
-| `src/protocol/validators.ts` | Response validation | Adjusting validation rules |
+| `src/protocol/interpreter.ts` | Natural language interpreter | Changing response interpretation |
+| `src/protocol/schemas.ts` | Legacy JSON schemas (deprecated) | Historical reference only |
+| `src/protocol/validators.ts` | Legacy validation (deprecated) | Historical reference only |
 | `src/protocol/prompt-template.ts` | Template rendering | Changing prompt injection |
+| `src/prompts/interpreter-*.md` | Interpreter prompts | Improving response interpretation |
 | `src/ui/planning-interface.ts` | Interactive prompts | Changing feedback types |
 | `src/prompts/*.md` | Agent instructions | Improving agent behavior |
 
-### Data Formats (JSON Protocol)
+### Data Formats (Natural Language → Interpreter Protocol)
 
-**Coder Response Formats:**
-```json
-// Planning what to do
-{"action": "propose_plan", "data": {"description": "...", "steps": [...], "files": [...]}}
-
-// All work complete
-{"action": "complete"}
-
-// After implementation
-{"action": "implemented", "data": {"description": "...", "filesChanged": [...]}}
+**Agent Communication Flow:**
+```
+Agent Response (Natural Language) → Interpreter (Stateless Sonnet) → Structured Decision (JSON)
 ```
 
-**Reviewer Response Format:**
-```json
-{
-  "action": "review",
-  "verdict": "approve|revise|reject|needs_human",
-  "feedback": "explanation",
-  "continueNext": true  // For approve: true=more steps, false=task done
-}
+**Coder Natural Language Examples:**
 ```
+"I need to implement user authentication by adding middleware to src/auth.ts..."
+"All the planned features have been implemented successfully."
+"I've added the authentication middleware to src/middleware/auth.ts"
+```
+
+**Reviewer Natural Language Examples:**
+```
+"I approve this approach. The steps are logical and files make sense."
+"Please add error handling for expired tokens in the validation logic."
+"This requires human review because of security compliance concerns."
+```
+
+**Interpreter Output (Internal):**
+- Coder: `{action: "continue|complete|implemented", description, steps, files}`
+- Reviewer: `{verdict: "approve|revise|reject|needs_human", feedback, continueNext}`
 
 **Key Features:**
-- JSON schemas injected into prompts at runtime
-- Schema validation with automatic retry on mismatch
-- All CLI calls use `--output-format json` for metadata access
+- Natural language responses from agents (no JSON requirements)
+- Stateless interpreter extracts decisions using fast Sonnet calls
+- Robust handling of any response format or style
+- Same structured data delivered to orchestrator
+- Enhanced logging shows both raw responses and interpretations
 
 ### Provider & Claude CLI
 
-The system uses Claude CLI in headless mode with JSON output and efficient session management:
-- **JSON output**: All calls use `--output-format json` for structured responses
-- **plan mode**: Read-only for Planner and Task Refiner
+The system uses Claude CLI in headless mode with natural language interpretation:
+- **JSON output**: All calls use `--output-format json` for structured metadata
+- **plan mode**: Read-only for Planner, Task Refiner, and Interpreter
 - **default mode**: With tools for Coder, Reviewer, and SuperReviewer
   - Coder tools: ReadFile, ListDir, Grep, Bash, Write, Edit, MultiEdit
   - Reviewer tools: ReadFile, Grep, Bash (to verify file state)
   - SuperReviewer tools: ReadFile, Grep, Bash (for tests/build)
+  - Interpreter: No tools needed (stateless interpretation)
 - **Session separation**: Coder and Reviewer maintain independent sessions
 - **Token efficiency**: System prompts sent only once per session via template injection
-- **Schema validation**: Responses validated against JSON schemas with retry on mismatch
+- **Natural interpretation**: Responses interpreted by stateless Sonnet calls
 - **Metadata capture**: Automatic cost, duration, and session ID tracking
 - Tools are Claude's built-in - no custom implementation needed
 
@@ -342,11 +348,12 @@ Set `DEBUG=true` to see:
 - Catches potential issues early
 - Maintains code quality
 
-**JSON Protocol Instead of Text Parsing**
-- Deterministic communication between agents
-- Schema validation catches errors early
-- Automatic retry on format issues
-- Rich metadata from every CLI call
+**Natural Language → Interpreter Protocol**
+- Agents communicate naturally in readable language
+- Stateless LLM interpreter extracts structured decisions
+- No JSON parsing failures or schema validation errors
+- Robust handling of any response format variations
+- Better debugging through readable agent responses
 
 **Focused Changes**
 - Multi-file support available
@@ -375,15 +382,18 @@ Set `DEBUG=true` to see:
 ### Common Gotchas
 - Coder works through plan naturally, no forced step ordering
 - Coder and Reviewer maintain completely separate sessions (not shared)
-- Agents communicate only through JSON protocol with schema validation
+- Agents communicate in natural language, interpreter extracts decisions
 - System prompt sent only once per session, subsequent calls use conversation continuity
 - Multi-file changes supported but best to keep changes focused
+- Interpreter uses additional Sonnet calls (minimal cost) for decision extraction
 
 ## 🗺️ Roadmap
 
 ### ✅ Completed (Recently!)
-- **JSON Protocol** - All agents use structured JSON with schema validation
-- **Template System** - Runtime injection of schemas into prompts
+- **Natural Language Protocol** - Agents respond naturally, interpreter extracts decisions
+- **Stateless Interpreter** - Fast Sonnet calls convert language to structured data
+- **No More JSON Failures** - Robust handling of any response format
+- **Enhanced Logging** - Shows both raw responses and interpreted decisions
 - **Multi-file Support** - Coder can modify multiple files via MultiEdit
 - **Task Refiner** - Pre-processes vague task descriptions
 - **SuperReviewer** - Final quality gate after all steps
@@ -430,7 +440,7 @@ Set `DEBUG=true` to see:
 10. **Rebase old worktrees before continuing** - They may lack critical fixes
 11. **Use `make` commands** - Shorter and validated parameters
 12. **Claude CLI tools are built-in** - Don't create custom tools, use Bash
-13. **Completion signals work well** - Coder says "COMPLETE" when all plan work is done
+13. **Completion signals work well** - Coder clearly states when task is finished
 14. **Sessions are efficient** - System prompts sent only once, saves tokens
 15. **Natural execution** - No forced step ordering, Coder works plan organically
 

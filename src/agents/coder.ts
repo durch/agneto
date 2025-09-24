@@ -1,10 +1,8 @@
 import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderPlanProposal } from "../types.js";
-import { CODER_SCHEMA_JSON, type CoderResponse } from "../protocol/schemas.js";
-import { renderPrompt } from "../protocol/prompt-template.js";
-import { validateCoderResponse, createSchemaMismatchMessage } from "../protocol/validators.js";
-import { cleanJsonResponse } from "../utils/json-cleaner.js";
+import { interpretCoderResponse, convertCoderInterpretation } from "../protocol/interpreter.js";
+import { log } from "../ui/log.js";
 
 // Phase 1: Propose implementation plan (no tools)
 export async function proposePlan(
@@ -14,19 +12,17 @@ export async function proposePlan(
     stepDescription: string,
     feedback?: string,
     sessionId?: string,
-    isInitialized?: boolean,
-    retryCount: number = 0
+    isInitialized?: boolean
 ): Promise<CoderPlanProposal | null> {
-    // Load and render the prompt template with schema
+    // Load the natural language prompt (no schema injection)
     const template = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
-    const sys = renderPrompt(template, { CODER_SCHEMA: CODER_SCHEMA_JSON });
 
     const messages: Msg[] = [];
 
     if (!isInitialized) {
         // First call: establish context with system prompt and plan
         messages.push(
-            { role: "system", content: sys },
+            { role: "system", content: template },
             { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\n[PLANNING MODE]\n\nPropose your implementation approach for: ${stepDescription}` }
         );
     } else {
@@ -37,73 +33,46 @@ export async function proposePlan(
         messages.push({ role: "user", content: userContent });
     }
 
-    const response = await provider.query({
+    const rawResponse = await provider.query({
         cwd,
-        mode: "default",  // Default mode for structured responses
+        mode: "default",  // Default mode for natural responses
         allowedTools: ["ReadFile", "Grep", "Bash"],  // Read-only tools for context
         sessionId,
         isInitialized,
         messages
     });
 
-    // Parse and validate the JSON response
-    try {
-        const cleanedResponse = cleanJsonResponse(response);
-        const parsed = JSON.parse(cleanedResponse);
-        const validation = validateCoderResponse(parsed);
+    // Log the raw response for debugging
+    log.coder(`Raw response: ${rawResponse}`);
 
-        if (!validation.valid) {
-            // Schema mismatch - retry up to 2 times
-            if (retryCount < 2) {
-                const retryFeedback = createSchemaMismatchMessage("coder", validation.feedback);
-                return proposePlan(
-                    provider, cwd, planMd, stepDescription,
-                    retryFeedback, sessionId, true, retryCount + 1
-                );
-            }
-            console.error("Coder response validation failed after retries:", validation.feedback);
-            return null;
-        }
-
-        // Check if it's a completion signal or plan proposal
-        const coderResponse = validation.data;
-        if (coderResponse.action === "complete") {
-            // Return special proposal indicating completion
-            return {
-                type: "PLAN_PROPOSAL",
-                description: "COMPLETE",
-                steps: [],
-                affectedFiles: []
-            };
-        } else if (coderResponse.action === "propose_plan") {
-            // Convert to legacy format for now (will be updated later)
-            return {
-                type: "PLAN_PROPOSAL",
-                description: coderResponse.data.description,
-                steps: coderResponse.data.steps,
-                affectedFiles: coderResponse.data.files
-            };
-        }
-
-        return null;
-    } catch (error) {
-        console.error("Failed to parse Coder JSON response:", error);
-        console.error("Response was:", response);
-
-        // If it's a parse error and we haven't retried yet, ask for proper JSON
-        if (retryCount < 2) {
-            const retryFeedback = createSchemaMismatchMessage(
-                "coder",
-                "Your response was not valid JSON. Please respond with ONLY valid JSON matching the schema."
-            );
-            return proposePlan(
-                provider, cwd, planMd, stepDescription,
-                retryFeedback, sessionId, true, retryCount + 1
-            );
-        }
-
+    // Interpret the natural language response
+    const interpretation = await interpretCoderResponse(provider, rawResponse, cwd);
+    if (!interpretation) {
+        console.error("Failed to interpret Coder response:", rawResponse);
         return null;
     }
+
+    // Log the interpreted decision
+    log.coder(`Interpreted as: ${interpretation.action} - ${interpretation.description || 'No description'}`);
+
+    // Convert to legacy format for orchestrator compatibility
+    if (interpretation.action === "complete") {
+        return {
+            type: "PLAN_PROPOSAL",
+            description: "COMPLETE",
+            steps: [],
+            affectedFiles: []
+        };
+    } else if (interpretation.action === "continue") {
+        return {
+            type: "PLAN_PROPOSAL",
+            description: interpretation.description || "Continue with next step",
+            steps: interpretation.steps || [],
+            affectedFiles: interpretation.files || []
+        };
+    }
+
+    return null;
 }
 
 // Phase 2: Implement the approved plan (with tools)
@@ -114,19 +83,17 @@ export async function implementPlan(
     approvedPlan: CoderPlanProposal,
     feedback?: string,
     sessionId?: string,
-    isInitialized?: boolean,
-    retryCount: number = 0
+    isInitialized?: boolean
 ): Promise<string> {
-    // Load and render the prompt template with schema
+    // Load the natural language prompt (no schema injection)
     const template = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
-    const sys = renderPrompt(template, { CODER_SCHEMA: CODER_SCHEMA_JSON });
 
     const messages: Msg[] = [];
 
     if (!isInitialized) {
         // Should not happen - we should have initialized during planning
         messages.push(
-            { role: "system", content: sys },
+            { role: "system", content: template },
             { role: "user", content: `Plan (Markdown):\n\n${planMd}` }
         );
     }
@@ -138,7 +105,7 @@ export async function implementPlan(
 
     messages.push({ role: "user", content: implementInstruction });
 
-    const response = await provider.query({
+    const rawResponse = await provider.query({
         cwd,
         mode: "default",  // Implementation mode - with tools
         allowedTools: ["ReadFile", "ListDir", "Grep", "Bash", "Write", "Edit", "MultiEdit"],
@@ -147,49 +114,25 @@ export async function implementPlan(
         messages
     });
 
-    // Parse and validate the JSON response
-    try {
-        const cleanedResponse = cleanJsonResponse(response);
-        const parsed = JSON.parse(cleanedResponse);
-        const validation = validateCoderResponse(parsed);
+    // Log the raw response for debugging
+    log.coder(`Raw implementation response: ${rawResponse}`);
 
-        if (!validation.valid) {
-            // Schema mismatch - retry up to 2 times
-            if (retryCount < 2) {
-                const retryFeedback = createSchemaMismatchMessage("coder", validation.feedback);
-                return implementPlan(
-                    provider, cwd, planMd, approvedPlan,
-                    retryFeedback, sessionId, true, retryCount + 1
-                );
-            }
-            console.error("Coder implementation response validation failed:", validation.feedback);
-            return "";
-        }
-
-        const coderResponse = validation.data;
-        if (coderResponse.action === "implemented") {
-            // Return formatted string for backward compatibility
-            // Will update orchestrator later to handle JSON directly
-            return `CODE_APPLIED: ${coderResponse.data.description}`;
-        }
-
-        return "";
-    } catch (error) {
-        console.error("Failed to parse Coder implementation response:", error);
-
-        // If it's a parse error and we haven't retried yet, ask for proper JSON
-        if (retryCount < 2) {
-            const retryFeedback = createSchemaMismatchMessage(
-                "coder",
-                "Your response was not valid JSON. Please respond with ONLY valid JSON matching the schema."
-            );
-            return implementPlan(
-                provider, cwd, planMd, approvedPlan,
-                retryFeedback, sessionId, true, retryCount + 1
-            );
-        }
-
+    // Interpret the natural language response
+    const interpretation = await interpretCoderResponse(provider, rawResponse, cwd);
+    if (!interpretation) {
+        console.error("Failed to interpret Coder implementation response:", rawResponse);
         return "";
     }
+
+    // Log the interpreted decision
+    log.coder(`Interpreted as: ${interpretation.action} - ${interpretation.description || 'No description'}`);
+
+    if (interpretation.action === "implemented") {
+        // Return formatted string for backward compatibility
+        // Will update orchestrator later to handle JSON directly
+        return `CODE_APPLIED: ${interpretation.description || 'Changes applied'}`;
+    }
+
+    return "";
 }
 
