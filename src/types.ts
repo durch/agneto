@@ -23,3 +23,29 @@ export interface RefinedTask {
     successCriteria: string[];
     raw: string; // Original refined output for reference
 }
+
+// Protocol message types for two-phase coder-reviewer interaction
+export interface CoderPlanProposal {
+    type: "PLAN_PROPOSAL";
+    description: string;
+    steps: string[];
+    affectedFiles: string[];
+}
+
+export interface ReviewerPlanVerdict {
+    type: "PLAN_VERDICT";
+    verdict: "approve-plan" | "revise-plan" | "reject-plan" | "needs-human";
+    feedback?: string;
+}
+
+export interface CoderCodeApplied {
+    type: "CODE_APPLIED";
+    description: string;
+    filesChanged: string[];
+}
+
+export interface ReviewerCodeVerdict {
+    type: "CODE_VERDICT";
+    verdict: "approve-code" | "revise-code" | "reject-code" | "step-complete" | "task-complete" | "needs-human";
+    feedback?: string;
+}

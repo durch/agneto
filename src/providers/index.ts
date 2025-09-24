@@ -9,7 +9,8 @@ export interface LLMProvider {
         mode?: "plan" | "default" | "acceptEdits";
         allowedTools?: string[];     // e.g., ["ReadFile","ListDir","Grep"]
         sessionId?: string;           // Optional session ID for conversation continuity
-        model?: string;               // Optional model name, e.g., "claude-2", "claude-instant-100k"
+        model?: string;                // Optional model name, e.g., "claude-2", "claude-instant-100k"
+        isInitialized?: boolean;      // Optional flag to indicate if the session is initialized
     }): Promise<string>;
 }
 

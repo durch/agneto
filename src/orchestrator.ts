@@ -2,254 +2,514 @@ import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
 import { RefinerAgent } from "./agents/refiner.js";
 import { interactiveRefinement } from "./ui/refinement-interface.js";
-import { proposeChange } from "./agents/coder.js";
-import { reviewProposal, parseVerdict } from "./agents/reviewer.js";
+import { proposePlan, implementPlan } from "./agents/coder.js";
+import { reviewPlan, reviewCode } from "./agents/reviewer.js";
 import { runSuperReviewer } from "./agents/super-reviewer.js";
 import { ensureWorktree } from "./git/worktrees.js";
 import { mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
 import { log } from "./ui/log.js";
-import { readFileSync } from "node:fs";
-import { promptHumanReview, promptForSuperReviewerDecision } from "./ui/human-review.js";
+import { promptForSuperReviewerDecision } from "./ui/human-review.js";
 import { generateUUID } from "./utils/id-generator.js";
+import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
+import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
+import {
+  handlePlanHumanReview,
+  handleCodeHumanReview,
+  revertLastCommit
+} from "./orchestrator-helpers.js";
+import type { CoderPlanProposal } from "./types.js";
 
 export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean }) {
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId);
 
-    // AIDEV-NOTE: Separate sessions for Coder and Reviewer for proper semi-stateful behavior
-    // Each agent maintains their own conversation context and system prompt is sent only once
+    // Initialize parent state machine
+    const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
+
+    // Separate sessions for Coder and Reviewer
     const coderSessionId = generateUUID();
     const reviewerSessionId = generateUUID();
+    taskStateMachine.setSessionIds(coderSessionId, reviewerSessionId);
     let coderInitialized = false;
     let reviewerInitialized = false;
 
-    // Interactive by default, use --non-interactive to disable
-    const interactive = !options?.nonInteractive;
+    // Start the task
+    taskStateMachine.transition(TaskEvent.START_TASK);
 
-    // Add task refinement step before planning
-    let taskToUse = humanTask;
-    if (interactive) {
-        log.info("🔍 Refining task description...");
-        const refinerAgent = new RefinerAgent(provider);
-        const refinedTask = await interactiveRefinement(refinerAgent, cwd, humanTask, taskId);
-        
-        if (refinedTask) {
-            // Convert refined task to a structured description for the planner
-            taskToUse = formatRefinedTaskForPlanner(refinedTask);
-            log.orchestrator("Using refined task specification for planning.");
-        } else {
-            log.warn("Task refinement cancelled. Using original description.");
-        }
-    }
+    // Main task state machine loop
+    const maxIterations = 200; // Safety limit for parent + child iterations
+    let iterations = 0;
 
-    if (!interactive) {
-        log.planner(`Planning "${taskToUse}"…`);
-    }
-    const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive);
-    if (!interactive) {
-        log.planner(`Saved plan → ${planPath}`);
-    }
+    while (taskStateMachine.canContinue() && iterations < maxIterations) {
+        iterations++;
 
-    let continueWork = true;
-    let totalChanges = 0;
-    const maxChanges = 20; // Safety limit to prevent infinite loops
+        try {
+            const currentState = taskStateMachine.getCurrentState();
 
-    while (continueWork && totalChanges < maxChanges) {
-        let attempts = 0;
-        let feedback: string | undefined;
-        let stepCompleted = false;
+            switch (currentState) {
+                case TaskState.TASK_REFINING: {
+                    // Task refinement (interactive only)
+                    log.info("🔍 Refining task description...");
+                    const refinerAgent = new RefinerAgent(provider);
+                    const refinedTask = await interactiveRefinement(refinerAgent, cwd, humanTask, taskId);
 
-        while (attempts < 3 && !stepCompleted) {
-            attempts++;
-            log.coder(`Implementing change (attempt ${attempts})…`);
-            const response = (await proposeChange(provider, cwd, planMd, feedback, coderSessionId, coderInitialized) || "").trim();
-            coderInitialized = true;
-
-            // Check for completion signal
-            if (response === "COMPLETE" || response.includes("COMPLETE")) {
-                log.orchestrator("Coder indicates all planned work is complete.");
-                continueWork = false;
-                stepCompleted = true;
-                break;
-            }
-
-            // Check if coder made changes (will include CHANGE_APPLIED message)
-            const changeApplied = response.includes("CHANGE_APPLIED:");
-            if (!changeApplied) {
-                // Coder didn't make changes, might need clarification
-                log.coder(`\n${response}`);
-                const msg = "✏️ revise — no changes were made. If all plan work is done, respond with 'COMPLETE', otherwise implement the next change.";
-                log.review(msg);
-                feedback = msg;
-                continue;
-            }
-
-            // Extract the change description from the response
-            const changeMatch = response.match(/CHANGE_APPLIED:\s*(.+)/i);
-            const changeDescription = changeMatch ? changeMatch[1] : "Changes made";
-            log.coder(`Change applied: ${changeDescription}`);
-
-            log.review("Reviewing changes…");
-            const verdictLine = await reviewProposal(provider, cwd, planMd, changeDescription, reviewerSessionId, reviewerInitialized);
-            reviewerInitialized = true;
-            const verdict = parseVerdict(verdictLine);
-            log.review(verdictLine);
-
-            if (verdict === "approve") {
-                log.orchestrator(`✅ Changes approved and already applied by Coder`);
-                stepCompleted = true;
-                totalChanges++;
-                // Reset feedback for next step
-                feedback = undefined;
-            } else if (verdict === "revise") {
-                // Need to revert the changes and try again
-                log.orchestrator("Reverting changes for revision...");
-                const { execSync } = await import("child_process");
-                execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
-                feedback = verdictLine;
-            } else if (verdict === "reject") {
-                // Need to revert and fundamentally rethink
-                log.orchestrator("Reverting changes due to rejection...");
-                const { execSync } = await import("child_process");
-                execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
-                feedback = `🔴 REJECTED - Fundamental rethink needed: ${verdictLine}\n\nTake time to megathink about the approach. Read the existing code more carefully. The current approach is wrong, not just incomplete.`;
-                log.orchestrator("Changes rejected - requesting complete rethink...");
-            } else if (verdict === "needs-human") {
-                // Prompt human for review
-                const humanResult = await promptHumanReview(
-                    changeDescription,
-                    "Changes made by Coder",
-                    verdictLine
-                );
-
-                if (humanResult.decision === "approve") {
-                    log.orchestrator("Human approved changes (already applied by Coder).");
-                    stepCompleted = true;
-                    totalChanges++;
-                    feedback = undefined;
-                } else if (humanResult.decision === "retry") {
-                    log.orchestrator("Human requested retry with feedback. Will revert changes.");
-                    // Run git revert to undo the changes
-                    const { execSync } = await import("child_process");
-                    execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
-                    feedback = humanResult.feedback || "Human requested retry - please revise the implementation";
-                } else if (humanResult.decision === "reject") {
-                    log.orchestrator("Human rejected changes. Reverting.");
-                    // Run git revert to undo the changes
-                    const { execSync } = await import("child_process");
-                    execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
-                    stepCompleted = true;
-                    feedback = undefined;
+                    if (refinedTask) {
+                        const taskToUse = formatRefinedTaskForPlanner(refinedTask);
+                        taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                        log.orchestrator("Using refined task specification for planning.");
+                        taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
+                    } else {
+                        log.warn("Task refinement cancelled. Using original description.");
+                        taskStateMachine.transition(TaskEvent.REFINEMENT_CANCELLED);
+                    }
+                    break;
                 }
-            } else {
-                log.orchestrator(`Stopping. Verdict = ${verdict}.`);
-                continueWork = false;
-                break;
-            }
-        }
 
-        if (!stepCompleted && attempts >= 3) {
-            log.orchestrator(`Failed to apply changes after 3 attempts.`);
-            continueWork = false;
-        }
+                case TaskState.TASK_PLANNING: {
+                    // Planning phase
+                    let taskToUse = taskStateMachine.getContext().taskToUse || humanTask;
 
-        // Always continue to next step (removed the continueUntilDone check)
-    }
+                    if (taskStateMachine.isRetry()) {
+                        // This is a retry from super review - update the task
+                        taskToUse = taskStateMachine.getContext().retryFeedback ||
+                                    `Address SuperReviewer feedback: ${taskStateMachine.getSuperReviewResult()?.summary}`;
+                        log.orchestrator(`Re-planning with feedback: ${taskToUse}`);
 
-    // Task completion summary
-    log.orchestrator(`\n📊 Task execution completed`);
+                        // Update context with new task and clear retry feedback
+                        taskStateMachine.setRefinedTask(
+                            { goal: taskToUse, context: "", constraints: [], successCriteria: [], raw: "" },
+                            taskToUse
+                        );
+                        taskStateMachine.clearRetryFeedback();
 
-    if (totalChanges >= maxChanges) {
-        log.orchestrator(`⚠️ Reached maximum change limit (${maxChanges}). Stopping execution.`);
-    }
+                        // Reset the execution state machine for a fresh cycle
+                        taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine());
+                    }
 
-    if (!continueWork || totalChanges >= maxChanges) {
-        log.orchestrator("🎉 All planned changes completed successfully!");
+                    const interactive = !options?.nonInteractive;
+                    if (!interactive) {
+                        log.planner(`Planning "${taskToUse}"…`);
+                    }
 
-        // Run SuperReviewer before merge decision
-        log.review("🔍 Running final quality review...");
-        const superReviewResult = await runSuperReviewer(
-            provider,
-            cwd,
-            planMd
-        );
-        
-        log.review(`SuperReviewer verdict: ${superReviewResult.verdict}`);
-        log.review(`Summary: ${superReviewResult.summary}`);
-        
-        if (superReviewResult.issues) {
-            superReviewResult.issues.forEach(issue => {
-                log.review(`Issue: ${issue}`);
-            });
-        }
-        
-        // Handle SuperReviewer verdict
-        if (superReviewResult.verdict === "needs-human") {
-            log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
-            
-            // Use the dedicated SuperReviewer decision prompt
-            const humanDecision = await promptForSuperReviewerDecision(
-                superReviewResult.summary,
-                superReviewResult.issues
-            );
-            
-            if (humanDecision.decision === "approve") {
-                log.orchestrator("Human accepted work despite identified issues. Proceeding with merge options.");
-            } else if (humanDecision.decision === "retry") {
-                log.orchestrator("Human requested a new development cycle to address issues:");
+                    try {
+                        const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive);
+                        if (!interactive) {
+                            log.planner(`Saved plan → ${planPath}`);
+                        }
+                        taskStateMachine.setPlan(planMd, planPath);
+                        taskStateMachine.transition(TaskEvent.PLAN_CREATED);
+                    } catch (error) {
+                        log.warn(`Planning failed: ${error}`);
+                        taskStateMachine.transition(TaskEvent.PLAN_FAILED, error);
+                    }
+                    break;
+                }
 
-                // Combine SuperReviewer's issues with human feedback for context
-                const issuesContext = superReviewResult.issues
-                    ? `\n\nSuperReviewer identified issues:\n${superReviewResult.issues.map(i => `- ${i}`).join('\n')}`
-                    : "";
+                case TaskState.TASK_EXECUTING: {
+                    // Execution phase - delegate to CoderReviewerStateMachine
+                    let executionStateMachine = taskStateMachine.getExecutionStateMachine();
 
-                const fullTaskDescription = humanDecision.feedback
-                    ? `${humanDecision.feedback}${issuesContext}`
-                    : `Address the following SuperReviewer feedback: ${superReviewResult.summary}${issuesContext}`;
+                    if (!executionStateMachine) {
+                        // Initialize the execution state machine
+                        executionStateMachine = new CoderReviewerStateMachine();
+                        taskStateMachine.setExecutionStateMachine(executionStateMachine);
+                        executionStateMachine.transition(Event.START_PLANNING);
+                    }
 
-                log.orchestrator(fullTaskDescription);
+                    // Run the execution state machine
+                    const planMd = taskStateMachine.getPlanMd();
+                    if (!planMd) {
+                        throw new Error("No plan available for execution");
+                    }
 
-                // Recursively call runTask with the combined feedback
-                return runTask(taskId, fullTaskDescription, options);
-            } else {
-                log.orchestrator("Human chose to abandon. Task remains in worktree for manual review.");
-                return { cwd };
-            }
-        } else {
-            log.orchestrator("✅ SuperReviewer approved - implementation ready for merge!");
-        }
+                    const executionResult = await runExecutionStateMachine(
+                        executionStateMachine,
+                        provider,
+                        cwd,
+                        planMd,
+                        coderSessionId,
+                        reviewerSessionId,
+                        coderInitialized,
+                        reviewerInitialized
+                    );
 
-        if (options?.autoMerge) {
-            log.orchestrator("📦 Auto-merging to master...");
-            mergeToMaster(taskId, cwd);
-            cleanupWorktree(taskId, cwd);
-        } else {
-            log.orchestrator(`\nNext steps:
+                    coderInitialized = executionResult.coderInitialized;
+                    reviewerInitialized = executionResult.reviewerInitialized;
+
+                    // Check execution result
+                    const finalExecutionState = executionStateMachine.getCurrentState();
+                    if (finalExecutionState === State.TASK_COMPLETE) {
+                        taskStateMachine.transition(TaskEvent.EXECUTION_COMPLETE);
+                    } else if (finalExecutionState === State.TASK_FAILED || finalExecutionState === State.TASK_ABORTED) {
+                        const error = executionStateMachine.getLastError() || new Error("Execution failed");
+                        taskStateMachine.transition(TaskEvent.EXECUTION_FAILED, error);
+                    } else {
+                        // Should not happen, but handle gracefully
+                        taskStateMachine.transition(TaskEvent.EXECUTION_FAILED, new Error("Unexpected execution state"));
+                    }
+                    break;
+                }
+
+                case TaskState.TASK_SUPER_REVIEWING: {
+                    // Super review phase
+                    const planMd = taskStateMachine.getPlanMd();
+                    if (!planMd) {
+                        throw new Error("No plan available for super review");
+                    }
+
+                    log.orchestrator("🔍 Running SuperReviewer for final quality check...");
+                    const superReviewResult = await runSuperReviewer(provider, cwd, planMd);
+                    taskStateMachine.setSuperReviewResult(superReviewResult);
+
+                    log.review(`SuperReviewer verdict: ${superReviewResult.verdict}`);
+                    log.review(`Summary: ${superReviewResult.summary}`);
+
+                    if (superReviewResult.issues) {
+                        superReviewResult.issues.forEach(issue => {
+                            log.review(`Issue: ${issue}`);
+                        });
+                    }
+
+                    if (superReviewResult.verdict === "needs-human") {
+                        log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
+                        taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
+
+                        const humanDecision = await promptForSuperReviewerDecision(
+                            superReviewResult.summary,
+                            superReviewResult.issues
+                        );
+
+                        if (humanDecision.decision === "approve") {
+                            log.orchestrator("Human accepted work despite identified issues.");
+                            taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
+                        } else if (humanDecision.decision === "retry") {
+                            log.orchestrator("Human requested a new development cycle to address issues.");
+                            taskStateMachine.setRetryFeedback(humanDecision.feedback ||
+                                `Address SuperReviewer feedback: ${superReviewResult.summary}`);
+                            taskStateMachine.transition(TaskEvent.HUMAN_RETRY);
+                        } else {
+                            log.orchestrator("Human chose to abandon. Task remains in worktree for manual review.");
+                            taskStateMachine.transition(TaskEvent.HUMAN_ABANDON);
+                        }
+                    } else {
+                        log.orchestrator("✅ SuperReviewer approved - implementation ready for merge!");
+                        taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
+                    }
+                    break;
+                }
+
+                case TaskState.TASK_FINALIZING: {
+                    // Finalization phase - merge or manual review
+                    if (options?.autoMerge) {
+                        log.orchestrator("📦 Auto-merging to master...");
+                        mergeToMaster(taskId, cwd);
+                        cleanupWorktree(taskId, cwd);
+                        taskStateMachine.transition(TaskEvent.AUTO_MERGE);
+                    } else {
+                        log.orchestrator(`\nNext steps:
 1. Review changes in worktree: ${cwd}
 2. Run tests to verify
 3. Merge to master: git merge sandbox/${taskId}
 4. Clean up: npm run cleanup-task ${taskId}`);
+                        taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
+                    }
+                    break;
+                }
+
+                case TaskState.TASK_COMPLETE:
+                    log.orchestrator("🎉 Task completed successfully!");
+                    break;
+
+                case TaskState.TASK_ABANDONED:
+                    const error = taskStateMachine.getLastError();
+                    log.orchestrator(`❌ Task abandoned: ${error?.message || "Unknown reason"}`);
+                    break;
+
+                default:
+                    log.warn(`Unexpected task state: ${currentState}`);
+                    taskStateMachine.transition(TaskEvent.ERROR_OCCURRED, new Error(`Unexpected state: ${currentState}`));
+            }
+        } catch (error) {
+            log.warn(`Error in task state ${taskStateMachine.getCurrentState()}: ${error}`);
+            taskStateMachine.transition(TaskEvent.ERROR_OCCURRED, error);
         }
+    }
+
+    if (iterations >= maxIterations) {
+        log.orchestrator(`⚠️ Reached maximum iteration limit (${maxIterations}). Stopping execution.`);
     }
 
     return { cwd };
 }
 
+// Helper function to run the execution state machine
+async function runExecutionStateMachine(
+    stateMachine: CoderReviewerStateMachine,
+    provider: any,
+    cwd: string,
+    planMd: string,
+    coderSessionId: string,
+    reviewerSessionId: string,
+    coderInitialized: boolean,
+    reviewerInitialized: boolean
+): Promise<{ coderInitialized: boolean, reviewerInitialized: boolean }> {
+
+    // Run the execution state machine loop
+    while (stateMachine.canContinue()) {
+        try {
+            const currentState = stateMachine.getCurrentState();
+
+            switch (currentState) {
+                case State.PLANNING: {
+                    // Increment attempts at the start of each try
+                    stateMachine.incrementPlanAttempts();
+
+                    const attempts = stateMachine.getPlanAttempts();
+                    const maxAttempts = stateMachine.getContext().maxPlanAttempts;
+
+                    // Check if we've exceeded max attempts
+                    if (attempts > maxAttempts) {
+                        log.orchestrator(`Max planning attempts (${maxAttempts}) exceeded`);
+                        stateMachine.transition(Event.MAX_ATTEMPTS_REACHED);
+                        break;
+                    }
+
+                    // Get feedback from context if this is a revision
+                    const feedback = stateMachine.getPlanFeedback();
+
+                    if (feedback) {
+                        log.orchestrator(`📝 Revising plan (attempt ${attempts}/${maxAttempts})...`);
+                    } else {
+                        log.orchestrator(`📝 Planning next implementation step (attempt ${attempts}/${maxAttempts})...`);
+                    }
+
+                    // Coder proposes what to do next
+                    const proposal = await proposePlan(
+                        provider,
+                        cwd,
+                        planMd,
+                        feedback ? "" : "Review the plan and propose what to implement next (or respond with COMPLETE if all done)",
+                        feedback,
+                        coderSessionId,
+                        coderInitialized
+                    );
+                    coderInitialized = true;
+
+                    // Check if Coder indicates completion
+                    if (!proposal || proposal.description === "COMPLETE") {
+                        if (!proposal) {
+                            log.warn("Failed to generate plan proposal");
+                            stateMachine.transition(Event.MAX_ATTEMPTS_REACHED);
+                        } else {
+                            log.coder("All plan items completed!");
+                            stateMachine.transition(Event.TASK_COMPLETED);
+                        }
+                    } else {
+                        log.coder(`📢 Planning to: ${proposal.description}`);
+                        stateMachine.transition(Event.PLAN_PROPOSED, proposal);
+                    }
+                    break;
+                }
+
+                case State.PLAN_REVIEW: {
+                    log.review("Reviewing proposed approach...");
+
+                    const proposal = stateMachine.getCurrentPlan();
+                    if (!proposal) {
+                        log.warn("No plan to review!");
+                        stateMachine.transition(Event.ERROR_OCCURRED, new Error("No plan available"));
+                        break;
+                    }
+
+                    // Reviewer reviews plan
+                    const verdict = await reviewPlan(
+                        provider,
+                        cwd,
+                        planMd,
+                        proposal,
+                        reviewerSessionId,
+                        reviewerInitialized
+                    );
+                    reviewerInitialized = true;
+
+                    log.review(`Plan verdict: ${verdict.verdict}${verdict.feedback ? ` - ${verdict.feedback}` : ''}`);
+
+                    // Handle verdict
+                    switch (verdict.verdict) {
+                        case 'approve-plan':
+                            stateMachine.transition(Event.PLAN_APPROVED);
+                            break;
+
+                        case 'revise-plan':
+                            stateMachine.transition(Event.PLAN_REVISION_REQUESTED, verdict.feedback);
+                            break;
+
+                        case 'reject-plan':
+                            stateMachine.transition(Event.PLAN_REJECTED, verdict.feedback);
+                            break;
+
+                        case 'needs-human':
+                            const planDecision = await handlePlanHumanReview(proposal, verdict.feedback || "");
+
+                            if (planDecision.decision === 'approve') {
+                                stateMachine.transition(Event.PLAN_APPROVED);
+                            } else if (planDecision.decision === 'revise') {
+                                stateMachine.transition(Event.PLAN_REVISION_REQUESTED, planDecision.feedback);
+                            } else {
+                                stateMachine.transition(Event.PLAN_REJECTED, planDecision.feedback);
+                            }
+                            break;
+                    }
+                    break;
+                }
+
+                case State.IMPLEMENTING: {
+                    // Increment attempts at the start of each try
+                    stateMachine.incrementCodeAttempts();
+
+                    const attempts = stateMachine.getCodeAttempts();
+                    const maxAttempts = stateMachine.getContext().maxCodeAttempts;
+
+                    // Check if we've exceeded max attempts
+                    if (attempts > maxAttempts) {
+                        log.orchestrator(`Max implementation attempts (${maxAttempts}) exceeded`);
+                        stateMachine.transition(Event.MAX_ATTEMPTS_REACHED);
+                        break;
+                    }
+
+                    const feedback = stateMachine.getCodeFeedback();
+
+                    if (feedback) {
+                        log.orchestrator(`🔨 Revising implementation (attempt ${attempts}/${maxAttempts})...`);
+                    } else {
+                        log.orchestrator(`🔨 Implementing approved plan (attempt ${attempts}/${maxAttempts})...`);
+                    }
+
+                    const approvedPlan = stateMachine.getCurrentPlan();
+                    if (!approvedPlan) {
+                        log.warn("No approved plan to implement!");
+                        stateMachine.transition(Event.ERROR_OCCURRED, new Error("No plan available"));
+                        break;
+                    }
+
+                    // Coder implements the approved plan
+                    const response = await implementPlan(
+                        provider,
+                        cwd,
+                        planMd,
+                        approvedPlan,
+                        feedback,
+                        coderSessionId,
+                        true  // Already initialized from planning phase
+                    );
+
+                    // Check if Coder applied changes
+                    if (response.includes("CODE_APPLIED:")) {
+                        const changeMatch = response.match(/CODE_APPLIED:\s*(.+)/i);
+                        const changeDescription = changeMatch ? changeMatch[1] : "Changes made";
+                        log.coder(`Applied: ${changeDescription}`);
+                        stateMachine.transition(Event.CODE_APPLIED);
+                    } else {
+                        log.warn("No changes were made");
+                        stateMachine.transition(Event.MAX_ATTEMPTS_REACHED);
+                    }
+                    break;
+                }
+
+                case State.CODE_REVIEW: {
+                    log.review("Reviewing code changes...");
+
+                    const changeDescription = stateMachine.getCurrentPlan()?.description || "Changes made";
+
+                    // Reviewer reviews code
+                    const verdict = await reviewCode(
+                        provider,
+                        cwd,
+                        planMd,
+                        changeDescription,
+                        reviewerSessionId,
+                        true  // Already initialized from planning phase
+                    );
+
+                    log.review(`Code verdict: ${verdict.verdict}${verdict.feedback ? ` - ${verdict.feedback}` : ''}`);
+
+                    // Handle verdict
+                    switch (verdict.verdict) {
+                        case 'approve-code':
+                        case 'step-complete':
+                            log.orchestrator("✅ Code changes approved");
+                            stateMachine.transition(Event.CODE_APPROVED);
+                            break;
+
+                        case 'task-complete':
+                            log.orchestrator("🎉 All planned work complete!");
+                            stateMachine.transition(Event.TASK_COMPLETED);
+                            break;
+
+                        case 'revise-code':
+                            await revertLastCommit(cwd);
+                            stateMachine.transition(Event.CODE_REVISION_REQUESTED, verdict.feedback);
+                            break;
+
+                        case 'reject-code':
+                            await revertLastCommit(cwd);
+                            stateMachine.transition(Event.CODE_REJECTED, verdict.feedback);
+                            break;
+
+                        case 'needs-human':
+                            const codeDecision = await handleCodeHumanReview(
+                                changeDescription,
+                                verdict.feedback || ""
+                            );
+
+                            if (codeDecision.decision === 'approve') {
+                                stateMachine.transition(Event.CODE_APPROVED);
+                            } else if (codeDecision.decision === 'revise') {
+                                await revertLastCommit(cwd);
+                                stateMachine.transition(Event.CODE_REVISION_REQUESTED, codeDecision.feedback);
+                            } else {
+                                await revertLastCommit(cwd);
+                                stateMachine.transition(Event.CODE_REJECTED, codeDecision.feedback);
+                            }
+                            break;
+                    }
+                    break;
+                }
+
+                case State.TASK_COMPLETE:
+                case State.TASK_FAILED:
+                case State.TASK_ABORTED:
+                    // Terminal states - exit loop
+                    break;
+
+                default:
+                    log.warn(`Unexpected state: ${currentState}`);
+                    stateMachine.transition(Event.ERROR_OCCURRED, new Error(`Unexpected state: ${currentState}`));
+            }
+        } catch (error) {
+            log.warn(`Error in state ${stateMachine.getCurrentState()}: ${error}`);
+            stateMachine.transition(Event.ERROR_OCCURRED, error);
+        }
+    }
+
+    // Return the initialization state
+    return { coderInitialized, reviewerInitialized };
+}
 
 function formatRefinedTaskForPlanner(refinedTask: import("./types.js").RefinedTask): string {
     let formattedTask = refinedTask.goal;
-    
+
     if (refinedTask.context) {
         formattedTask += `\n\nContext: ${refinedTask.context}`;
     }
-    
+
     if (refinedTask.constraints.length > 0) {
         formattedTask += `\n\nConstraints:\n${refinedTask.constraints.map(c => `- ${c}`).join('\n')}`;
     }
-    
+
     if (refinedTask.successCriteria.length > 0) {
         formattedTask += `\n\nSuccess Criteria:\n${refinedTask.successCriteria.map(c => `- ${c}`).join('\n')}`;
     }
-    
+
     return formattedTask;
 }

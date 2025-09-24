@@ -1,7 +1,8 @@
 import type { LLMProvider, Msg } from "./index.js";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 
 const DEBUG = process.env.DEBUG === "true";
+const NO_STREAM = process.env.NO_STREAM === "true";
 
 function flattenMessages(messages: Msg[]): string {
   // The Claude CLI expects a single prompt, not role-prefixed messages
@@ -55,7 +56,8 @@ function runClaudeCLI(
   mode: "plan" | "default" | "acceptEdits",
   allowedTools?: string[],
   sessionId?: string,
-  model?: string
+  model?: string,
+  isInitialized?: boolean
 ): string {
   // Build args: -p to print non-interactive; set permission mode; optionally allowed tools
   const args = ["-p", "--permission-mode", mode];
@@ -81,7 +83,7 @@ function runClaudeCLI(
 
   // Pass prompt via stdin instead of as an argument
   let out;
-  try {
+  if (isInitialized) {
     if (sessionId) {
       args.push("--resume", sessionId);
     }
@@ -93,7 +95,7 @@ function runClaudeCLI(
       input: prompt, // Pass prompt through stdin
       stdio: ["pipe", "pipe", "inherit"], // Changed first stdio from "ignore" to "pipe"
     });
-  } catch (error) {
+  } else {
     args.pop(); // remove --resume and sessionId for logging
     args.pop();
     if (sessionId) {
@@ -128,9 +130,10 @@ const anthropic: LLMProvider = {
     allowedTools,
     sessionId,
     model,
+    isInitialized,
   }) {
     const prompt = flattenMessages(messages);
-    return runClaudeCLI(cwd, prompt, mode, allowedTools, sessionId, model);
+    return runClaudeCLI(cwd, prompt, mode, allowedTools, sessionId, model, isInitialized);
   },
 };
 
