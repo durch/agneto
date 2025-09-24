@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderPlanProposal } from "../types.js";
+import { CODER_SCHEMA_JSON, type CoderResponse } from "../protocol/schemas.js";
+import { renderPrompt } from "../protocol/prompt-template.js";
+import { validateCoderResponse, createSchemaMismatchMessage } from "../protocol/validators.js";
 
 // Phase 1: Propose implementation plan (no tools)
 export async function proposePlan(
@@ -10,9 +13,12 @@ export async function proposePlan(
     stepDescription: string,
     feedback?: string,
     sessionId?: string,
-    isInitialized?: boolean
+    isInitialized?: boolean,
+    retryCount: number = 0
 ): Promise<CoderPlanProposal | null> {
-    const sys = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
+    // Load and render the prompt template with schema
+    const template = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
+    const sys = renderPrompt(template, { CODER_SCHEMA: CODER_SCHEMA_JSON });
 
     const messages: Msg[] = [];
 
@@ -20,7 +26,7 @@ export async function proposePlan(
         // First call: establish context with system prompt and plan
         messages.push(
             { role: "system", content: sys },
-            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\n[PLANNING MODE]\n\nPropose your implementation approach for: ${stepDescription}\n\nProvide a PLAN_PROPOSAL with:\n- Description of your approach\n- Specific steps you'll take\n- Files you'll modify or create` }
+            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\n[PLANNING MODE]\n\nPropose your implementation approach for: ${stepDescription}` }
         );
     } else {
         // Subsequent calls: feedback on previous plan proposal
@@ -38,8 +44,63 @@ export async function proposePlan(
         messages
     });
 
-    // Parse the response to extract plan proposal
-    return parsePlanProposal(response);
+    // Parse and validate the JSON response
+    try {
+        const parsed = JSON.parse(response);
+        const validation = validateCoderResponse(parsed);
+
+        if (!validation.valid) {
+            // Schema mismatch - retry up to 2 times
+            if (retryCount < 2) {
+                const retryFeedback = createSchemaMismatchMessage("coder", validation.feedback);
+                return proposePlan(
+                    provider, cwd, planMd, stepDescription,
+                    retryFeedback, sessionId, true, retryCount + 1
+                );
+            }
+            console.error("Coder response validation failed after retries:", validation.feedback);
+            return null;
+        }
+
+        // Check if it's a completion signal or plan proposal
+        const coderResponse = validation.data;
+        if (coderResponse.action === "complete") {
+            // Return special proposal indicating completion
+            return {
+                type: "PLAN_PROPOSAL",
+                description: "COMPLETE",
+                steps: [],
+                affectedFiles: []
+            };
+        } else if (coderResponse.action === "propose_plan") {
+            // Convert to legacy format for now (will be updated later)
+            return {
+                type: "PLAN_PROPOSAL",
+                description: coderResponse.data.description,
+                steps: coderResponse.data.steps,
+                affectedFiles: coderResponse.data.files
+            };
+        }
+
+        return null;
+    } catch (error) {
+        console.error("Failed to parse Coder JSON response:", error);
+        console.error("Response was:", response);
+
+        // If it's a parse error and we haven't retried yet, ask for proper JSON
+        if (retryCount < 2) {
+            const retryFeedback = createSchemaMismatchMessage(
+                "coder",
+                "Your response was not valid JSON. Please respond with ONLY valid JSON matching the schema."
+            );
+            return proposePlan(
+                provider, cwd, planMd, stepDescription,
+                retryFeedback, sessionId, true, retryCount + 1
+            );
+        }
+
+        return null;
+    }
 }
 
 // Phase 2: Implement the approved plan (with tools)
@@ -50,9 +111,12 @@ export async function implementPlan(
     approvedPlan: CoderPlanProposal,
     feedback?: string,
     sessionId?: string,
-    isInitialized?: boolean
+    isInitialized?: boolean,
+    retryCount: number = 0
 ): Promise<string> {
-    const sys = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
+    // Load and render the prompt template with schema
+    const template = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
+    const sys = renderPrompt(template, { CODER_SCHEMA: CODER_SCHEMA_JSON });
 
     const messages: Msg[] = [];
 
@@ -67,7 +131,7 @@ export async function implementPlan(
     // Implementation instruction
     const implementInstruction = feedback
         ? `[IMPLEMENTATION MODE]\n\n${feedback}\n\nPlease revise your implementation.`
-        : `[IMPLEMENTATION MODE]\n\nYour plan has been approved:\n${approvedPlan.description}\n\nSteps to implement:\n${approvedPlan.steps.map(s => `- ${s}`).join('\n')}\n\nProceed with implementation using file tools. After making changes, respond with:\nCODE_APPLIED: <description of what you implemented>`;
+        : `[IMPLEMENTATION MODE]\n\nYour plan has been approved:\n${approvedPlan.description}\n\nSteps to implement:\n${approvedPlan.steps.map((s: string) => `- ${s}`).join('\n')}\n\nProceed with implementation using file tools.`;
 
     messages.push({ role: "user", content: implementInstruction });
 
@@ -80,71 +144,48 @@ export async function implementPlan(
         messages
     });
 
-    return response;
+    // Parse and validate the JSON response
+    try {
+        const parsed = JSON.parse(response);
+        const validation = validateCoderResponse(parsed);
+
+        if (!validation.valid) {
+            // Schema mismatch - retry up to 2 times
+            if (retryCount < 2) {
+                const retryFeedback = createSchemaMismatchMessage("coder", validation.feedback);
+                return implementPlan(
+                    provider, cwd, planMd, approvedPlan,
+                    retryFeedback, sessionId, true, retryCount + 1
+                );
+            }
+            console.error("Coder implementation response validation failed:", validation.feedback);
+            return "";
+        }
+
+        const coderResponse = validation.data;
+        if (coderResponse.action === "implemented") {
+            // Return formatted string for backward compatibility
+            // Will update orchestrator later to handle JSON directly
+            return `CODE_APPLIED: ${coderResponse.data.description}`;
+        }
+
+        return "";
+    } catch (error) {
+        console.error("Failed to parse Coder implementation response:", error);
+
+        // If it's a parse error and we haven't retried yet, ask for proper JSON
+        if (retryCount < 2) {
+            const retryFeedback = createSchemaMismatchMessage(
+                "coder",
+                "Your response was not valid JSON. Please respond with ONLY valid JSON matching the schema."
+            );
+            return implementPlan(
+                provider, cwd, planMd, approvedPlan,
+                retryFeedback, sessionId, true, retryCount + 1
+            );
+        }
+
+        return "";
+    }
 }
 
-
-// Helper function to parse plan proposal from Coder response
-function parsePlanProposal(response: string): CoderPlanProposal | null {
-    const lines = response.trim().split('\n');
-
-    // Check for completion signal
-    if (response.includes('COMPLETE') && !response.includes('PLAN_PROPOSAL')) {
-        // Return a special proposal indicating completion
-        return {
-            type: "PLAN_PROPOSAL",
-            description: "COMPLETE",
-            steps: [],
-            affectedFiles: []
-        };
-    }
-
-    // Look for PLAN_PROPOSAL marker
-    const proposalIndex = lines.findIndex(line => line.includes('PLAN_PROPOSAL'));
-    if (proposalIndex === -1) return null;
-
-    // Extract the structured content
-    const proposal: CoderPlanProposal = {
-        type: "PLAN_PROPOSAL",
-        description: "",
-        steps: [],
-        affectedFiles: []
-    };
-
-    let currentSection = "";
-    for (let i = proposalIndex + 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-
-        if (line.startsWith('Description:') || line.startsWith('Approach:')) {
-            currentSection = "description";
-            proposal.description = line.split(':').slice(1).join(':').trim();
-        } else if (line.startsWith('Steps:')) {
-            currentSection = "steps";
-        } else if (line.startsWith('Files:') || line.startsWith('Affected Files:')) {
-            currentSection = "files";
-        } else if (line.startsWith('- ') || line.startsWith('* ')) {
-            const item = line.substring(2).trim();
-            if (currentSection === "steps") {
-                proposal.steps.push(item);
-            } else if (currentSection === "files") {
-                proposal.affectedFiles.push(item);
-            }
-        } else if (currentSection === "description" && line) {
-            proposal.description += " " + line;
-        }
-    }
-
-    // If we couldn't parse structured format, try to extract from free text
-    if (!proposal.description && !proposal.steps.length) {
-        proposal.description = response.trim();
-        // Try to extract file mentions
-        const fileMatches = response.matchAll(/(?:src\/[\w\/-]+\.\w+)|(?:[\w-]+\.\w+)/g);
-        for (const match of fileMatches) {
-            if (!proposal.affectedFiles.includes(match[0])) {
-                proposal.affectedFiles.push(match[0]);
-            }
-        }
-    }
-
-    return proposal;
-}

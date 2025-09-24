@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderPlanProposal, ReviewerPlanVerdict, ReviewerCodeVerdict } from "../types.js";
+import { REVIEWER_SCHEMA_JSON, type ReviewerResponse } from "../protocol/schemas.js";
+import { renderPrompt } from "../protocol/prompt-template.js";
+import { validateReviewerResponse, createSchemaMismatchMessage } from "../protocol/validators.js";
 
 // Phase 1: Review implementation plan (no tools needed)
 export async function reviewPlan(
@@ -9,9 +12,12 @@ export async function reviewPlan(
     planMd: string,
     proposal: CoderPlanProposal,
     sessionId?: string,
-    isInitialized?: boolean
+    isInitialized?: boolean,
+    retryCount: number = 0
 ): Promise<ReviewerPlanVerdict> {
-    const sys = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
+    // Load and render the prompt template with schema
+    const template = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
+    const sys = renderPrompt(template, { REVIEWER_SCHEMA: REVIEWER_SCHEMA_JSON });
 
     const messages: Msg[] = [];
 
@@ -19,7 +25,7 @@ export async function reviewPlan(
         // First call: establish context with system prompt and plan
         messages.push(
             { role: "system", content: sys },
-            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\n[PLAN REVIEW MODE]\n\nThe Coder proposes the following approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this approach and respond with ONE of:\n📋 approve-plan - approach is sound\n🔧 revise-plan - needs adjustments (provide feedback)\n❌ reject-plan - fundamentally wrong approach` }
+            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\n[PLAN REVIEW MODE]\n\nThe Coder proposes the following approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this approach.` }
         );
     } else {
         // Subsequent calls: reviewing revised plan
@@ -35,7 +41,146 @@ export async function reviewPlan(
         messages
     });
 
-    return parsePlanVerdict(res);
+    // Parse and validate the JSON response
+    try {
+        const parsed = JSON.parse(res);
+        const validation = validateReviewerResponse(parsed);
+
+        if (!validation.valid) {
+            // Schema mismatch - retry up to 2 times
+            if (retryCount < 2) {
+                const retryFeedback = createSchemaMismatchMessage("reviewer", validation.feedback);
+                // Send retry request
+                const retryMessages: Msg[] = [{ role: "user", content: retryFeedback }];
+                const retryRes = await provider.query({
+                    cwd,
+                    mode: "default",
+                    allowedTools: ["ReadFile", "Grep", "Bash"],
+                    sessionId,
+                    isInitialized: true,
+                    messages: retryMessages
+                });
+
+                // Try parsing retry response
+                return parseReviewerResponseToLegacy(retryRes, "plan", retryCount + 1,
+                    provider, cwd, planMd, proposal, sessionId);
+            }
+            console.error("Reviewer response validation failed:", validation.feedback);
+            return { type: "PLAN_VERDICT", verdict: "needs-human", feedback: "Invalid response format" };
+        }
+
+        // Convert to legacy format
+        const reviewerResponse = validation.data;
+        return convertToLegacyPlanVerdict(reviewerResponse);
+    } catch (error) {
+        console.error("Failed to parse Reviewer JSON response:", error);
+
+        // If parse error and haven't retried, ask for proper JSON
+        if (retryCount < 2) {
+            const retryFeedback = createSchemaMismatchMessage(
+                "reviewer",
+                "Your response was not valid JSON. Please respond with ONLY valid JSON matching the schema."
+            );
+            // Recursive retry
+            const retryMessages: Msg[] = [{ role: "user", content: retryFeedback }];
+            const retryRes = await provider.query({
+                cwd,
+                mode: "default",
+                allowedTools: ["ReadFile", "Grep", "Bash"],
+                sessionId,
+                isInitialized: true,
+                messages: retryMessages
+            });
+
+            return parseReviewerResponseToLegacy(retryRes, "plan", retryCount + 1,
+                provider, cwd, planMd, proposal, sessionId);
+        }
+
+        return { type: "PLAN_VERDICT", verdict: "needs-human", feedback: "Failed to parse response" };
+    }
+}
+
+// Helper for recursive retries on plan review
+async function parseReviewerResponseToLegacy(
+    response: string,
+    mode: "plan",
+    retryCount: number,
+    provider: LLMProvider,
+    cwd: string,
+    planMd: string,
+    proposal: CoderPlanProposal,
+    sessionId?: string
+): Promise<ReviewerPlanVerdict>
+
+async function parseReviewerResponseToLegacy(
+    response: string,
+    mode: "code",
+    retryCount: number,
+    provider: LLMProvider,
+    cwd: string,
+    planMd: string,
+    changeDesc: string,
+    sessionId?: string
+): Promise<ReviewerCodeVerdict>
+
+async function parseReviewerResponseToLegacy(
+    response: string,
+    mode: "plan" | "code",
+    retryCount: number,
+    provider: LLMProvider,
+    cwd: string,
+    planMd: string,
+    proposalOrDesc: CoderPlanProposal | string,
+    sessionId?: string
+): Promise<ReviewerPlanVerdict | ReviewerCodeVerdict> {
+    try {
+        const parsed = JSON.parse(response);
+        const validation = validateReviewerResponse(parsed);
+
+        if (validation.valid) {
+            const reviewerResponse = validation.data;
+            if (mode === "plan") {
+                return convertToLegacyPlanVerdict(reviewerResponse);
+            } else {
+                return convertToLegacyCodeVerdict(reviewerResponse);
+            }
+        }
+    } catch (e) {
+        // Continue to error handling
+    }
+
+    if (mode === "plan") {
+        return { type: "PLAN_VERDICT", verdict: "needs-human", feedback: "Invalid response" };
+    } else {
+        return { type: "CODE_VERDICT", verdict: "needs-human", feedback: "Invalid response" };
+    }
+}
+
+// Convert new JSON format to legacy format
+function convertToLegacyPlanVerdict(response: ReviewerResponse): ReviewerPlanVerdict {
+    // Map verdict values for plan review
+    let legacyVerdict: ReviewerPlanVerdict["verdict"] = "needs-human";
+
+    switch(response.verdict) {
+        case "approve":
+            legacyVerdict = "approve-plan";
+            break;
+        case "revise":
+            legacyVerdict = "revise-plan";
+            break;
+        case "reject":
+            legacyVerdict = "reject-plan";
+            break;
+        case "needs_human":
+            legacyVerdict = "needs-human";
+            break;
+    }
+
+    return {
+        type: "PLAN_VERDICT",
+        verdict: legacyVerdict,
+        feedback: response.feedback
+    };
 }
 
 // Phase 2: Review actual code changes (with git tools)
@@ -45,9 +190,12 @@ export async function reviewCode(
     planMd: string,
     changeDescription: string,
     sessionId?: string,
-    isInitialized?: boolean
+    isInitialized?: boolean,
+    retryCount: number = 0
 ): Promise<ReviewerCodeVerdict> {
-    const sys = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
+    // Load and render the prompt template with schema
+    const template = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
+    const sys = renderPrompt(template, { REVIEWER_SCHEMA: REVIEWER_SCHEMA_JSON });
 
     const messages: Msg[] = [];
 
@@ -60,7 +208,7 @@ export async function reviewCode(
     }
 
     // Code review instruction
-    messages.push({ role: "user", content: `[CODE REVIEW MODE]\n\nThe Coder has implemented changes: "${changeDescription}"\n\nUse git diff HEAD to review the actual changes, then respond with ONE of:\n✅ approve-code - implementation is correct\n✏️ revise-code - needs fixes (provide feedback)\n🔴 reject-code - wrong implementation\n🟡 needs-human - requires human review\n✨ step-complete - this step is done, more steps remain\n🎉 task-complete - all plan items are implemented` });
+    messages.push({ role: "user", content: `[CODE REVIEW MODE]\n\nThe Coder has implemented changes: "${changeDescription}"\n\nUse git diff HEAD to review the actual changes.` });
 
     const res = await provider.query({
         cwd,
@@ -71,64 +219,96 @@ export async function reviewCode(
         messages
     });
 
-    return parseCodeVerdict(res);
+    // Parse and validate the JSON response
+    try {
+        const parsed = JSON.parse(res);
+        const validation = validateReviewerResponse(parsed);
+
+        if (!validation.valid) {
+            // Schema mismatch - retry up to 2 times
+            if (retryCount < 2) {
+                const retryFeedback = createSchemaMismatchMessage("reviewer", validation.feedback);
+                const retryMessages: Msg[] = [{ role: "user", content: retryFeedback }];
+                const retryRes = await provider.query({
+                    cwd,
+                    mode: "default",
+                    allowedTools: ["ReadFile", "Grep", "Bash"],
+                    sessionId,
+                    isInitialized: true,
+                    messages: retryMessages
+                });
+
+                // Try parsing retry response
+                return parseReviewerResponseToLegacy(retryRes, "code", retryCount + 1,
+                    provider, cwd, planMd, changeDescription, sessionId);
+            }
+            console.error("Reviewer code review validation failed:", validation.feedback);
+            return { type: "CODE_VERDICT", verdict: "needs-human", feedback: "Invalid response format" };
+        }
+
+        // Convert to legacy format
+        const reviewerResponse = validation.data;
+        return convertToLegacyCodeVerdict(reviewerResponse);
+    } catch (error) {
+        console.error("Failed to parse Reviewer code review JSON:", error);
+
+        // If parse error and haven't retried, ask for proper JSON
+        if (retryCount < 2) {
+            const retryFeedback = createSchemaMismatchMessage(
+                "reviewer",
+                "Your response was not valid JSON. Please respond with ONLY valid JSON matching the schema."
+            );
+            const retryMessages: Msg[] = [{ role: "user", content: retryFeedback }];
+            const retryRes = await provider.query({
+                cwd,
+                mode: "default",
+                allowedTools: ["ReadFile", "Grep", "Bash"],
+                sessionId,
+                isInitialized: true,
+                messages: retryMessages
+            });
+
+            return parseReviewerResponseToLegacy(retryRes, "code", retryCount + 1,
+                provider, cwd, planMd, changeDescription, sessionId);
+        }
+
+        return { type: "CODE_VERDICT", verdict: "needs-human", feedback: "Failed to parse response" };
+    }
 }
 
+// Convert new JSON format to legacy code verdict format
+function convertToLegacyCodeVerdict(response: ReviewerResponse): ReviewerCodeVerdict {
+    // Map verdict values for code review
+    let legacyVerdict: ReviewerCodeVerdict["verdict"] = "needs-human";
 
-// Helper to parse plan review verdict
-function parsePlanVerdict(response: string): ReviewerPlanVerdict {
-    const lines = response.trim().split('\n');
-    const firstLine = lines[0].trim();
-
-    let verdict: ReviewerPlanVerdict['verdict'] = 'revise-plan';
-    if (firstLine.includes('approve-plan') || firstLine.includes('📋')) {
-        verdict = 'approve-plan';
-    } else if (firstLine.includes('reject-plan') || firstLine.includes('❌')) {
-        verdict = 'reject-plan';
-    } else if (firstLine.includes('revise-plan') || firstLine.includes('🔧')) {
-        verdict = 'revise-plan';
-    } else if (firstLine.includes('needs-human') || firstLine.includes('🟡')) {
-        verdict = 'needs-human';
+    if (response.verdict === "approve") {
+        // Check continueNext to differentiate between step-complete and task-complete
+        if (response.continueNext === true) {
+            legacyVerdict = "step-complete";
+        } else if (response.continueNext === false) {
+            legacyVerdict = "task-complete";
+        } else {
+            // Default to approve-code if continueNext not specified
+            legacyVerdict = "approve-code";
+        }
+    } else {
+        switch(response.verdict) {
+            case "revise":
+                legacyVerdict = "revise-code";
+                break;
+            case "reject":
+                legacyVerdict = "reject-code";
+                break;
+            case "needs_human":
+                legacyVerdict = "needs-human";
+                break;
+        }
     }
-
-    // Extract feedback if present
-    const feedback = lines.slice(1).join('\n').trim() ||
-                    firstLine.split('-').slice(1).join('-').trim();
-
-    return {
-        type: "PLAN_VERDICT",
-        verdict,
-        feedback: feedback || undefined
-    };
-}
-
-// Helper to parse code review verdict
-function parseCodeVerdict(response: string): ReviewerCodeVerdict {
-    const lines = response.trim().split('\n');
-    const firstLine = lines[0].trim();
-
-    let verdict: ReviewerCodeVerdict['verdict'] = 'revise-code';
-    if (firstLine.includes('approve-code') || firstLine.startsWith('✅')) {
-        verdict = 'approve-code';
-    } else if (firstLine.includes('reject-code') || firstLine.startsWith('🔴')) {
-        verdict = 'reject-code';
-    } else if (firstLine.includes('revise-code') || firstLine.startsWith('✏️')) {
-        verdict = 'revise-code';
-    } else if (firstLine.includes('step-complete') || firstLine.startsWith('✨')) {
-        verdict = 'step-complete';
-    } else if (firstLine.includes('task-complete') || firstLine.startsWith('🎉')) {
-        verdict = 'task-complete';
-    } else if (firstLine.includes('needs-human') || firstLine.startsWith('🟡')) {
-        verdict = 'needs-human';
-    }
-
-    // Extract feedback if present
-    const feedback = lines.slice(1).join('\n').trim() ||
-                    firstLine.split('-').slice(1).join('-').trim();
 
     return {
         type: "CODE_VERDICT",
-        verdict,
-        feedback: feedback || undefined
+        verdict: legacyVerdict,
+        feedback: response.feedback
     };
 }
+

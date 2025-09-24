@@ -50,6 +50,22 @@ function flattenMessages(messages: Msg[]): string {
   return result;
 }
 
+// Interface for the Claude CLI JSON response
+interface ClaudeCliResponse {
+  type: "result";
+  subtype: "success" | "error";
+  is_error: boolean;
+  result: string;
+  session_id: string;
+  total_cost_usd: number;
+  duration_ms: number;
+  num_turns?: number;
+  usage?: any;
+  modelUsage?: any;
+  permission_denials?: any[];
+  uuid?: string;
+}
+
 function runClaudeCLI(
   cwd: string,
   prompt: string,
@@ -59,15 +75,14 @@ function runClaudeCLI(
   model?: string,
   isInitialized?: boolean
 ): string {
-  // Build args: -p to print non-interactive; set permission mode; optionally allowed tools
-  const args = ["-p", "--permission-mode", mode];
+  // Build args: -p to print non-interactive; set permission mode; ALWAYS use JSON output
+  const args = ["-p", "--permission-mode", mode, "--output-format", "json"];
 
   if (model) {
     args.push("--model", model);
   }
 
   if (allowedTools && allowedTools.length > 0) {
-    // CLI supports either --allowedTools or --allowed-tools; we'll use the former as shown in help.
     args.push("--allowedTools", ...allowedTools);
   }
 
@@ -81,7 +96,7 @@ function runClaudeCLI(
     console.error("===========================\n");
   }
 
-  // Pass prompt via stdin instead of as an argument
+  // Handle session continuity
   let out;
   if (isInitialized) {
     if (sessionId) {
@@ -92,12 +107,10 @@ function runClaudeCLI(
       cwd,
       env: process.env,
       encoding: "utf8",
-      input: prompt, // Pass prompt through stdin
-      stdio: ["pipe", "pipe", "inherit"], // Changed first stdio from "ignore" to "pipe"
+      input: prompt,
+      stdio: ["pipe", "pipe", "inherit"],
     });
   } else {
-    args.pop(); // remove --resume and sessionId for logging
-    args.pop();
     if (sessionId) {
       args.push("--session-id", sessionId);
     }
@@ -105,20 +118,48 @@ function runClaudeCLI(
       cwd,
       env: process.env,
       encoding: "utf8",
-      input: prompt, // Pass prompt through stdin
-      stdio: ["pipe", "pipe", "inherit"], // Changed first stdio from "ignore" to "pipe"
+      input: prompt,
+      stdio: ["pipe", "pipe", "inherit"],
     });
   }
 
   if (DEBUG) {
-    console.error("\n=== DEBUG: Claude CLI Response ===");
+    console.error("\n=== DEBUG: Claude CLI Raw Response ===");
     console.error("Raw output length:", out.length);
     console.error("Raw output:", JSON.stringify(out));
-    console.error("Trimmed output:", JSON.stringify(out.trim()));
+    console.error("======================================\n");
+  }
+
+  // Parse the JSON response from Claude CLI
+  let cliResponse: ClaudeCliResponse;
+  try {
+    cliResponse = JSON.parse(out);
+  } catch (error) {
+    console.error("Failed to parse Claude CLI JSON response:", out);
+    throw new Error(`Claude CLI returned invalid JSON: ${error}`);
+  }
+
+  if (DEBUG) {
+    console.error("\n=== DEBUG: Parsed CLI Response ===");
+    console.error("Type:", cliResponse.type);
+    console.error("Subtype:", cliResponse.subtype);
+    console.error("Is Error:", cliResponse.is_error);
+    console.error("Session ID:", cliResponse.session_id);
+    console.error("Cost (USD):", cliResponse.total_cost_usd);
+    console.error("Duration (ms):", cliResponse.duration_ms);
+    console.error("Result length:", cliResponse.result?.length);
+    console.error("Result (first 500 chars):", cliResponse.result?.substring(0, 500));
     console.error("==================================\n");
   }
 
-  return out.trim();
+  // Check for errors in the response
+  if (cliResponse.is_error) {
+    throw new Error(`Claude CLI error: ${cliResponse.result}`);
+  }
+
+  // Return the result field which contains the agent's actual response
+  // This may be JSON (for Coder/Reviewer) or plain text (for others)
+  return cliResponse.result;
 }
 
 const anthropic: LLMProvider = {
