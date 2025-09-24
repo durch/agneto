@@ -275,7 +275,7 @@ async function runExecutionStateMachine(
                     }
 
                     // Get feedback from context if this is a revision
-                    const feedback = stateMachine.getPlanFeedback();
+                    const feedback = stateMachine.getPlanFeedback() || undefined;
 
                     if (feedback) {
                         log.orchestrator(`📝 Revising plan (attempt ${attempts}/${maxAttempts})...`);
@@ -377,7 +377,7 @@ async function runExecutionStateMachine(
                         break;
                     }
 
-                    const feedback = stateMachine.getCodeFeedback();
+                    const feedback = stateMachine.getCodeFeedback() || undefined;
 
                     if (feedback) {
                         log.orchestrator(`🔨 Revising implementation (attempt ${attempts}/${maxAttempts})...`);
@@ -438,6 +438,8 @@ async function runExecutionStateMachine(
                         case 'approve-code':
                         case 'step-complete':
                             log.orchestrator("✅ Code changes approved");
+                            // Set positive feedback so Coder knows to continue
+                            stateMachine.setPlanFeedback("Changes approved. Continue.");
                             stateMachine.transition(Event.CODE_APPROVED);
                             break;
 

@@ -4,6 +4,7 @@ import type { CoderPlanProposal } from "../types.js";
 import { CODER_SCHEMA_JSON, type CoderResponse } from "../protocol/schemas.js";
 import { renderPrompt } from "../protocol/prompt-template.js";
 import { validateCoderResponse, createSchemaMismatchMessage } from "../protocol/validators.js";
+import { cleanJsonResponse } from "../utils/json-cleaner.js";
 
 // Phase 1: Propose implementation plan (no tools)
 export async function proposePlan(
@@ -38,7 +39,8 @@ export async function proposePlan(
 
     const response = await provider.query({
         cwd,
-        mode: "plan",  // Planning mode - no tools
+        mode: "default",  // Default mode for structured responses
+        allowedTools: ["ReadFile", "Grep", "Bash"],  // Read-only tools for context
         sessionId,
         isInitialized,
         messages
@@ -46,7 +48,8 @@ export async function proposePlan(
 
     // Parse and validate the JSON response
     try {
-        const parsed = JSON.parse(response);
+        const cleanedResponse = cleanJsonResponse(response);
+        const parsed = JSON.parse(cleanedResponse);
         const validation = validateCoderResponse(parsed);
 
         if (!validation.valid) {
@@ -146,7 +149,8 @@ export async function implementPlan(
 
     // Parse and validate the JSON response
     try {
-        const parsed = JSON.parse(response);
+        const cleanedResponse = cleanJsonResponse(response);
+        const parsed = JSON.parse(cleanedResponse);
         const validation = validateCoderResponse(parsed);
 
         if (!validation.valid) {

@@ -4,6 +4,7 @@ import type { CoderPlanProposal, ReviewerPlanVerdict, ReviewerCodeVerdict } from
 import { REVIEWER_SCHEMA_JSON, type ReviewerResponse } from "../protocol/schemas.js";
 import { renderPrompt } from "../protocol/prompt-template.js";
 import { validateReviewerResponse, createSchemaMismatchMessage } from "../protocol/validators.js";
+import { cleanJsonResponse } from "../utils/json-cleaner.js";
 
 // Phase 1: Review implementation plan (no tools needed)
 export async function reviewPlan(
@@ -43,7 +44,8 @@ export async function reviewPlan(
 
     // Parse and validate the JSON response
     try {
-        const parsed = JSON.parse(res);
+        const cleanedResponse = cleanJsonResponse(res);
+        const parsed = JSON.parse(cleanedResponse);
         const validation = validateReviewerResponse(parsed);
 
         if (!validation.valid) {
@@ -65,8 +67,10 @@ export async function reviewPlan(
                 return parseReviewerResponseToLegacy(retryRes, "plan", retryCount + 1,
                     provider, cwd, planMd, proposal, sessionId);
             }
-            console.error("Reviewer response validation failed:", validation.feedback);
-            return { type: "PLAN_VERDICT", verdict: "needs-human", feedback: "Invalid response format" };
+            console.error("Reviewer response validation failed after retries:", validation.feedback);
+            console.error("Raw response was:", res);
+            console.error("Parsed response was:", parsed);
+            return { type: "PLAN_VERDICT", verdict: "needs-human", feedback: validation.feedback || "Invalid response format" };
         }
 
         // Convert to legacy format
@@ -74,6 +78,7 @@ export async function reviewPlan(
         return convertToLegacyPlanVerdict(reviewerResponse);
     } catch (error) {
         console.error("Failed to parse Reviewer JSON response:", error);
+        console.error("Raw response was:", res);
 
         // If parse error and haven't retried, ask for proper JSON
         if (retryCount < 2) {
@@ -221,7 +226,8 @@ export async function reviewCode(
 
     // Parse and validate the JSON response
     try {
-        const parsed = JSON.parse(res);
+        const cleanedResponse = cleanJsonResponse(res);
+        const parsed = JSON.parse(cleanedResponse);
         const validation = validateReviewerResponse(parsed);
 
         if (!validation.valid) {

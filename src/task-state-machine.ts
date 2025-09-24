@@ -119,8 +119,8 @@ export class TaskStateMachine {
     return this.context;
   }
 
-  getExecutionStateMachine(): CoderReviewerStateMachine | undefined {
-    return this.context.executionStateMachine;
+  getExecutionStateMachine(): CoderReviewerStateMachine | null {
+    return this.context.executionStateMachine ?? null;
   }
 
   getRefinedTask(): RefinedTask | undefined {
@@ -227,6 +227,9 @@ export class TaskStateMachine {
             this.state = TaskState.TASK_REFINING;
           }
           return true;
+        } else if (event === TaskEvent.ERROR_OCCURRED) {
+          this.handleError(data);
+          return true;
         }
         break;
 
@@ -329,9 +332,9 @@ export class TaskStateMachine {
   }
 
   // Error handling
-  private handleError(error: Error) {
+  private handleError(error?: Error) {
     this.context.lastError = error;
-    log.orchestrator(`Task error occurred: ${error.message}`);
+    log.orchestrator(`Task error occurred: ${error?.message || 'Unknown error'}`);
 
     // Determine recovery based on current state
     switch (this.state) {

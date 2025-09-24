@@ -7,7 +7,14 @@
     "start": "tsx src/cli.ts",
     "new-task": "bash scripts/new-task.sh",
     "cleanup-task": "bash scripts/cleanup-task.sh",
-    "merge-task": "bash scripts/merge-worktree.sh"
+    "merge-task": "bash scripts/merge-worktree.sh",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:watch": "vitest --watch",
+    "test:providers": "vitest test/providers",
+    "test:agents": "vitest test/agents",
+    "test:git": "vitest test/git",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.113",
@@ -19,7 +26,9 @@
   },
   "devDependencies": {
     "@types/node": "^24.4.0",
+    "@vitest/ui": "^3.2.4",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
   }
 }

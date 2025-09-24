@@ -94,12 +94,12 @@ export class CoderReviewerStateMachine {
     return this.context.currentPlan;
   }
 
-  getPlanFeedback(): string | undefined {
-    return this.context.planFeedback;
+  getPlanFeedback(): string | null {
+    return this.context.planFeedback ?? null;
   }
 
-  getCodeFeedback(): string | undefined {
-    return this.context.codeFeedback;
+  getCodeFeedback(): string | null {
+    return this.context.codeFeedback ?? null;
   }
 
   getPlanAttempts(): number {
@@ -112,6 +112,27 @@ export class CoderReviewerStateMachine {
 
   getLastError(): Error | undefined {
     return this.context.lastError;
+  }
+
+  // Setters for testing and external manipulation
+  setPlanFeedback(feedback: string | null) {
+    this.context.planFeedback = feedback ?? undefined;
+  }
+
+  setCodeFeedback(feedback: string | null) {
+    this.context.codeFeedback = feedback ?? undefined;
+  }
+
+  setLastError(error: Error) {
+    this.context.lastError = error;
+  }
+
+  clearPlanFeedback() {
+    this.context.planFeedback = undefined;
+  }
+
+  clearCodeFeedback() {
+    this.context.codeFeedback = undefined;
   }
 
   // Increment attempts - should be called before each attempt
@@ -156,6 +177,12 @@ export class CoderReviewerStateMachine {
 
   // Internal transition handler
   private handleTransition(event: Event, data?: any): boolean {
+    // Handle HUMAN_ABORT from any state
+    if (event === Event.HUMAN_ABORT) {
+      this.state = State.TASK_ABORTED;
+      return true;
+    }
+
     switch (this.state) {
       case State.TASK_START:
         if (event === Event.START_PLANNING) {
@@ -199,7 +226,10 @@ export class CoderReviewerStateMachine {
             this.state = State.TASK_FAILED;
           } else {
             this.state = State.PLANNING;
-            this.context.planFeedback = data; // Store feedback for next attempt
+            // Store feedback for next attempt - use data if provided, otherwise keep existing
+            if (data !== undefined) {
+              this.context.planFeedback = data;
+            }
           }
           return true;
         } else if (event === Event.PLAN_REJECTED) {
@@ -248,7 +278,10 @@ export class CoderReviewerStateMachine {
             this.state = State.TASK_FAILED;
           } else {
             this.state = State.IMPLEMENTING;
-            this.context.codeFeedback = data; // Store feedback for next attempt
+            // Store feedback for next attempt - use data if provided, otherwise keep existing
+            if (data !== undefined) {
+              this.context.codeFeedback = data;
+            }
           }
           return true;
         } else if (event === Event.CODE_REJECTED) {
@@ -279,10 +312,6 @@ export class CoderReviewerStateMachine {
         return false;
 
       default:
-        if (event === Event.HUMAN_ABORT) {
-          this.state = State.TASK_ABORTED;
-          return true;
-        }
         if (event === Event.ERROR_OCCURRED) {
           this.handleError(data);
           return true;
@@ -293,9 +322,9 @@ export class CoderReviewerStateMachine {
   }
 
   // Error handling
-  private handleError(error: Error) {
+  private handleError(error?: Error) {
     this.context.lastError = error;
-    log.orchestrator(`Error occurred: ${error.message}`);
+    log.orchestrator(`Error occurred: ${error?.message || 'Unknown error'}`);
 
     // Determine recovery based on current state
     switch (this.state) {
@@ -305,7 +334,7 @@ export class CoderReviewerStateMachine {
         // Check if we can retry
         if (this.context.planAttempts < this.context.maxPlanAttempts) {
           this.state = State.PLANNING;
-          this.context.planFeedback = `Previous attempt failed: ${error.message}`;
+          this.context.planFeedback = `Previous attempt failed: ${error?.message || 'Unknown error'}`;
           log.orchestrator(`Will retry planning after error`);
         } else {
           this.state = State.TASK_FAILED;
@@ -319,7 +348,7 @@ export class CoderReviewerStateMachine {
         // Check if we can retry
         if (this.context.codeAttempts < this.context.maxCodeAttempts) {
           this.state = State.IMPLEMENTING;
-          this.context.codeFeedback = `Previous attempt failed: ${error.message}`;
+          this.context.codeFeedback = `Previous attempt failed: ${error?.message || 'Unknown error'}`;
           log.orchestrator(`Will retry implementation after error`);
         } else {
           this.state = State.TASK_FAILED;
