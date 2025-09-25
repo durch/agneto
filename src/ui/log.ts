@@ -11,8 +11,21 @@ export const log = {
 
   // Real-time streaming functions
   streamProgress: (text: string) => {
-    // Stream text as it arrives, no prefix to avoid cluttering
-    process.stdout.write(text);
+    // Handle streaming text with proper formatting
+    // Add word wrapping and preserve readability while maintaining real-time feel
+    const cleanText = text.trim();
+    if (cleanText) {
+      // Check if text ends with punctuation (sentence/paragraph boundary)
+      const endsWithPunctuation = /[.!?]\s*$/.test(cleanText);
+
+      if (endsWithPunctuation) {
+        // Complete sentence/thought - add newline for readability
+        process.stdout.write(cleanText + '\n');
+      } else {
+        // Partial text - write without newline to maintain flow
+        process.stdout.write(cleanText + ' ');
+      }
+    }
   },
 
   toolUse: (agent: string, tool: string, input?: any) => {

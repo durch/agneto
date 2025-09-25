@@ -168,7 +168,11 @@ function handleStreamMessage(message: StreamMessage, callbacks?: StreamCallbacks
       const content = message.message?.content || [];
       for (const item of content) {
         if (item.type === 'text' && item.text) {
-          callbacks?.onProgress?.(item.text);
+          // Clean up text and handle streaming properly
+          const text = item.text.trim();
+          if (text) {
+            callbacks?.onProgress?.(text);
+          }
         } else if (item.type === 'tool_use') {
           callbacks?.onToolUse?.(item.name || 'unknown', item.input);
         }
