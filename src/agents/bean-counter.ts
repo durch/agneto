@@ -42,8 +42,8 @@ export async function getInitialChunk(
 
         const rawResponse = await provider.query({
             cwd,
-            mode: "plan",  // Read-only mode for chunking decisions
-            allowedTools: [],  // No tools needed - pure reasoning
+            mode: "default",  // Use default mode for consistent streaming
+            allowedTools: ["ReadFile", "Grep", "Bash"],  // Read tools for context
             sessionId,
             isInitialized,
             messages,
@@ -88,8 +88,8 @@ export async function getNextChunk(
     try {
         const rawResponse = await provider.query({
             cwd,
-            mode: "plan",  // Read-only mode for chunking decisions
-            allowedTools: [],  // No tools needed - pure reasoning
+            mode: "default",  // Use default mode for consistent streaming
+            allowedTools: ["ReadFile", "Grep", "Bash"],  // Read tools for context
             sessionId,
             isInitialized: true,
             messages,

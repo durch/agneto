@@ -90,23 +90,6 @@ export class TestWorkspace {
   }
 }
 
-/**
- * Validate Claude CLI is available and working
- */
-export function validateClaudeCLI(): boolean {
-  try {
-    const result = execSync('echo "OK" | claude -p --permission-mode plan --output-format json', {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore']
-    });
-
-    const response = JSON.parse(result);
-    return response.type === 'result' && response.result.includes('OK');
-  } catch (e) {
-    console.error('Claude CLI validation failed:', e);
-    return false;
-  }
-}
 
 /**
  * Higher-order function to run test with automatic workspace setup/cleanup

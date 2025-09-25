@@ -50,7 +50,7 @@ export async function interpretCoderResponse(
   try {
     const response = await provider.query({
       cwd,
-      mode: "plan", // Read-only mode, no tools needed
+      mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
       model: "sonnet",
       messages
@@ -92,7 +92,7 @@ export async function interpretReviewerResponse(
   try {
     const response = await provider.query({
       cwd,
-      mode: "plan", // Read-only mode, no tools needed
+      mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
       model: "sonnet",
       messages

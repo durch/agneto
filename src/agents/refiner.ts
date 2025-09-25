@@ -21,7 +21,8 @@ export class RefinerAgent {
 
         const refinedOutput = await this.provider.query({
             cwd,
-            mode: "plan", // Read-only mode for analysis
+            mode: "default", // Use default mode for consistent streaming
+            allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
             messages: [
                 { role: "system", content: this.systemPrompt },
                 { role: "user", content: `Task: ${rawTask}\n\nAnalyze and refine this task description.` }

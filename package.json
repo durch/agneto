@@ -42,8 +42,6 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:watch": "vitest --watch",
-    "test:providers": "vitest test/providers",
-    "test:agents": "vitest test/agents",
     "test:git": "vitest test/git",
     "test:run": "vitest run"
   },

@@ -25,7 +25,8 @@ export async function runPlanner(
 
         const planMd = (await provider.query({
             cwd,
-            mode: "plan",
+            mode: "default",
+            allowedTools: ["ReadFile", "Grep", "Bash"],
             messages: [
                 { role: "system", content: sys },
                 { role: "user", content: `Task: ${task}\n\nProduce ONLY the Markdown plan.` }
@@ -71,7 +72,8 @@ async function interactivePlanning(
             log.startStreaming("Planner");
             planMd = (await provider.query({
                 cwd,
-                mode: "plan",
+                mode: "default",
+                allowedTools: ["ReadFile", "Grep", "Bash"],
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: `Task: ${currentTask}\n\nProduce ONLY the Markdown plan.` }
@@ -88,7 +90,8 @@ async function interactivePlanning(
             const feedbackContext = feedbackHistory.join("\n\n");
             planMd = (await provider.query({
                 cwd,
-                mode: "plan",
+                mode: "default",
+                allowedTools: ["ReadFile", "Grep", "Bash"],
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: `Original task: ${task}\n\nCurrent plan:\n${planMd}\n\nFeedback history:\n${feedbackContext}\n\nPlease revise the plan based on the feedback. Produce ONLY the updated Markdown plan.` }
