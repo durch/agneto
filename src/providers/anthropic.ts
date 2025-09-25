@@ -79,7 +79,7 @@ async function runClaudeCLI(
   model?: string,
   isInitialized?: boolean,
   callbacks?: StreamCallbacks
-): Promise<string> {
+): Promise<string | undefined> {
   // Build args for streaming
   const args = ["-p", "--permission-mode", mode, "--output-format", "stream-json", "--verbose"];
 
@@ -116,7 +116,9 @@ async function runClaudeCLI(
     });
 
     let buffer = '';
-    let finalResult = '';
+    let finalResult: string | undefined;
+    let maybePartialResult = '';
+    let collectingResult = false;
 
     // Send prompt
     child.stdin.write(prompt);
@@ -128,19 +130,18 @@ async function runClaudeCLI(
       buffer = lines.pop() || ''; // Keep incomplete line
 
       for (const line of lines) {
-        if (line.trim()) {
+        // Check if this line starts the result message
+        if (line.includes('"type":"result"')) {
+          maybePartialResult = line;
+          collectingResult = true;
+          continue;
+        }
+
+        // Only process non-result messages for streaming
+        if (!collectingResult && line.trim()) {
           try {
             const message: StreamMessage = JSON.parse(line);
             handleStreamMessage(message, callbacks);
-
-            if (message.type === 'result') {
-              if (message.is_error) {
-                reject(new Error(`Claude CLI error: ${message.result}`));
-                return;
-              }
-              finalResult = message.result || '';
-              callbacks?.onComplete?.(message.total_cost_usd || 0, message.duration_ms || 0);
-            }
           } catch (error) {
             console.error('Failed to parse stream JSON:', line.slice(0, 100), error);
           }
@@ -148,28 +149,37 @@ async function runClaudeCLI(
       }
     });
 
-    child.on('close', (code) => {
-      // Process any remaining buffered data before resolving
-      if (buffer.trim()) {
-        try {
-          const message: StreamMessage = JSON.parse(buffer.trim());
-          handleStreamMessage(message, callbacks);
+    // Use 'end' event on stdout to ensure all data is processed before 'close'
+    child.stdout.on('end', () => {
+      if (collectingResult) {
+        // Append any remaining buffer to complete the result message
+        if (buffer.trim()) {
+          maybePartialResult += buffer;
+        }
 
-          if (message.type === 'result') {
-            if (message.is_error) {
-              reject(new Error(`Claude CLI error: ${message.result}`));
-              return;
-            }
-            finalResult = message.result || '';
-            callbacks?.onComplete?.(message.total_cost_usd || 0, message.duration_ms || 0);
+        // Parse the complete result message
+        try {
+          const resultMessage: StreamMessage = JSON.parse(maybePartialResult);
+          if (resultMessage.is_error) {
+            reject(new Error(`Claude CLI error: ${resultMessage.result}`));
+            return;
           }
+          finalResult = resultMessage.result;
+          callbacks?.onComplete?.(resultMessage.total_cost_usd || 0, resultMessage.duration_ms || 0);
         } catch (error) {
-          console.error('Failed to parse final buffer JSON:', buffer.slice(0, 100), error);
+          console.error('Failed to parse result JSON:', maybePartialResult.slice(0, 200), error);
         }
       }
 
+      if (DEBUG) {
+        console.error('=== Stream ended, result collected:', collectingResult);
+        console.error('=== Final result:', finalResult !== undefined ? `"${finalResult.slice(0, 100)}..."` : 'undefined');
+      }
+    });
+
+    child.on('close', (code) => {
       if (code === 0) {
-        resolve(finalResult);
+        resolve(finalResult); // undefined if no result received
       } else {
         reject(new Error(`Claude CLI exited with code ${code}`));
       }

@@ -218,11 +218,17 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         cleanupWorktree(taskId, cwd);
                         taskStateMachine.transition(TaskEvent.AUTO_MERGE);
                     } else {
+                        // Provide direct git commands for npx users
                         log.orchestrator(`\nNext steps:
 1. Review changes in worktree: ${cwd}
 2. Run tests to verify
-3. Merge to master: npm run merge-task ${taskId}
-4. Clean up: npm run cleanup-task ${taskId}`);
+3. Merge to master:
+   git checkout master
+   git merge sandbox/${taskId} --squash
+   git commit -m "Task ${taskId} completed"
+4. Clean up:
+   git worktree remove .worktrees/${taskId}
+   git branch -D sandbox/${taskId}`);
                         taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
                     }
                     break;
@@ -371,8 +377,9 @@ async function runExecutionStateMachine(
                             log.warn("Failed to generate plan proposal");
                             stateMachine.transition(Event.MAX_ATTEMPTS_REACHED);
                         } else {
-                            log.coder("All plan items completed!");
-                            stateMachine.transition(Event.TASK_COMPLETED);
+                            log.coder("Chunk work completed - returning to Bean Counter");
+                            // Return to Bean Counter to determine next chunk or task completion
+                            stateMachine.transition(Event.CODE_APPROVED);
                         }
                     } else {
                         log.coder(`📢 Planning to: ${proposal.description}`);
@@ -530,8 +537,11 @@ async function runExecutionStateMachine(
                             break;
 
                         case 'task-complete':
-                            log.orchestrator("🎉 All planned work complete!");
-                            stateMachine.transition(Event.TASK_COMPLETED);
+                            // ALWAYS go back to Bean Counter - only Bean Counter decides task completion
+                            log.orchestrator("✅ Chunk complete - returning to Bean Counter");
+                            // Commit the approved changes
+                            await commitChanges(cwd, changeDescription);
+                            stateMachine.transition(Event.CODE_APPROVED);
                             break;
 
                         case 'revise-code':

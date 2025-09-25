@@ -20,7 +20,7 @@ export enum TaskState {
 
   // Terminal states
   TASK_COMPLETE = "TASK_COMPLETE",
-  TASK_ABANDONED = "TASK_ABANDONED"
+  TASK_ABANDONED = "TASK_ABANDONED",
 }
 
 // Events that trigger parent state transitions
@@ -57,7 +57,7 @@ export enum TaskEvent {
   CLEANUP_COMPLETE = "CLEANUP_COMPLETE",
 
   // Error event
-  ERROR_OCCURRED = "ERROR_OCCURRED"
+  ERROR_OCCURRED = "ERROR_OCCURRED",
 }
 
 // Context for the parent state machine
@@ -100,12 +100,17 @@ export class TaskStateMachine {
   private state: TaskState = TaskState.TASK_INIT;
   private context: TaskContext;
 
-  constructor(taskId: string, humanTask: string, workingDirectory: string, options: TaskContext['options'] = {}) {
+  constructor(
+    taskId: string,
+    humanTask: string,
+    workingDirectory: string,
+    options: TaskContext["options"] = {}
+  ) {
     this.context = {
       taskId,
       humanTask,
       workingDirectory,
-      options
+      options,
     };
     log.orchestrator(`Task state machine initialized: ${this.state}`);
   }
@@ -149,7 +154,7 @@ export class TaskStateMachine {
     this.context.taskToUse = taskToUse;
   }
 
-  setPlan(planMd: string, planPath: string) {
+  setPlan(planMd: string | undefined, planPath: string) {
     this.context.planMd = planMd;
     this.context.planPath = planPath;
   }
@@ -181,10 +186,9 @@ export class TaskStateMachine {
 
   // Check if we can continue processing
   canContinue(): boolean {
-    return ![
-      TaskState.TASK_COMPLETE,
-      TaskState.TASK_ABANDONED
-    ].includes(this.state);
+    return ![TaskState.TASK_COMPLETE, TaskState.TASK_ABANDONED].includes(
+      this.state
+    );
   }
 
   // Check if we're in a terminal state
@@ -203,12 +207,16 @@ export class TaskStateMachine {
     const validTransition = this.handleTransition(event, data);
 
     if (!validTransition) {
-      log.orchestrator(`Invalid task transition: ${oldState} + ${event} (ignored)`);
+      log.orchestrator(
+        `Invalid task transition: ${oldState} + ${event} (ignored)`
+      );
       return this.state;
     }
 
     if (oldState !== this.state) {
-      log.orchestrator(`Task state transition: ${oldState} → ${this.state} (event: ${event})`);
+      log.orchestrator(
+        `Task state transition: ${oldState} → ${this.state} (event: ${event})`
+      );
     }
 
     return this.state;
@@ -242,7 +250,9 @@ export class TaskStateMachine {
           // Use original task and proceed to planning
           this.state = TaskState.TASK_PLANNING;
           this.context.taskToUse = this.context.humanTask;
-          log.orchestrator("Refinement cancelled, using original task description");
+          log.orchestrator(
+            "Refinement cancelled, using original task description"
+          );
           return true;
         } else if (event === TaskEvent.ERROR_OCCURRED) {
           this.handleError(data);
@@ -304,7 +314,10 @@ export class TaskStateMachine {
         break;
 
       case TaskState.TASK_FINALIZING:
-        if (event === TaskEvent.AUTO_MERGE || event === TaskEvent.MANUAL_MERGE) {
+        if (
+          event === TaskEvent.AUTO_MERGE ||
+          event === TaskEvent.MANUAL_MERGE
+        ) {
           this.state = TaskState.TASK_COMPLETE;
           return true;
         } else if (event === TaskEvent.CLEANUP_COMPLETE) {
@@ -334,7 +347,9 @@ export class TaskStateMachine {
   // Error handling
   private handleError(error?: Error) {
     this.context.lastError = error;
-    log.orchestrator(`Task error occurred: ${error?.message || 'Unknown error'}`);
+    log.orchestrator(
+      `Task error occurred: ${error?.message || "Unknown error"}`
+    );
 
     // Determine recovery based on current state
     switch (this.state) {
@@ -375,8 +390,13 @@ export class TaskStateMachine {
       parts.push(`Plan: ${this.context.planPath}`);
     }
 
-    if (this.state === TaskState.TASK_EXECUTING && this.context.executionStateMachine) {
-      parts.push(`Execution: ${this.context.executionStateMachine.getStatus()}`);
+    if (
+      this.state === TaskState.TASK_EXECUTING &&
+      this.context.executionStateMachine
+    ) {
+      parts.push(
+        `Execution: ${this.context.executionStateMachine.getStatus()}`
+      );
     }
 
     if (this.context.superReviewResult) {
@@ -387,6 +407,6 @@ export class TaskStateMachine {
       parts.push(`Last error: ${this.context.lastError.message}`);
     }
 
-    return parts.join(', ');
+    return parts.join(", ");
   }
 }

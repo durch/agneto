@@ -16,7 +16,7 @@ export interface PlanFeedback {
     details?: string;
 }
 
-export async function displayPlan(planMd: string, iteration: number) {
+export async function displayPlan(planMd: string | undefined, iteration: number) {
     console.log("\n" + chalk.cyan("=".repeat(50)));
     console.log(chalk.cyan.bold(`📋 PLAN v${iteration}`));
     console.log(chalk.cyan("=".repeat(50)));

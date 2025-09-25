@@ -36,10 +36,10 @@ export class RefinerAgent {
         });
 
         // Parse the structured output from the refiner
-        return this.parseRefinedTask(refinedOutput.trim());
+        return this.parseRefinedTask(refinedOutput?.trim());
     }
 
-    private parseRefinedTask(output: string): RefinedTask {
+    private parseRefinedTask(output: string | undefined): RefinedTask {
         // Parse the refiner's structured output format
         // Expected format: Goal, Context, Constraints, Success Criteria sections
         const goal = this.extractSection(output, "Goal") || "";
@@ -56,9 +56,9 @@ export class RefinerAgent {
         };
     }
 
-    private extractSection(text: string, sectionName: string): string | undefined {
+    private extractSection(text: string | undefined, sectionName: string): string | undefined {
         const regex = new RegExp(`## ${sectionName}\\s*\\n([^#]+)`, "i");
-        const match = text.match(regex);
+        const match = text?.match(regex);
         return match?.[1]?.trim();
     }
 }

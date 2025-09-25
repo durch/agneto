@@ -20,7 +20,7 @@ export interface LLMProvider {
         model?: string;                // Optional model name, e.g., "claude-2", "claude-instant-100k"
         isInitialized?: boolean;      // Optional flag to indicate if the session is initialized
         callbacks?: StreamCallbacks;  // Streaming progress callbacks
-    }): Promise<string>;
+    }): Promise<string | undefined>;
 }
 
 export async function selectProvider(): Promise<LLMProvider> {

@@ -20,7 +20,7 @@ export interface CoderInterpretation {
 
 export interface ReviewerInterpretation {
   verdict: "approve" | "revise" | "reject" | "needs_human" | "already_complete";
-  feedback: string;
+  feedback: string | undefined;
   continueNext?: boolean;
 }
 
@@ -29,10 +29,9 @@ export interface ReviewerInterpretation {
  */
 export async function interpretCoderResponse(
   provider: LLMProvider,
-  rawResponse: string,
+  rawResponse: string | undefined,
   cwd: string
 ): Promise<CoderInterpretation | null> {
-
   // Load interpreter prompt
   const template = readFileSync(
     new URL("../prompts/interpreter-coder.md", import.meta.url),
@@ -43,8 +42,8 @@ export async function interpretCoderResponse(
     { role: "system", content: template },
     {
       role: "user",
-      content: `Extract the decision from this Coder response:\n\n${rawResponse}`
-    }
+      content: `Extract the decision from this Coder response:\n\n${rawResponse}`,
+    },
   ];
 
   try {
@@ -53,12 +52,11 @@ export async function interpretCoderResponse(
       mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
       model: "sonnet",
-      messages
+      messages,
     });
 
     // Parse interpreter's simple keyword response
     return parseCoderKeywords(response, rawResponse);
-
   } catch (error) {
     console.error("Interpreter failed to parse Coder response:", error);
     console.error("Raw response was:", rawResponse);
@@ -71,10 +69,9 @@ export async function interpretCoderResponse(
  */
 export async function interpretReviewerResponse(
   provider: LLMProvider,
-  rawResponse: string,
+  rawResponse: string | undefined,
   cwd: string
 ): Promise<ReviewerInterpretation | null> {
-
   // Load interpreter prompt
   const template = readFileSync(
     new URL("../prompts/interpreter-reviewer.md", import.meta.url),
@@ -85,8 +82,8 @@ export async function interpretReviewerResponse(
     { role: "system", content: template },
     {
       role: "user",
-      content: `Extract the decision from this Reviewer response:\n\n${rawResponse}`
-    }
+      content: `Extract the decision from this Reviewer response:\n\n${rawResponse}`,
+    },
   ];
 
   try {
@@ -95,12 +92,11 @@ export async function interpretReviewerResponse(
       mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
       model: "sonnet",
-      messages
+      messages,
     });
 
     // Parse interpreter's simple keyword response
     return parseReviewerKeywords(response, rawResponse);
-
   } catch (error) {
     console.error("Interpreter failed to parse Reviewer response:", error);
     console.error("Raw response was:", rawResponse);
@@ -115,7 +111,6 @@ export function convertCoderInterpretation(
   interpretation: CoderInterpretation,
   rawResponse: string
 ): CoderResponse | null {
-
   switch (interpretation.action) {
     case "complete":
       return { action: "complete" };
@@ -125,8 +120,8 @@ export function convertCoderInterpretation(
         action: "implemented",
         data: {
           description: interpretation.description || "Implementation completed",
-          filesChanged: interpretation.filesChanged || []
-        }
+          filesChanged: interpretation.filesChanged || [],
+        },
       };
 
     case "continue":
@@ -136,12 +131,15 @@ export function convertCoderInterpretation(
         data: {
           description: interpretation.description || "Continue with next step",
           steps: interpretation.steps || [],
-          files: interpretation.files || []
-        }
+          files: interpretation.files || [],
+        },
       };
 
     default:
-      console.warn("Unknown Coder interpretation action:", interpretation.action);
+      console.warn(
+        "Unknown Coder interpretation action:",
+        interpretation.action
+      );
       return null;
   }
 }
@@ -152,30 +150,32 @@ export function convertCoderInterpretation(
 export function convertReviewerInterpretation(
   interpretation: ReviewerInterpretation
 ): ReviewerResponse {
-
   return {
     action: "review",
     verdict: interpretation.verdict,
     feedback: interpretation.feedback,
-    continueNext: interpretation.continueNext
+    continueNext: interpretation.continueNext,
   };
 }
 
 /**
  * Parse Coder interpreter keywords
  */
-function parseCoderKeywords(response: string, originalResponse: string): CoderInterpretation | null {
-  const lowerResponse = response.toLowerCase().trim();
+function parseCoderKeywords(
+  response: string | undefined,
+  originalResponse: string | undefined
+): CoderInterpretation | null {
+  const lowerResponse = response?.toLowerCase().trim();
 
-  if (lowerResponse.includes('complete')) {
+  if (lowerResponse?.includes("complete")) {
     return { action: "complete" };
   }
 
-  if (lowerResponse.includes('implemented')) {
+  if (lowerResponse?.includes("implemented")) {
     return {
       action: "implemented",
       description: extractDescription(originalResponse),
-      filesChanged: extractFiles(originalResponse)
+      filesChanged: extractFiles(originalResponse),
     };
   }
 
@@ -184,75 +184,92 @@ function parseCoderKeywords(response: string, originalResponse: string): CoderIn
     action: "continue",
     description: extractDescription(originalResponse),
     steps: extractSteps(originalResponse),
-    files: extractFiles(originalResponse)
+    files: extractFiles(originalResponse),
   };
 }
 
 /**
  * Parse Reviewer interpreter keywords
  */
-function parseReviewerKeywords(response: string, originalResponse: string): ReviewerInterpretation | null {
-  const lowerResponse = response.toLowerCase().trim();
-  let verdict: "approve" | "revise" | "reject" | "needs_human" | "already_complete" = "needs_human";
+function parseReviewerKeywords(
+  response: string | undefined,
+  originalResponse: string | undefined
+): ReviewerInterpretation | null {
+  const lowerResponse = response?.toLowerCase().trim();
+  let verdict:
+    | "approve"
+    | "revise"
+    | "reject"
+    | "needs_human"
+    | "already_complete" = "needs_human";
   let continueNext: boolean | undefined;
 
-  if (lowerResponse.includes('already_complete')) {
+  if (lowerResponse?.includes("already_complete")) {
     verdict = "already_complete";
     continueNext = false;
-  } else if (lowerResponse.includes('approve_complete')) {
+  } else if (lowerResponse?.includes("approve_complete")) {
     verdict = "approve";
     continueNext = false;
-  } else if (lowerResponse.includes('approve_continue')) {
+  } else if (lowerResponse?.includes("approve_continue")) {
     verdict = "approve";
     continueNext = true;
-  } else if (lowerResponse.includes('approve')) {
+  } else if (lowerResponse?.includes("approve")) {
     verdict = "approve";
     continueNext = true; // Default to continue for plain approve
-  } else if (lowerResponse.includes('revise')) {
+  } else if (lowerResponse?.includes("revise")) {
     verdict = "revise";
-  } else if (lowerResponse.includes('reject')) {
+  } else if (lowerResponse?.includes("reject")) {
     verdict = "reject";
-  } else if (lowerResponse.includes('needs_human')) {
+  } else if (lowerResponse?.includes("needs_human")) {
     verdict = "needs_human";
   }
   // Default to needs_human
 
   return {
     verdict,
-    feedback: originalResponse.trim(),
-    continueNext
+    feedback: originalResponse?.trim(),
+    continueNext,
   };
 }
 
 /**
  * Extract description from response text
  */
-function extractDescription(response: string): string {
+function extractDescription(response: string | undefined): string | undefined {
+  if (!response) return undefined;
+
   // Look for common description patterns
-  const lines = response.split('\n');
+  const lines = response?.split("\n");
+
   for (const line of lines) {
-    if (line.toLowerCase().includes('description:') ||
-        line.toLowerCase().includes('summary:') ||
-        line.toLowerCase().includes('implementing:')) {
-      return line.split(':')[1]?.trim() || '';
+    if (
+      line.toLowerCase().includes("description:") ||
+      line.toLowerCase().includes("summary:") ||
+      line.toLowerCase().includes("implementing:")
+    ) {
+      return line.split(":")[1]?.trim() || "";
     }
   }
 
   // Fallback: use first meaningful sentence
-  const sentences = response.split(/[.!?]/);
+  const sentences = response?.split(/[.!?]/);
+
+  if (!sentences) return "Continue with implementation";
+
   for (const sentence of sentences) {
     if (sentence.trim().length > 10) {
       return sentence.trim();
     }
   }
 
-  return 'Continue with implementation';
+  return "Continue with implementation";
 }
 
 /**
  * Extract file mentions from response text
  */
-function extractFiles(response: string): string[] {
+function extractFiles(response: string | undefined): string[] | undefined {
+  if (!response) return undefined;
   const files: string[] = [];
 
   // Look for common file patterns
@@ -273,18 +290,19 @@ function extractFiles(response: string): string[] {
 /**
  * Extract steps from response text
  */
-function extractSteps(response: string): string[] {
+function extractSteps(response: string | undefined): string[] | undefined {
+  if (!response) return undefined;
   const steps: string[] = [];
-  const lines = response.split('\n');
+  const lines = response.split("\n");
 
   for (const line of lines) {
     // Look for numbered steps
     if (/^\s*\d+\./.test(line)) {
-      steps.push(line.replace(/^\s*\d+\.\s*/, '').trim());
+      steps.push(line.replace(/^\s*\d+\.\s*/, "").trim());
     }
     // Look for bullet points
     else if (/^\s*[-*]/.test(line)) {
-      steps.push(line.replace(/^\s*[-*]\s*/, '').trim());
+      steps.push(line.replace(/^\s*[-*]\s*/, "").trim());
     }
   }
 
