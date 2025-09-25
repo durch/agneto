@@ -61,18 +61,64 @@ export async function handleCodeHumanReview(
 }
 
 /**
- * Revert the last commit in the given directory
+ * Commit current changes with a descriptive message
+ */
+export async function commitChanges(cwd: string, description: string): Promise<void> {
+  try {
+    // Check if there are changes to commit
+    if (!hasUncommittedChanges(cwd)) {
+      log.orchestrator("No changes to commit");
+      return;
+    }
+
+    // Stage all changes
+    execSync(`git -C "${cwd}" add -A`, { stdio: "inherit" });
+
+    // Create commit with chunk description
+    const commitMessage = `Chunk: ${description}`;
+    execSync(`git -C "${cwd}" commit -m "${commitMessage}"`, { stdio: "inherit" });
+
+    log.orchestrator(`✅ Committed: ${description}`);
+  } catch (error) {
+    log.warn(`Failed to commit changes: ${error}`);
+    throw new Error("Could not commit changes");
+  }
+}
+
+/**
+ * Revert the last commit or clean uncommitted changes
  */
 export async function revertLastCommit(cwd: string): Promise<void> {
   try {
-    log.orchestrator("Reverting last commit...");
-    execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
+    // Check if we have commits to revert
+    const hasCommits = (() => {
+      try {
+        execSync(`git -C "${cwd}" rev-parse HEAD~1`, { stdio: "pipe" });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+
+    if (hasCommits) {
+      // We have commits, revert the last one
+      log.orchestrator("Reverting last commit...");
+      execSync(`git -C "${cwd}" revert --no-edit HEAD`, { stdio: "inherit" });
+    } else {
+      // No commits, just clean uncommitted changes
+      log.orchestrator("Cleaning uncommitted changes...");
+      execSync(`git -C "${cwd}" checkout -- .`, { stdio: "inherit" });
+      execSync(`git -C "${cwd}" clean -fd`, { stdio: "inherit" });
+    }
   } catch (error) {
-    log.warn(`Failed to revert commit: ${error}`);
-    // Try to reset if revert fails
+    log.warn(`Failed to revert changes: ${error}`);
+    // Try harder to clean up
     try {
-      execSync(`git -C "${cwd}" reset --hard HEAD~1`, { stdio: "inherit" });
-      log.orchestrator("Used reset instead of revert");
+      if (hasUncommittedChanges(cwd)) {
+        execSync(`git -C "${cwd}" reset --hard HEAD`, { stdio: "inherit" });
+        execSync(`git -C "${cwd}" clean -fd`, { stdio: "inherit" });
+        log.orchestrator("Used reset to clean changes");
+      }
     } catch (resetError) {
       log.warn(`Failed to reset: ${resetError}`);
       throw new Error("Could not undo changes");

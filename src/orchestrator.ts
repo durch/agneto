@@ -21,7 +21,8 @@ import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js"
 import {
   handlePlanHumanReview,
   handleCodeHumanReview,
-  revertLastCommit
+  revertLastCommit,
+  commitChanges
 } from "./orchestrator-helpers.js";
 import type { CoderPlanProposal } from "./types.js";
 
@@ -220,7 +221,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         log.orchestrator(`\nNext steps:
 1. Review changes in worktree: ${cwd}
 2. Run tests to verify
-3. Merge to master: git merge sandbox/${taskId}
+3. Merge to master: npm run merge-task ${taskId}
 4. Clean up: npm run cleanup-task ${taskId}`);
                         taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
                     }
@@ -508,6 +509,8 @@ async function runExecutionStateMachine(
                         case 'approve-code':
                         case 'step-complete':
                             log.orchestrator("✅ Code changes approved");
+                            // Commit the approved changes
+                            await commitChanges(cwd, changeDescription);
                             // Set positive feedback so Coder knows to continue
                             stateMachine.setPlanFeedback("Changes approved. Continue.");
                             stateMachine.transition(Event.CODE_APPROVED);
@@ -535,6 +538,8 @@ async function runExecutionStateMachine(
                             );
 
                             if (codeDecision.decision === 'approve') {
+                                // Commit the approved changes
+                                await commitChanges(cwd, changeDescription);
                                 stateMachine.transition(Event.CODE_APPROVED);
                             } else if (codeDecision.decision === 'revise') {
                                 await revertLastCommit(cwd);
