@@ -86,7 +86,7 @@ export class CoderReviewerStateMachine {
   private state: State = State.TASK_START;
   private context: StateMachineContext;
 
-  constructor(maxPlanAttempts = 3, maxCodeAttempts = 3) {
+  constructor(maxPlanAttempts = 7, maxCodeAttempts = 7) {
     this.context = {
       planAttempts: 0,
       codeAttempts: 0,
