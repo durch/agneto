@@ -122,7 +122,7 @@ export async function implementPlan(
 
     const rawResponse = await provider.query({
         cwd,
-        mode: "default",  // Implementation mode - with tools
+        mode: "acceptEdits",  // acceptEdits mode required for Write/Edit/MultiEdit tools
         allowedTools: ["ReadFile", "ListDir", "Grep", "Bash", "Write", "Edit", "MultiEdit"],
         sessionId,
         isInitialized: true,  // Always true in implementation phase
