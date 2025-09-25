@@ -142,15 +142,32 @@ async function runClaudeCLI(
               callbacks?.onComplete?.(message.total_cost_usd || 0, message.duration_ms || 0);
             }
           } catch (error) {
-            if (DEBUG) {
-              console.error('Failed to parse stream JSON:', line.slice(0, 100));
-            }
+            console.error('Failed to parse stream JSON:', line.slice(0, 100), error);
           }
         }
       }
     });
 
     child.on('close', (code) => {
+      // Process any remaining buffered data before resolving
+      if (buffer.trim()) {
+        try {
+          const message: StreamMessage = JSON.parse(buffer.trim());
+          handleStreamMessage(message, callbacks);
+
+          if (message.type === 'result') {
+            if (message.is_error) {
+              reject(new Error(`Claude CLI error: ${message.result}`));
+              return;
+            }
+            finalResult = message.result || '';
+            callbacks?.onComplete?.(message.total_cost_usd || 0, message.duration_ms || 0);
+          }
+        } catch (error) {
+          console.error('Failed to parse final buffer JSON:', buffer.slice(0, 100), error);
+        }
+      }
+
       if (code === 0) {
         resolve(finalResult);
       } else {
