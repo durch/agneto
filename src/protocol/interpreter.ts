@@ -19,7 +19,7 @@ export interface CoderInterpretation {
 }
 
 export interface ReviewerInterpretation {
-  verdict: "approve" | "revise" | "reject" | "needs_human";
+  verdict: "approve" | "revise" | "reject" | "needs_human" | "already_complete";
   feedback: string;
   continueNext?: boolean;
 }
@@ -193,10 +193,13 @@ function parseCoderKeywords(response: string, originalResponse: string): CoderIn
  */
 function parseReviewerKeywords(response: string, originalResponse: string): ReviewerInterpretation | null {
   const lowerResponse = response.toLowerCase().trim();
-  let verdict: "approve" | "revise" | "reject" | "needs_human" = "needs_human";
+  let verdict: "approve" | "revise" | "reject" | "needs_human" | "already_complete" = "needs_human";
   let continueNext: boolean | undefined;
 
-  if (lowerResponse.includes('approve_complete')) {
+  if (lowerResponse.includes('already_complete')) {
+    verdict = "already_complete";
+    continueNext = false;
+  } else if (lowerResponse.includes('approve_complete')) {
     verdict = "approve";
     continueNext = false;
   } else if (lowerResponse.includes('approve_continue')) {

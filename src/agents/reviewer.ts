@@ -75,6 +75,9 @@ function convertToLegacyPlanVerdict(interpretation: any): ReviewerPlanVerdict {
         case "approve":
             legacyVerdict = "approve-plan";
             break;
+        case "already_complete":
+            legacyVerdict = "already-complete";
+            break;
         case "revise":
             legacyVerdict = "revise-plan";
             break;
@@ -169,6 +172,8 @@ function convertToLegacyCodeVerdict(interpretation: any): ReviewerCodeVerdict {
             // Default to approve-code if continueNext not specified
             legacyVerdict = "approve-code";
         }
+    } else if (interpretation.verdict === "already_complete") {
+        legacyVerdict = "task-complete";
     } else {
         switch(interpretation.verdict) {
             case "revise":

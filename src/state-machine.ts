@@ -251,6 +251,10 @@ export class CoderReviewerStateMachine {
           this.context.codeAttempts = 0;  // Reset for implementation phase
           this.context.codeFeedback = undefined;
           return true;
+        } else if (event === Event.CODE_APPROVED) {
+          // Work is already complete for this chunk, move to next
+          this.state = State.BEAN_COUNTING;
+          return true;
         } else if (event === Event.PLAN_REVISION_REQUESTED) {
           if (this.context.planAttempts >= this.context.maxPlanAttempts) {
             log.orchestrator(`Max plan attempts (${this.context.maxPlanAttempts}) reached`);

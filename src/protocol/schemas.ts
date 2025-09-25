@@ -140,7 +140,7 @@ export type CoderResponse = CoderPlanProposal | CoderComplete | CoderImplemented
 
 export interface ReviewerResponse {
   action: "review";
-  verdict: "approve" | "revise" | "reject" | "needs_human";
+  verdict: "approve" | "revise" | "reject" | "needs_human" | "already_complete";
   feedback?: string;
   continueNext?: boolean;
 }

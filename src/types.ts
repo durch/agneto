@@ -34,7 +34,7 @@ export interface CoderPlanProposal {
 
 export interface ReviewerPlanVerdict {
     type: "PLAN_VERDICT";
-    verdict: "approve-plan" | "revise-plan" | "reject-plan" | "needs-human";
+    verdict: "approve-plan" | "revise-plan" | "reject-plan" | "needs-human" | "already-complete";
     feedback?: string;
 }
 

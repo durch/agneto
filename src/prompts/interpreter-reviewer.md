@@ -6,6 +6,7 @@ Analyze the Reviewer's response and return one of these verdict keywords:
 - **APPROVE** - Reviewer accepts the approach/changes
 - **APPROVE_CONTINUE** - Approved, more steps remain
 - **APPROVE_COMPLETE** - Approved, task is complete
+- **ALREADY_COMPLETE** - Work is already complete in the codebase
 - **REVISE** - Needs changes but approach is salvageable
 - **REJECT** - Fundamentally wrong approach
 - **NEEDS_HUMAN** - Requires human decision
@@ -14,6 +15,7 @@ Analyze the Reviewer's response and return one of these verdict keywords:
 
 **Look for signals like:**
 - "Approve", "Looks good", "LGTM", "Correct" → APPROVE/APPROVE_CONTINUE/APPROVE_COMPLETE
+- "Already complete", "Already done", "Already implemented", "Already satisfied" → ALREADY_COMPLETE
 - "Complete", "Finished", "Done" + approval → APPROVE_COMPLETE
 - "More steps", "Continue" + approval → APPROVE_CONTINUE
 - "Please fix", "Revise", "Needs changes" → REVISE
@@ -36,5 +38,8 @@ Output: REJECT
 
 Input: "Need human review for security compliance."
 Output: NEEDS_HUMAN
+
+Input: "This work is already complete. The requirements are already satisfied in the current codebase."
+Output: ALREADY_COMPLETE
 
 Return only the keyword, no other text.
