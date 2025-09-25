@@ -392,11 +392,17 @@ async function runExecutionStateMachine(
                         break;
                     }
 
-                    // Reviewer reviews plan
+                    // Get current chunk for reviewer context
+                    const reviewChunk = stateMachine.getCurrentChunk();
+                    if (!reviewChunk) {
+                        throw new Error("No chunk available for reviewer");
+                    }
+
+                    // Reviewer reviews plan against chunk requirements
                     const verdict = await reviewPlan(
                         provider,
                         cwd,
-                        planMd,
+                        reviewChunk,
                         proposal,
                         reviewerSessionId,
                         reviewerInitialized
@@ -492,11 +498,14 @@ async function runExecutionStateMachine(
 
                     const changeDescription = stateMachine.getCurrentPlan()?.description || "Changes made";
 
+                    // Get current chunk for reviewer context
+                    const reviewChunk = stateMachine.getCurrentChunk() || null;
+
                     // Reviewer reviews code
                     const verdict = await reviewCode(
                         provider,
                         cwd,
-                        planMd,
+                        reviewChunk,
                         changeDescription,
                         reviewerSessionId,
                         true  // Already initialized from planning phase

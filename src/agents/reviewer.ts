@@ -8,7 +8,7 @@ import { log } from "../ui/log.js";
 export async function reviewPlan(
     provider: LLMProvider,
     cwd: string,
-    planMd: string,
+    chunkContext: { description: string; requirements: string[]; context: string; },
     proposal: CoderPlanProposal,
     sessionId?: string,
     isInitialized?: boolean
@@ -19,14 +19,14 @@ export async function reviewPlan(
     const messages: Msg[] = [];
 
     if (!isInitialized) {
-        // First call: establish context with system prompt and plan
+        // First call: establish context with system prompt and chunk requirements
         messages.push(
             { role: "system", content: template },
-            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\n[PLAN REVIEW MODE]\n\nThe Coder proposes the following approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this approach.` }
+            { role: "user", content: `Current Work Chunk:\n\nDescription: ${chunkContext.description}\n\nRequirements:\n${chunkContext.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${chunkContext.context}\n\n[PLAN REVIEW MODE]\n\nThe Coder proposes the following approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this approach against the chunk requirements above.` }
         );
     } else {
         // Subsequent calls: reviewing revised plan
-        messages.push({ role: "user", content: `[PLAN REVIEW MODE]\n\nThe Coder has revised their approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this revised approach.` });
+        messages.push({ role: "user", content: `[PLAN REVIEW MODE]\n\nThe Coder has revised their approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this revised approach against the current work chunk requirements.` });
     }
 
     if (!isInitialized) {
@@ -97,7 +97,7 @@ function convertToLegacyPlanVerdict(interpretation: any): ReviewerPlanVerdict {
 export async function reviewCode(
     provider: LLMProvider,
     cwd: string,
-    planMd: string,
+    chunkContext: { description: string; requirements: string[]; context: string; } | null,
     changeDescription: string,
     sessionId?: string,
     isInitialized?: boolean
@@ -111,12 +111,12 @@ export async function reviewCode(
         // Should not happen - we should have initialized during planning
         messages.push(
             { role: "system", content: template },
-            { role: "user", content: `Plan (Markdown):\n\n${planMd}` }
+            { role: "user", content: chunkContext ? `Current Work Chunk:\n\nDescription: ${chunkContext.description}\n\nRequirements:\n${chunkContext.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${chunkContext.context}` : `No chunk context available` }
         );
     }
 
     // Code review instruction
-    messages.push({ role: "user", content: `[CODE REVIEW MODE]\n\nThe Coder has implemented changes: "${changeDescription}"\n\nUse git diff HEAD to review the actual changes.` });
+    messages.push({ role: "user", content: `[CODE REVIEW MODE]\n\nThe Coder has implemented changes: "${changeDescription}"\n\nUse git diff HEAD to review the actual changes against the current work chunk requirements.` });
 
     if (!sessionId || !isInitialized) {
         log.startStreaming("Reviewer");
