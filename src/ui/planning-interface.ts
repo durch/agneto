@@ -36,12 +36,7 @@ export async function getPlanFeedback(): Promise<PlanFeedback> {
         message: "How would you like to proceed with this plan?",
         choices: [
             { name: "✅ Approve - Let's start coding", value: "approve" },
-            { name: "📝 Simplify - This is too complex", value: "simplify" },
-            { name: "🔍 Add Detail - Need more specific steps", value: "add-detail" },
-            { name: "🔄 Wrong Approach - Suggest alternative", value: "wrong-approach" },
-            { name: "✏️ Edit Steps - Modify specific parts", value: "edit-steps" },
-            { name: "⚠️ Add Constraints - Specify requirements/limitations", value: "add-constraints" },
-            { name: "🔄 Start Over - New task description", value: "start-over" },
+            { name: "❌ Reject - Provide feedback for revision", value: "reject" },
         ],
     });
 
@@ -49,41 +44,14 @@ export async function getPlanFeedback(): Promise<PlanFeedback> {
         return { type: "approve" };
     }
 
-    let details = "";
-    switch (action) {
-        case "simplify":
-            details = await input({
-                message: "What should be simplified? (e.g., 'Start with just basic validation, no user model yet')",
-            });
-            break;
-        case "add-detail":
-            details = await input({
-                message: "What needs more detail? (e.g., 'Step 3 needs error handling details')",
-            });
-            break;
-        case "wrong-approach":
-            details = await input({
-                message: "What approach would you prefer? (e.g., 'Use REST instead of GraphQL')",
-            });
-            break;
-        case "edit-steps":
-            details = await input({
-                message: "What specific changes? (e.g., 'Remove step 4, combine steps 2 and 3')",
-            });
-            break;
-        case "add-constraints":
-            details = await input({
-                message: "What constraints? (e.g., 'Must be backwards compatible, no new dependencies')",
-            });
-            break;
-        case "start-over":
-            details = await input({
-                message: "New task description:",
-            });
-            break;
-    }
+    // For reject, prompt for free-form feedback
+    const details = await input({
+        message: "What needs to be changed? (Be specific about what's wrong and what you'd prefer):",
+    });
 
-    return { type: action as PlanFeedbackType, details };
+    // Map to "wrong-approach" internally to maintain compatibility
+    // The formatFeedbackForPlanner function will handle this properly
+    return { type: "wrong-approach" as PlanFeedbackType, details };
 }
 
 export async function confirmPlanApproval(iterations: number): Promise<boolean> {
@@ -106,15 +74,24 @@ export async function showPlanningComplete(planPath: string) {
 }
 
 export function formatFeedbackForPlanner(feedback: PlanFeedback): string {
-    const prefix = `Human feedback (${feedback.type}): `;
+    // For the new binary flow, we only handle approve (no feedback needed)
+    // or reject (mapped to "wrong-approach" with free-form feedback)
+    if (feedback.type === "approve") {
+        return "";
+    }
 
+    // All rejections now come through as "wrong-approach" with free-form feedback
+    if (feedback.type === "wrong-approach" && feedback.details) {
+        return `Human feedback: ${feedback.details}`;
+    }
+
+    // Legacy support for any remaining cases (shouldn't happen with new flow)
+    const prefix = `Human feedback (${feedback.type}): `;
     switch (feedback.type) {
         case "simplify":
             return `${prefix}The plan is too complex. Simplify by: ${feedback.details}`;
         case "add-detail":
             return `${prefix}Need more specific details: ${feedback.details}`;
-        case "wrong-approach":
-            return `${prefix}Use a different approach: ${feedback.details}`;
         case "edit-steps":
             return `${prefix}Modify the plan: ${feedback.details}`;
         case "add-constraints":
