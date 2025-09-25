@@ -3,3 +3,4 @@
 .worktrees
 .envrc
 dist
+bin

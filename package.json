@@ -1,9 +1,40 @@
 {
   "name": "agneto",
-  "private": true,
+  "version": "0.1.0",
+  "description": "AI-powered autonomous coding agent with human-in-the-loop planning",
   "type": "module",
+  "bin": {
+    "agneto": "./bin/agneto.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "package.json",
+    "README.md"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "development",
+    "coding",
+    "automation",
+    "claude",
+    "llm",
+    "agile",
+    "autonomous"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/durch/agneto.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "build": "tsc -p .",
+    "prepublishOnly": "npm run build",
     "start": "tsx src/cli.ts",
     "new-task": "bash scripts/new-task.sh",
     "cleanup-task": "bash scripts/cleanup-task.sh",
