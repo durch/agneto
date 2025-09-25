@@ -531,8 +531,8 @@ async function runExecutionStateMachine(
                             log.orchestrator("✅ Code changes approved");
                             // Commit the approved changes
                             await commitChanges(cwd, changeDescription);
-                            // Set positive feedback so Coder knows to continue
-                            stateMachine.setPlanFeedback("Changes approved. Continue.");
+                            // Store approval feedback for Bean Counter to track progress
+                            stateMachine.setCodeFeedback(verdict.feedback || `Approved: ${changeDescription}`);
                             stateMachine.transition(Event.CODE_APPROVED);
                             break;
 
@@ -541,6 +541,8 @@ async function runExecutionStateMachine(
                             log.orchestrator("✅ Chunk complete - returning to Bean Counter");
                             // Commit the approved changes
                             await commitChanges(cwd, changeDescription);
+                            // Store completion feedback for Bean Counter to track progress
+                            stateMachine.setCodeFeedback(verdict.feedback || `Completed: ${changeDescription}`);
                             stateMachine.transition(Event.CODE_APPROVED);
                             break;
 
@@ -563,6 +565,8 @@ async function runExecutionStateMachine(
                             if (codeDecision.decision === 'approve') {
                                 // Commit the approved changes
                                 await commitChanges(cwd, changeDescription);
+                                // Store approval feedback for Bean Counter to track progress
+                                stateMachine.setCodeFeedback(codeDecision.feedback || `Human approved: ${changeDescription}`);
                                 stateMachine.transition(Event.CODE_APPROVED);
                             } else if (codeDecision.decision === 'revise') {
                                 await revertLastCommit(cwd);

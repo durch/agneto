@@ -219,6 +219,8 @@ export class CoderReviewerStateMachine {
         if (event === Event.CHUNK_READY) {
           this.state = State.PLANNING;
           this.context.currentChunk = data;
+          this.context.codeFeedback = undefined;
+          this.context.planFeedback = undefined;
           return true;
         } else if (event === Event.TASK_COMPLETED) {
           this.state = State.TASK_COMPLETE;
@@ -249,7 +251,6 @@ export class CoderReviewerStateMachine {
         if (event === Event.PLAN_APPROVED) {
           this.state = State.IMPLEMENTING;
           this.context.codeAttempts = 0;  // Reset for implementation phase
-          this.context.codeFeedback = undefined;
           return true;
         } else if (event === Event.CODE_APPROVED) {
           // Work is already complete for this chunk, move to next
@@ -285,8 +286,6 @@ export class CoderReviewerStateMachine {
       case State.IMPLEMENTING:
         if (event === Event.CODE_APPLIED) {
           this.state = State.CODE_REVIEW;
-          this.context.codeAttempts++;
-          this.context.codeFeedback = undefined; // Clear old feedback
           return true;
         } else if (event === Event.ERROR_OCCURRED) {
           this.handleError(data);
@@ -305,7 +304,7 @@ export class CoderReviewerStateMachine {
           this.context.codeAttempts = 0;  // Reset for new cycle
           this.context.currentPlan = undefined;
           this.context.planFeedback = undefined;
-          this.context.codeFeedback = undefined;
+          this.context.currentChunk = undefined;
           return true;
         } else if (event === Event.CODE_REVISION_REQUESTED) {
           if (this.context.codeAttempts >= this.context.maxCodeAttempts) {
