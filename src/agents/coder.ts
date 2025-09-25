@@ -8,7 +8,6 @@ import { log } from "../ui/log.js";
 export async function proposePlan(
     provider: LLMProvider,
     cwd: string,
-    planMd: string,
     stepDescription: string,
     feedback?: string,
     sessionId?: string,
@@ -20,10 +19,10 @@ export async function proposePlan(
     const messages: Msg[] = [];
 
     if (!isInitialized) {
-        // First call: establish context with system prompt and plan
+        // First call: establish context with system prompt and chunk
         messages.push(
             { role: "system", content: template },
-            { role: "user", content: `Plan (Markdown):\n\n${planMd}\n\n[PLANNING MODE]\n\nPropose your implementation approach for: ${stepDescription}` }
+            { role: "user", content: `[PLANNING MODE]\n\nPropose your implementation approach for: ${stepDescription}` }
         );
     } else {
         // Subsequent calls: feedback on previous plan proposal
@@ -89,7 +88,6 @@ export async function proposePlan(
 export async function implementPlan(
     provider: LLMProvider,
     cwd: string,
-    planMd: string,
     approvedPlan: CoderPlanProposal,
     feedback?: string,
     sessionId?: string,
@@ -103,8 +101,7 @@ export async function implementPlan(
     if (!isInitialized) {
         // Should not happen - we should have initialized during planning
         messages.push(
-            { role: "system", content: template },
-            { role: "user", content: `Plan (Markdown):\n\n${planMd}` }
+            { role: "system", content: template }
         );
     }
 

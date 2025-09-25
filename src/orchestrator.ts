@@ -358,7 +358,6 @@ async function runExecutionStateMachine(
                     const proposal = await proposePlan(
                         provider,
                         cwd,
-                        planMd,
                         chunkDescription,
                         feedback,
                         coderSessionId,
@@ -473,7 +472,6 @@ async function runExecutionStateMachine(
                     const response = await implementPlan(
                         provider,
                         cwd,
-                        planMd,
                         approvedPlan,
                         feedback,
                         coderSessionId,
