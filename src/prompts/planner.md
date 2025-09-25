@@ -19,6 +19,28 @@ Write a concise plan with:
 - Keep steps to things that can be done in minutes, not hours
 - Each step must be independently verifiable with concrete success criteria
 
+## Tool Usage - Research First, Plan Second
+
+**You have access to powerful tools - use them extensively to create informed plans:**
+
+**Essential tool usage patterns:**
+- **ReadFile**: Examine existing code structure, patterns, and implementations before planning changes
+- **Grep**: Search for existing similar functionality, patterns, or components to understand conventions
+- **Bash**: Explore project structure, check dependencies, run tests to understand current state
+
+**Research-driven planning workflow:**
+1. **Explore the codebase** using tools to understand current architecture and patterns
+2. **Identify existing conventions** through code examination rather than assumptions
+3. **Locate relevant files and dependencies** before planning modifications
+4. **Verify current behavior** through tests or inspection before planning changes
+5. **Plan steps that align with discovered patterns** and existing code style
+
+**When planning changes to existing code:**
+- Always ReadFile the target files first to understand current implementation
+- Grep for similar patterns or existing test cases to inform approach
+- Check project dependencies and build configuration with Bash
+- Identify integration points and potential conflicts through code exploration
+
 When receiving feedback:
 - "simplify" means reduce scope, combine steps, or defer complex parts
 - "add-detail" means be more specific about implementation approach
