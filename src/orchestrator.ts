@@ -35,8 +35,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
     // Separate sessions for Bean Counter, Coder and Reviewer
     const beanCounterSessionId = generateUUID();
-    const coderSessionId = generateUUID();
-    const reviewerSessionId = generateUUID();
+    let coderSessionId = generateUUID();
+    let reviewerSessionId = generateUUID();
     taskStateMachine.setSessionIds(coderSessionId, reviewerSessionId);
     let beanCounterInitialized = false;
     let coderInitialized = false;
@@ -321,6 +321,11 @@ async function runExecutionStateMachine(
                         stateMachine.transition(Event.TASK_COMPLETED);
                     } else {
                         log.orchestrator(`📋 Bean Counter: Next chunk - ${chunk.description}`);
+                        // Generate fresh session IDs for new chunk - no pollution from previous chunks
+                        coderSessionId = generateUUID();
+                        reviewerSessionId = generateUUID();
+                        coderInitialized = false;
+                        reviewerInitialized = false;
                         stateMachine.transition(Event.CHUNK_READY, {
                             description: chunk.description,
                             requirements: chunk.requirements,
