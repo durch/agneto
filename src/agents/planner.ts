@@ -20,14 +20,22 @@ export async function runPlanner(
     const sys = readFileSync(new URL("../prompts/planner.md", import.meta.url), "utf8");
 
     if (!interactive) {
-        // Original non-interactive behavior
+        // Non-interactive with streaming
+        log.startStreaming("Planner");
+
         const planMd = (await provider.query({
             cwd,
             mode: "plan",
             messages: [
                 { role: "system", content: sys },
                 { role: "user", content: `Task: ${task}\n\nProduce ONLY the Markdown plan.` }
-            ]
+            ],
+            callbacks: {
+                onProgress: log.streamProgress,
+                onToolUse: (tool, input) => log.toolUse("Planner", tool, input),
+                onToolResult: (isError) => log.toolResult("Planner", isError),
+                onComplete: (cost, duration) => log.complete("Planner", cost, duration)
+            }
         })).trim();
 
         const planDir = `${cwd}/.plans/${taskId}`;
@@ -58,19 +66,25 @@ async function interactivePlanning(
     log.planner("Starting interactive planning session...");
 
     while (!approved && iteration < maxIterations) {
-        // Generate or refine plan
+        // Generate or refine plan with streaming
         if (iteration === 0) {
-            log.planner("Generating initial plan...");
+            log.startStreaming("Planner");
             planMd = (await provider.query({
                 cwd,
                 mode: "plan",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: `Task: ${currentTask}\n\nProduce ONLY the Markdown plan.` }
-                ]
+                ],
+                callbacks: {
+                    onProgress: log.streamProgress,
+                    onToolUse: (tool, input) => log.toolUse("Planner", tool, input),
+                    onToolResult: (isError) => log.toolResult("Planner", isError),
+                    onComplete: (cost, duration) => log.complete("Planner", cost, duration)
+                }
             })).trim();
         } else {
-            log.planner("Refining plan based on your feedback...");
+            log.startStreaming("Planner");
             const feedbackContext = feedbackHistory.join("\n\n");
             planMd = (await provider.query({
                 cwd,
@@ -78,7 +92,13 @@ async function interactivePlanning(
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: `Original task: ${task}\n\nCurrent plan:\n${planMd}\n\nFeedback history:\n${feedbackContext}\n\nPlease revise the plan based on the feedback. Produce ONLY the updated Markdown plan.` }
-                ]
+                ],
+                callbacks: {
+                    onProgress: log.streamProgress,
+                    onToolUse: (tool, input) => log.toolUse("Planner", tool, input),
+                    onToolResult: (isError) => log.toolResult("Planner", isError),
+                    onComplete: (cost, duration) => log.complete("Planner", cost, duration)
+                }
             })).trim();
         }
 

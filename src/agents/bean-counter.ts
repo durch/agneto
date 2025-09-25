@@ -36,13 +36,23 @@ export async function getInitialChunk(
     }
 
     try {
+        if (!isInitialized) {
+            log.startStreaming("Bean Counter");
+        }
+
         const rawResponse = await provider.query({
             cwd,
             mode: "plan",  // Read-only mode for chunking decisions
             allowedTools: [],  // No tools needed - pure reasoning
             sessionId,
             isInitialized,
-            messages
+            messages,
+            callbacks: {
+                onProgress: log.streamProgress,
+                onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
+                onToolResult: (isError) => log.toolResult("Bean Counter", isError),
+                onComplete: (cost, duration) => log.complete("Bean Counter", cost, duration)
+            }
         });
 
         log.orchestrator(`Raw bean counter initial response: ${rawResponse}`);
@@ -82,7 +92,13 @@ export async function getNextChunk(
             allowedTools: [],  // No tools needed - pure reasoning
             sessionId,
             isInitialized: true,
-            messages
+            messages,
+            callbacks: {
+                onProgress: log.streamProgress,
+                onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
+                onToolResult: (isError) => log.toolResult("Bean Counter", isError),
+                onComplete: (cost, duration) => log.complete("Bean Counter", cost, duration)
+            }
         });
 
         log.orchestrator(`Raw bean counter progressive response: ${rawResponse}`);

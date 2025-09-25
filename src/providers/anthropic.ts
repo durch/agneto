@@ -1,8 +1,7 @@
-import type { LLMProvider, Msg } from "./index.js";
-import { execFileSync, spawn } from "node:child_process";
+import type { LLMProvider, Msg, StreamCallbacks } from "./index.js";
+import { spawn } from "node:child_process";
 
 const DEBUG = process.env.DEBUG === "true";
-const NO_STREAM = process.env.NO_STREAM === "true";
 
 function flattenMessages(messages: Msg[]): string {
   // The Claude CLI expects a single prompt, not role-prefixed messages
@@ -50,33 +49,39 @@ function flattenMessages(messages: Msg[]): string {
   return result;
 }
 
-// Interface for the Claude CLI JSON response
-interface ClaudeCliResponse {
-  type: "result";
-  subtype: "success" | "error";
-  is_error: boolean;
-  result: string;
-  session_id: string;
-  total_cost_usd: number;
-  duration_ms: number;
-  num_turns?: number;
-  usage?: any;
-  modelUsage?: any;
-  permission_denials?: any[];
-  uuid?: string;
+// Streaming message types
+interface StreamMessage {
+  type: "system" | "assistant" | "user" | "result";
+  subtype?: "init" | "success" | "error";
+  message?: {
+    content?: Array<{
+      type: "text" | "tool_use" | "tool_result";
+      text?: string;
+      name?: string;
+      input?: any;
+      tool_use_id?: string;
+      is_error?: boolean;
+    }>;
+  };
+  result?: string;
+  is_error?: boolean;
+  total_cost_usd?: number;
+  duration_ms?: number;
+  session_id?: string;
 }
 
-function runClaudeCLI(
+async function runClaudeCLI(
   cwd: string,
   prompt: string,
   mode: "plan" | "default" | "acceptEdits",
   allowedTools?: string[],
   sessionId?: string,
   model?: string,
-  isInitialized?: boolean
-): string {
-  // Build args: -p to print non-interactive; set permission mode; ALWAYS use JSON output
-  const args = ["-p", "--permission-mode", mode, "--output-format", "json"];
+  isInitialized?: boolean,
+  callbacks?: StreamCallbacks
+): Promise<string> {
+  // Build args for streaming
+  const args = ["-p", "--permission-mode", mode, "--output-format", "stream-json", "--verbose"];
 
   if (model) {
     args.push("--model", model);
@@ -86,80 +91,97 @@ function runClaudeCLI(
     args.push("--allowedTools", ...allowedTools);
   }
 
+  // Handle session continuity
+  if (isInitialized && sessionId) {
+    args.push("--resume", sessionId);
+  } else if (sessionId) {
+    args.push("--session-id", sessionId);
+  }
+
   if (DEBUG) {
-    console.error("\n=== DEBUG: runClaudeCLI ===");
+    console.error("\n=== DEBUG: runClaudeCLI (streaming) ===");
     console.error("CWD:", cwd);
     console.error("Mode:", mode);
     console.error("Allowed tools:", allowedTools);
     console.error("Command: claude", args.join(" "));
     console.error("Prompt via stdin, length:", prompt.length);
-    console.error("===========================\n");
-  }
-
-  // Handle session continuity
-  let out;
-  if (isInitialized) {
-    if (sessionId) {
-      args.push("--resume", sessionId);
-    }
-
-    out = execFileSync("claude", args, {
-      cwd,
-      env: process.env,
-      encoding: "utf8",
-      input: prompt,
-      stdio: ["pipe", "pipe", "inherit"],
-    });
-  } else {
-    if (sessionId) {
-      args.push("--session-id", sessionId);
-    }
-    out = execFileSync("claude", args, {
-      cwd,
-      env: process.env,
-      encoding: "utf8",
-      input: prompt,
-      stdio: ["pipe", "pipe", "inherit"],
-    });
-  }
-
-  if (DEBUG) {
-    console.error("\n=== DEBUG: Claude CLI Raw Response ===");
-    console.error("Raw output length:", out.length);
-    console.error("Raw output:", JSON.stringify(out));
     console.error("======================================\n");
   }
 
-  // Parse the JSON response from Claude CLI
-  let cliResponse: ClaudeCliResponse;
-  try {
-    cliResponse = JSON.parse(out);
-  } catch (error) {
-    console.error("Failed to parse Claude CLI JSON response:", out);
-    throw new Error(`Claude CLI returned invalid JSON: ${error}`);
-  }
+  return new Promise((resolve, reject) => {
+    const child = spawn("claude", args, {
+      cwd,
+      env: process.env,
+      stdio: ["pipe", "pipe", "inherit"],
+    });
 
-  if (DEBUG) {
-    console.error("\n=== DEBUG: Parsed CLI Response ===");
-    console.error("Type:", cliResponse.type);
-    console.error("Subtype:", cliResponse.subtype);
-    console.error("Is Error:", cliResponse.is_error);
-    console.error("Session ID:", cliResponse.session_id);
-    console.error("Cost (USD):", cliResponse.total_cost_usd);
-    console.error("Duration (ms):", cliResponse.duration_ms);
-    console.error("Result length:", cliResponse.result?.length);
-    console.error("Result (first 500 chars):", cliResponse.result?.substring(0, 500));
-    console.error("==================================\n");
-  }
+    let buffer = '';
+    let finalResult = '';
 
-  // Check for errors in the response
-  if (cliResponse.is_error) {
-    throw new Error(`Claude CLI error: ${cliResponse.result}`);
-  }
+    // Send prompt
+    child.stdin.write(prompt);
+    child.stdin.end();
 
-  // Return the result field which contains the agent's actual response
-  // This may be JSON (for Coder/Reviewer) or plain text (for others)
-  return cliResponse.result;
+    child.stdout.on('data', (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep incomplete line
+
+      for (const line of lines) {
+        if (line.trim()) {
+          try {
+            const message: StreamMessage = JSON.parse(line);
+            handleStreamMessage(message, callbacks);
+
+            if (message.type === 'result') {
+              if (message.is_error) {
+                reject(new Error(`Claude CLI error: ${message.result}`));
+                return;
+              }
+              finalResult = message.result || '';
+              callbacks?.onComplete?.(message.total_cost_usd || 0, message.duration_ms || 0);
+            }
+          } catch (error) {
+            if (DEBUG) {
+              console.error('Failed to parse stream JSON:', line.slice(0, 100));
+            }
+          }
+        }
+      }
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(finalResult);
+      } else {
+        reject(new Error(`Claude CLI exited with code ${code}`));
+      }
+    });
+
+    child.on('error', reject);
+  });
+}
+
+function handleStreamMessage(message: StreamMessage, callbacks?: StreamCallbacks) {
+  switch (message.type) {
+    case 'assistant':
+      const content = message.message?.content || [];
+      for (const item of content) {
+        if (item.type === 'text' && item.text) {
+          callbacks?.onProgress?.(item.text);
+        } else if (item.type === 'tool_use') {
+          callbacks?.onToolUse?.(item.name || 'unknown', item.input);
+        }
+      }
+      break;
+
+    case 'user':
+      const toolResult = message.message?.content?.[0];
+      if (toolResult?.type === 'tool_result') {
+        callbacks?.onToolResult?.(toolResult.is_error || false);
+      }
+      break;
+  }
 }
 
 const anthropic: LLMProvider = {
@@ -172,9 +194,10 @@ const anthropic: LLMProvider = {
     sessionId,
     model,
     isInitialized,
+    callbacks,
   }) {
     const prompt = flattenMessages(messages);
-    return runClaudeCLI(cwd, prompt, mode, allowedTools, sessionId, model, isInitialized);
+    return runClaudeCLI(cwd, prompt, mode, allowedTools, sessionId, model, isInitialized, callbacks);
   },
 };
 

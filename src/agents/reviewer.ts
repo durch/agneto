@@ -29,13 +29,23 @@ export async function reviewPlan(
         messages.push({ role: "user", content: `[PLAN REVIEW MODE]\n\nThe Coder has revised their approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this revised approach.` });
     }
 
+    if (!isInitialized) {
+        log.startStreaming("Reviewer");
+    }
+
     const rawResponse = await provider.query({
         cwd,
         mode: "default",  // Reviewer always needs tools to verify things
         allowedTools: ["ReadFile", "Grep", "Bash"],
         sessionId,
         isInitialized,
-        messages
+        messages,
+        callbacks: {
+            onProgress: log.streamProgress,
+            onToolUse: (tool, input) => log.toolUse("Reviewer", tool, input),
+            onToolResult: (isError) => log.toolResult("Reviewer", isError),
+            onComplete: (cost, duration) => log.complete("Reviewer", cost, duration)
+        }
     });
 
     // Log the raw response for debugging
@@ -108,13 +118,23 @@ export async function reviewCode(
     // Code review instruction
     messages.push({ role: "user", content: `[CODE REVIEW MODE]\n\nThe Coder has implemented changes: "${changeDescription}"\n\nUse git diff HEAD to review the actual changes.` });
 
+    if (!sessionId || !isInitialized) {
+        log.startStreaming("Reviewer");
+    }
+
     const rawResponse = await provider.query({
         cwd,
         mode: "default",  // Need tools for git diff
         allowedTools: ["ReadFile", "Grep", "Bash"],
         sessionId,
         isInitialized: true,  // Always true in implementation phase
-        messages
+        messages,
+        callbacks: {
+            onProgress: log.streamProgress,
+            onToolUse: (tool, input) => log.toolUse("Reviewer", tool, input),
+            onToolResult: (isError) => log.toolResult("Reviewer", isError),
+            onComplete: (cost, duration) => log.complete("Reviewer", cost, duration)
+        }
     });
 
     // Log the raw response for debugging

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { LLMProvider } from "../providers/index.js";
 import type { RefinedTask } from "../types.js";
+import { log } from "../ui/log.js";
 
 export class RefinerAgent {
     private provider: LLMProvider;
@@ -16,13 +17,21 @@ export class RefinerAgent {
         rawTask: string,
         taskId: string
     ): Promise<RefinedTask> {
+        log.startStreaming("Task Refiner");
+
         const refinedOutput = await this.provider.query({
             cwd,
             mode: "plan", // Read-only mode for analysis
             messages: [
                 { role: "system", content: this.systemPrompt },
                 { role: "user", content: `Task: ${rawTask}\n\nAnalyze and refine this task description.` }
-            ]
+            ],
+            callbacks: {
+                onProgress: log.streamProgress,
+                onToolUse: (tool, input) => log.toolUse("Task Refiner", tool, input),
+                onToolResult: (isError) => log.toolResult("Task Refiner", isError),
+                onComplete: (cost, duration) => log.complete("Task Refiner", cost, duration)
+            }
         });
 
         // Parse the structured output from the refiner

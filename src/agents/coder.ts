@@ -33,13 +33,23 @@ export async function proposePlan(
         messages.push({ role: "user", content: userContent });
     }
 
+    if (!isInitialized) {
+        log.startStreaming("Coder");
+    }
+
     const rawResponse = await provider.query({
         cwd,
         mode: "default",  // Default mode for natural responses
         allowedTools: ["ReadFile", "Grep", "Bash"],  // Read-only tools for context
         sessionId,
         isInitialized,
-        messages
+        messages,
+        callbacks: {
+            onProgress: log.streamProgress,
+            onToolUse: (tool, input) => log.toolUse("Coder", tool, input),
+            onToolResult: (isError) => log.toolResult("Coder", isError),
+            onComplete: (cost, duration) => log.complete("Coder", cost, duration)
+        }
     });
 
     // Log the raw response for debugging
@@ -105,13 +115,24 @@ export async function implementPlan(
 
     messages.push({ role: "user", content: implementInstruction });
 
+    // Show streaming for implementation (tools will be visible)
+    if (!sessionId || !isInitialized) {
+        log.startStreaming("Coder");
+    }
+
     const rawResponse = await provider.query({
         cwd,
         mode: "default",  // Implementation mode - with tools
         allowedTools: ["ReadFile", "ListDir", "Grep", "Bash", "Write", "Edit", "MultiEdit"],
         sessionId,
         isInitialized: true,  // Always true in implementation phase
-        messages
+        messages,
+        callbacks: {
+            onProgress: log.streamProgress,
+            onToolUse: (tool, input) => log.toolUse("Coder", tool, input),
+            onToolResult: (isError) => log.toolResult("Coder", isError),
+            onComplete: (cost, duration) => log.complete("Coder", cost, duration)
+        }
     });
 
     // Log the raw response for debugging
