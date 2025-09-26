@@ -65,15 +65,11 @@ export async function proposePlan(
         };
     }
 
-    // Extract a simple description from the first substantial line
-    const lines = rawResponse.split('\n').filter(line => line.trim());
-    const description = lines[0] || "Implementation approach";
-
-    // Return as proposal for reviewer to evaluate
+    // Pass the FULL response to the reviewer - don't truncate!
     return {
         type: "PLAN_PROPOSAL",
-        description: description,
-        steps: lines.slice(1).filter(line => line.trim()).slice(0, 5), // Take up to 5 lines as steps
+        description: rawResponse, // Full response, not just first line
+        steps: [], // Not needed when description has everything
         affectedFiles: []
     };
 }
