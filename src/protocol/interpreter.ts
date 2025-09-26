@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderResponse, ReviewerResponse } from "./schemas.js";
 import type { BeanCounterChunk } from "../agents/bean-counter.js";
+import type { SuperReviewerVerdict } from "../types.js";
 
 // Interpreter result types
 export interface CoderInterpretation {
@@ -30,6 +31,12 @@ export interface BeanCounterInterpretation {
   description: string;
   requirements: string[];
   context: string;
+}
+
+export interface SuperReviewerInterpretation {
+  verdict: SuperReviewerVerdict;
+  summary: string;
+  issues?: string[];
 }
 
 /**
@@ -147,6 +154,46 @@ export async function interpretBeanCounterResponse(
     return parseBeanCounterKeywords(response, rawResponse);
   } catch (error) {
     console.error("Interpreter failed to parse Bean Counter response:", error);
+    console.error("Raw response was:", rawResponse);
+    return null;
+  }
+}
+
+/**
+ * Stateless interpreter for SuperReviewer responses
+ */
+export async function interpretSuperReviewerResponse(
+  provider: LLMProvider,
+  rawResponse: string | undefined,
+  cwd: string
+): Promise<SuperReviewerInterpretation | null> {
+  // Load interpreter prompt
+  const template = readFileSync(
+    new URL("../prompts/interpreter-super-reviewer.md", import.meta.url),
+    "utf8"
+  );
+
+  const messages: Msg[] = [
+    { role: "system", content: template },
+    {
+      role: "user",
+      content: `Extract the decision from this SuperReviewer response:\n\n${rawResponse}`,
+    },
+  ];
+
+  try {
+    const response = await provider.query({
+      cwd,
+      mode: "default", // Use default mode for consistent streaming
+      allowedTools: [],
+      model: "sonnet",
+      messages,
+    });
+
+    // Parse interpreter's simple keyword response
+    return parseSuperReviewerKeywords(response, rawResponse);
+  } catch (error) {
+    console.error("Interpreter failed to parse SuperReviewer response:", error);
     console.error("Raw response was:", rawResponse);
     return null;
   }
@@ -297,6 +344,35 @@ function parseBeanCounterKeywords(
     description: extractDescription(originalResponse) || "Continue with next chunk",
     requirements: extractRequirements(originalResponse) || [],
     context: extractContext(originalResponse) || "",
+  };
+}
+
+/**
+ * Parse SuperReviewer interpreter keywords
+ */
+function parseSuperReviewerKeywords(
+  response: string | undefined,
+  originalResponse: string | undefined
+): SuperReviewerInterpretation | null {
+  const lowerResponse = response?.toLowerCase().trim();
+
+  // Extract verdict from interpreter keywords
+  let verdict: SuperReviewerVerdict = "needs-human"; // Default to needs-human for safety
+
+  if (lowerResponse?.includes("approve")) {
+    verdict = "approve";
+  } else if (lowerResponse?.includes("needs_human")) {
+    verdict = "needs-human";
+  }
+  // Default to needs-human if no clear verdict
+
+  // Extract issues from original response
+  const issues = extractIssues(originalResponse);
+
+  return {
+    verdict,
+    summary: originalResponse?.trim() || "SuperReviewer completed review",
+    issues: issues.length > 0 ? issues : undefined,
   };
 }
 
@@ -454,4 +530,25 @@ function extractContext(response: string | undefined): string {
   }
 
   return contextLines.join(" ").trim();
+}
+
+/**
+ * Extract issues from SuperReviewer response text
+ */
+function extractIssues(response: string | undefined): string[] {
+  if (!response) return [];
+  const issues: string[] = [];
+  const lines = response.split("\n");
+
+  for (const line of lines) {
+    // Look for ISSUE: patterns
+    if (line.toLowerCase().includes("issue:")) {
+      const issuePart = line.split(":")[1]?.trim();
+      if (issuePart && issuePart.length > 5) {
+        issues.push(issuePart);
+      }
+    }
+  }
+
+  return issues;
 }

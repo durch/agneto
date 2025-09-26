@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import type { LLMProvider } from "../providers/index.js";
 import type { SuperReviewerVerdict, SuperReviewerResult } from "../types.js";
 import { log } from "../ui/log.js";
+import { interpretSuperReviewerResponse } from "../protocol/interpreter.js";
 
 export async function runSuperReviewer(
   provider: LLMProvider,
@@ -35,29 +36,21 @@ export async function runSuperReviewer(
     },
   });
 
-  // Parse the response to extract verdict and details
-  const lines = res?.trim().split("\n");
-  if (!lines) {
-    console.error("Failed to get response from Super-Reviewer");
+  // Use interpreter to extract verdict and details from response
+  const interpretation = await interpretSuperReviewerResponse(provider, res, cwd);
+
+  if (!interpretation) {
+    console.error("Failed to interpret SuperReviewer response");
     return {
       verdict: "needs-human",
       summary: "No response received",
       issues: [],
     };
   }
-  const verdictLine = lines.find((line) => line.startsWith("VERDICT:"));
-  const summaryLine = lines.find((line) => line.startsWith("SUMMARY:"));
-  const issuesLines = lines.filter((line) => line.startsWith("ISSUE:"));
 
-  const verdict: SuperReviewerVerdict = verdictLine?.includes("approve")
-    ? "approve"
-    : "needs-human";
-  const summary =
-    summaryLine?.replace("SUMMARY:", "").trim() || "No summary provided";
-  const issues =
-    issuesLines.length > 0
-      ? issuesLines.map((line) => line.replace("ISSUE:", "").trim())
-      : undefined;
-
-  return { verdict, summary, issues };
+  return {
+    verdict: interpretation.verdict,
+    summary: interpretation.summary,
+    issues: interpretation.issues || [],
+  };
 }
