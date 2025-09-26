@@ -367,7 +367,7 @@ async function runExecutionStateMachine(
 
                     const chunkDescription = `${currentChunk.description}\n\nRequirements:\n${currentChunk.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${currentChunk.context}`;
 
-                    const proposal = await proposePlan(
+                    let proposal = await proposePlan(
                         provider,
                         cwd,
                         chunkDescription,
@@ -377,20 +377,21 @@ async function runExecutionStateMachine(
                     );
                     coderInitialized = true;
 
-                    // Check if Coder indicates completion
-                    if (!proposal || proposal.description === "COMPLETE") {
-                        if (!proposal) {
-                            log.warn("Failed to generate plan proposal");
-                            stateMachine.transition(Event.MAX_ATTEMPTS_REACHED);
-                        } else {
-                            log.coder("Chunk work completed - returning to Bean Counter");
-                            // Return to Bean Counter to determine next chunk or task completion
-                            stateMachine.transition(Event.CODE_APPROVED);
-                        }
-                    } else {
-                        log.coder(`📢 Planning to: ${proposal.description}`);
-                        stateMachine.transition(Event.PLAN_PROPOSED, proposal);
+                    // Always proceed to plan review, no short-circuits
+                    if (!proposal) {
+                        // This shouldn't happen now, but handle gracefully
+                        log.info("No plan generated - creating minimal proposal");
+                        proposal = {
+                            type: "PLAN_PROPOSAL" as const,
+                            description: "No changes needed for this chunk",
+                            steps: [],
+                            affectedFiles: []
+                        };
                     }
+
+                    // Always transition to PLAN_PROPOSED - let the review cycle continue
+                    log.coder(`📢 Planning to: ${proposal.description}`);
+                    stateMachine.transition(Event.PLAN_PROPOSED, proposal);
                     break;
                 }
 

@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderPlanProposal } from "../types.js";
-import { interpretCoderResponse, convertCoderInterpretation } from "../protocol/interpreter.js";
 import { log } from "../ui/log.js";
 
 // Phase 1: Propose implementation plan (no tools)
@@ -54,34 +53,29 @@ export async function proposePlan(
     // Log the raw response for debugging
     log.coder(`Raw response: ${rawResponse}`);
 
-    // Interpret the natural language response
-    const interpretation = await interpretCoderResponse(provider, rawResponse, cwd);
-    if (!interpretation) {
-        console.error("Failed to interpret Coder response:", rawResponse);
-        return null;
-    }
-
-    // Log the interpreted decision
-    log.coder(`Interpreted as: ${interpretation.action} - ${interpretation.description || 'No description'}`);
-
-    // Convert to legacy format for orchestrator compatibility
-    if (interpretation.action === "complete") {
+    // Return the raw response as a proposal - no interpretation needed
+    // The reviewer will handle whatever the coder said
+    if (!rawResponse || rawResponse.trim() === "") {
+        // Handle empty response case
         return {
             type: "PLAN_PROPOSAL",
-            description: "COMPLETE",
+            description: "No changes needed for this chunk",
             steps: [],
             affectedFiles: []
         };
-    } else if (interpretation.action === "continue") {
-        return {
-            type: "PLAN_PROPOSAL",
-            description: interpretation.description || "Continue with next step",
-            steps: interpretation.steps || [],
-            affectedFiles: interpretation.files || []
-        };
     }
 
-    return null;
+    // Extract a simple description from the first substantial line
+    const lines = rawResponse.split('\n').filter(line => line.trim());
+    const description = lines[0] || "Implementation approach";
+
+    // Return as proposal for reviewer to evaluate
+    return {
+        type: "PLAN_PROPOSAL",
+        description: description,
+        steps: lines.slice(1).filter(line => line.trim()).slice(0, 5), // Take up to 5 lines as steps
+        affectedFiles: []
+    };
 }
 
 // Phase 2: Implement the approved plan (with tools)
@@ -135,22 +129,15 @@ export async function implementPlan(
     // Log the raw response for debugging
     log.coder(`Raw implementation response: ${rawResponse}`);
 
-    // Interpret the natural language response
-    const interpretation = await interpretCoderResponse(provider, rawResponse, cwd);
-    if (!interpretation) {
-        console.error("Failed to interpret Coder implementation response:", rawResponse);
-        return "";
+    // Return a simple description of what was done
+    // The orchestrator expects "CODE_APPLIED:" prefix to know changes were made
+    if (rawResponse && rawResponse.trim()) {
+        // Extract first line as summary of what was done
+        const firstLine = rawResponse.split('\n')[0] || 'Changes applied';
+        return `CODE_APPLIED: ${firstLine}`;
     }
 
-    // Log the interpreted decision
-    log.coder(`Interpreted as: ${interpretation.action} - ${interpretation.description || 'No description'}`);
-
-    if (interpretation.action === "implemented") {
-        // Return formatted string for backward compatibility
-        // Will update orchestrator later to handle JSON directly
-        return `CODE_APPLIED: ${interpretation.description || 'Changes applied'}`;
-    }
-
+    // No response means no changes were needed
     return "";
 }
 
