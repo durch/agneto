@@ -40,6 +40,26 @@ class LogUI {
     const envLevel = (process.env.LOG_LEVEL || 'info').toLowerCase();
     this.logLevel = this.isValidLogLevel(envLevel) ? envLevel as LogLevel : 'info';
     this.logLevelValue = LOG_LEVELS[this.logLevel];
+
+    // Bind all public methods to maintain 'this' context when used as callbacks
+    this.planner = this.planner.bind(this);
+    this.coder = this.coder.bind(this);
+    this.review = this.review.bind(this);
+    this.beanCounter = this.beanCounter.bind(this);
+    this.orchestrator = this.orchestrator.bind(this);
+    this.streamProgress = this.streamProgress.bind(this);
+    this.toolUse = this.toolUse.bind(this);
+    this.toolResult = this.toolResult.bind(this);
+    this.complete = this.complete.bind(this);
+    this.info = this.info.bind(this);
+    this.warn = this.warn.bind(this);
+    this.logDivider = this.logDivider.bind(this);
+    this.startStreaming = this.startStreaming.bind(this);
+    this.setChunkNumber = this.setChunkNumber.bind(this);
+    this.setSprintNumber = this.setSprintNumber.bind(this);
+    this.indent = this.indent.bind(this);
+    this.outdent = this.outdent.bind(this);
+    this.setLastItem = this.setLastItem.bind(this);
   }
 
   /**
