@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderResponse, ReviewerResponse } from "./schemas.js";
+import type { BeanCounterChunk } from "../agents/bean-counter.js";
 
 // Interpreter result types
 export interface CoderInterpretation {
@@ -22,6 +23,13 @@ export interface ReviewerInterpretation {
   verdict: "approve" | "revise" | "reject" | "needs_human" | "already_complete";
   feedback: string | undefined;
   continueNext?: boolean;
+}
+
+export interface BeanCounterInterpretation {
+  type: "WORK_CHUNK" | "TASK_COMPLETE";
+  description: string;
+  requirements: string[];
+  context: string;
 }
 
 /**
@@ -99,6 +107,46 @@ export async function interpretReviewerResponse(
     return parseReviewerKeywords(response, rawResponse);
   } catch (error) {
     console.error("Interpreter failed to parse Reviewer response:", error);
+    console.error("Raw response was:", rawResponse);
+    return null;
+  }
+}
+
+/**
+ * Stateless interpreter for Bean Counter responses
+ */
+export async function interpretBeanCounterResponse(
+  provider: LLMProvider,
+  rawResponse: string | undefined,
+  cwd: string
+): Promise<BeanCounterInterpretation | null> {
+  // Load interpreter prompt
+  const template = readFileSync(
+    new URL("../prompts/interpreter-bean-counter.md", import.meta.url),
+    "utf8"
+  );
+
+  const messages: Msg[] = [
+    { role: "system", content: template },
+    {
+      role: "user",
+      content: `Extract the decision from this Bean Counter response:\n\n${rawResponse}`,
+    },
+  ];
+
+  try {
+    const response = await provider.query({
+      cwd,
+      mode: "default", // Use default mode for consistent streaming
+      allowedTools: [],
+      model: "sonnet",
+      messages,
+    });
+
+    // Parse interpreter's simple keyword response
+    return parseBeanCounterKeywords(response, rawResponse);
+  } catch (error) {
+    console.error("Interpreter failed to parse Bean Counter response:", error);
     console.error("Raw response was:", rawResponse);
     return null;
   }
@@ -233,6 +281,26 @@ function parseReviewerKeywords(
 }
 
 /**
+ * Parse Bean Counter interpreter keywords
+ */
+function parseBeanCounterKeywords(
+  response: string | undefined,
+  originalResponse: string | undefined
+): BeanCounterInterpretation | null {
+  const lowerResponse = response?.toLowerCase().trim();
+
+  // Determine chunk type based on keywords
+  const type: "WORK_CHUNK" | "TASK_COMPLETE" = lowerResponse?.includes("task_complete") ? "TASK_COMPLETE" : "WORK_CHUNK";
+
+  return {
+    type,
+    description: extractDescription(originalResponse) || "Continue with next chunk",
+    requirements: extractRequirements(originalResponse) || [],
+    context: extractContext(originalResponse) || "",
+  };
+}
+
+/**
  * Extract description from response text
  */
 function extractDescription(response: string | undefined): string | undefined {
@@ -307,4 +375,83 @@ function extractSteps(response: string | undefined): string[] | undefined {
   }
 
   return steps;
+}
+
+/**
+ * Extract requirements from response text for Bean Counter
+ */
+function extractRequirements(response: string | undefined): string[] {
+  if (!response) return [];
+  const requirements: string[] = [];
+  const lines = response.split("\n");
+
+  for (const line of lines) {
+    // Look for requirement patterns
+    if (
+      line.toLowerCase().includes("requirement") ||
+      line.toLowerCase().includes("must") ||
+      line.toLowerCase().includes("should")
+    ) {
+      const cleanLine = line.replace(/^\s*[-*]\s*/, "").trim();
+      if (cleanLine.length > 5) {
+        requirements.push(cleanLine);
+      }
+    }
+    // Look for numbered requirements
+    else if (/^\s*\d+\./.test(line)) {
+      const cleanLine = line.replace(/^\s*\d+\.\s*/, "").trim();
+      if (cleanLine.length > 5) {
+        requirements.push(cleanLine);
+      }
+    }
+    // Look for bullet points that might be requirements
+    else if (/^\s*[-*]/.test(line)) {
+      const cleanLine = line.replace(/^\s*[-*]\s*/, "").trim();
+      if (cleanLine.length > 5) {
+        requirements.push(cleanLine);
+      }
+    }
+  }
+
+  return requirements;
+}
+
+/**
+ * Extract context from response text for Bean Counter
+ */
+function extractContext(response: string | undefined): string {
+  if (!response) return "";
+
+  // Look for context section
+  const lines = response.split("\n");
+  const contextLines: string[] = [];
+  let inContextSection = false;
+
+  for (const line of lines) {
+    if (line.toLowerCase().includes("context:")) {
+      inContextSection = true;
+      const contextPart = line.split(":")[1]?.trim();
+      if (contextPart) contextLines.push(contextPart);
+      continue;
+    }
+
+    if (inContextSection) {
+      if (line.trim() === "" || line.toLowerCase().includes("requirement")) {
+        break;
+      }
+      contextLines.push(line.trim());
+    }
+  }
+
+  // If no explicit context section, use first few sentences as context
+  if (contextLines.length === 0) {
+    const sentences = response.split(/[.!?]/);
+    for (let i = 0; i < Math.min(2, sentences.length); i++) {
+      if (sentences[i].trim().length > 10) {
+        contextLines.push(sentences[i].trim());
+      }
+    }
+  }
+
+  return contextLines.join(" ").trim();
 }

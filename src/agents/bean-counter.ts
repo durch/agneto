@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import { log } from "../ui/log.js";
+import { interpretBeanCounterResponse, type BeanCounterInterpretation } from "../protocol/interpreter.js";
 
 // AIDEV-NOTE: Bean Counter agent handles all work chunking decisions - both initial and progressive.
 // It breaks down high-level plans into implementable chunks and tracks progress through completion.
@@ -67,7 +68,16 @@ export async function getInitialChunk(
     });
 
     log.orchestrator(`Raw bean counter initial response: ${rawResponse}`);
-    return parseChunkResponse(rawResponse);
+
+    // Use interpreter to avoid false positives from partial word matches
+    const interpretation = await interpretBeanCounterResponse(provider, rawResponse, cwd);
+    if (!interpretation) {
+      console.error("Failed to interpret Bean Counter response");
+      return null;
+    }
+
+    // Convert interpretation to BeanCounterChunk format
+    return interpretation;
   } catch (error) {
     console.error("Failed to get initial chunk from Bean Counter:", error);
     return null;
@@ -116,61 +126,23 @@ export async function getNextChunk(
     });
 
     log.orchestrator(`Raw bean counter progressive response: ${rawResponse}`);
-    return parseChunkResponse(rawResponse);
+
+    // Use interpreter to avoid false positives from partial word matches
+    const interpretation = await interpretBeanCounterResponse(provider, rawResponse, cwd);
+    if (!interpretation) {
+      console.error("Failed to interpret Bean Counter response");
+      return null;
+    }
+
+    // Convert interpretation to BeanCounterChunk format
+    return interpretation;
   } catch (error) {
     console.error("Failed to get next chunk from Bean Counter:", error);
     return null;
   }
 }
 
-// Parse Bean Counter response into structured chunk
-function parseChunkResponse(
-  response: string | undefined
-): BeanCounterChunk | null {
-  if (!response) return null;
-  // Simple natural language parsing - look for completion signals
-  if (
-    response.toLowerCase().includes("task complete") ||
-    response.toLowerCase().includes("all work done") ||
-    response.toLowerCase().includes("implementation finished")
-  ) {
-    return {
-      type: "TASK_COMPLETE",
-      description: "All work completed",
-      requirements: [],
-      context: response,
-    };
-  }
-
-  // Extract chunk description and requirements from natural language
-  const lines = response.split("\n").filter((line) => line.trim());
-  let description = "";
-  let requirements: string[] = [];
-
-  // Find description (usually early in response)
-  for (const line of lines) {
-    if (line.includes(":") && !description) {
-      description = line.split(":")[1]?.trim() || line.trim();
-      break;
-    }
-  }
-
-  // Find requirements (look for bullet points or numbered lists)
-  for (const line of lines) {
-    if (line.match(/^\s*[-*]\s+/) || line.match(/^\s*\d+\.\s+/)) {
-      requirements.push(line.replace(/^\s*[-*\d.]\s*/, "").trim());
-    }
-  }
-
-  // Fallback: use first substantial line as description
-  if (!description && lines.length > 0) {
-    description = lines[0];
-  }
-
-  return {
-    type: "WORK_CHUNK",
-    description: description || "Work chunk",
-    requirements,
-    context: response,
-  };
-}
+// DEPRECATED: Old parsing function that had false positive bug with partial word matches
+// Kept for reference only - now using interpretBeanCounterResponse() instead
+// This function incorrectly triggered on "complete" appearing in words like "completion"
+// which caused premature task termination. The interpreter pattern fixes this issue.
