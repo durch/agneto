@@ -91,7 +91,8 @@ async function interactivePlanning(
 
   while (!approved && iteration < maxIterations) {
     // Generate or refine plan with streaming
-    if (iteration === 0) {
+    if (iteration === 0 && feedbackHistory.length === 0) {
+      // First iteration with no prior feedback
       log.startStreaming("Planner");
       planMd = (
         await provider.query({
@@ -115,8 +116,15 @@ async function interactivePlanning(
         })
       )?.trim();
     } else {
+      // Either iteration > 0 OR we have curmudgeon feedback at iteration 0
       log.startStreaming("Planner");
       const feedbackContext = feedbackHistory.join("\n\n");
+
+      // Determine the appropriate prompt based on whether we have a plan yet
+      const userContent: string = planMd
+        ? `Original task: ${task}\n\nCurrent plan:\n${planMd}\n\nFeedback history:\n${feedbackContext}\n\nPlease revise the plan based on the feedback. Produce ONLY the updated Markdown plan.`
+        : `Task: ${currentTask}\n\nFeedback:\n${feedbackContext}\n\nProduce ONLY the Markdown plan that addresses this feedback.`;
+
       planMd = (
         await provider.query({
           cwd,
@@ -126,7 +134,7 @@ async function interactivePlanning(
             { role: "system", content: systemPrompt },
             {
               role: "user",
-              content: `Original task: ${task}\n\nCurrent plan:\n${planMd}\n\nFeedback history:\n${feedbackContext}\n\nPlease revise the plan based on the feedback. Produce ONLY the updated Markdown plan.`,
+              content: userContent,
             },
           ],
           callbacks: {
