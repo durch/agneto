@@ -139,7 +139,11 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         log.orchestrator("🧐 Curmudgeon reviewing plan for over-engineering...");
                         const result = await runCurmudgeon(provider, cwd, planMd || "");
 
-                        if (result.verdict === "approve") {
+                        if (!result) {
+                            // Parsing failed, proceed without curmudgeon review
+                            log.warn("Could not parse Curmudgeon response - proceeding with plan as-is");
+                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                        } else if (result.verdict === "approve") {
                             log.orchestrator("✅ Curmudgeon approved the plan");
                             taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                         } else if (result.verdict === "simplify") {

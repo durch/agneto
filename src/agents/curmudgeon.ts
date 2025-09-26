@@ -7,7 +7,7 @@ export async function runCurmudgeon(
   provider: LLMProvider,
   cwd: string,
   planMd: string
-): Promise<CurmudgeonResult> {
+): Promise<CurmudgeonResult | null> {
   const sys = readFileSync(
     new URL("../prompts/curmudgeon.md", import.meta.url),
     "utf8"
@@ -37,27 +37,30 @@ export async function runCurmudgeon(
   // Parse the response to extract verdict and reasoning
   const lines = res?.trim().split("\n");
   if (!lines) {
-    console.error("Failed to get response from Curmudgeon");
-    return {
-      verdict: "simplify",
-      reasoning: "No response received - defaulting to simplification request",
-    };
+    log.warn("Failed to get response from Curmudgeon - proceeding without review");
+    return null;
   }
 
   const verdictLine = lines.find((line) => line.startsWith("VERDICT:"));
   const reasoningLine = lines.find((line) => line.startsWith("REASONING:"));
   const suggestionLines = lines.filter((line) => line.startsWith("SUGGESTION:"));
 
-  // Parse verdict with fallback to simplify
-  let verdict: CurmudgeonVerdict = "simplify";
-  if (verdictLine) {
-    if (verdictLine.includes("approve")) {
-      verdict = "approve";
-    } else if (verdictLine.includes("reject")) {
-      verdict = "reject";
-    } else if (verdictLine.includes("simplify")) {
-      verdict = "simplify";
-    }
+  // Parse verdict, return null if we can't parse it
+  if (!verdictLine) {
+    log.warn("Could not parse VERDICT from Curmudgeon response - proceeding without review");
+    return null;
+  }
+
+  let verdict: CurmudgeonVerdict;
+  if (verdictLine.includes("approve")) {
+    verdict = "approve";
+  } else if (verdictLine.includes("reject")) {
+    verdict = "reject";
+  } else if (verdictLine.includes("simplify")) {
+    verdict = "simplify";
+  } else {
+    log.warn(`Unknown verdict in Curmudgeon response: ${verdictLine} - proceeding without review`);
+    return null;
   }
 
   const reasoning =
