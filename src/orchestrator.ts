@@ -11,6 +11,7 @@ import { proposePlan, implementPlan } from "./agents/coder.js";
 import { reviewPlan, reviewCode } from "./agents/reviewer.js";
 import { getInitialChunk, getNextChunk } from "./agents/bean-counter.js";
 import { runSuperReviewer } from "./agents/super-reviewer.js";
+import { generateCommitMessage } from "./agents/scribe.js";
 import { ensureWorktree } from "./git/worktrees.js";
 import { mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
 import { log } from "./ui/log.js";
@@ -501,11 +502,11 @@ async function runExecutionStateMachine(
                         const changeMatch = response.match(/CODE_APPLIED:\s*(.+)/i);
                         const changeDescription = changeMatch ? changeMatch[1] : "Changes made";
                         log.coder(`Applied: ${changeDescription}`);
-                        stateMachine.transition(Event.CODE_APPLIED);
                     } else {
-                        log.warn("No changes were made");
-                        stateMachine.transition(Event.MAX_ATTEMPTS_REACHED);
+                        log.info("No changes were needed - work already complete");
                     }
+                    // Always transition to CODE_APPLIED - let reviewer validate the approach
+                    stateMachine.transition(Event.CODE_APPLIED);
                     break;
                 }
 
@@ -534,8 +535,9 @@ async function runExecutionStateMachine(
                         case 'approve-code':
                         case 'step-complete':
                             log.orchestrator("✅ Code changes approved");
-                            // Commit the approved changes
-                            await commitChanges(cwd, changeDescription);
+                            // Generate proper commit message using scribe
+                            const commitMsg1 = await generateCommitMessage(provider, cwd);
+                            await commitChanges(cwd, commitMsg1);
                             // Store approval feedback for Bean Counter to track progress
                             stateMachine.setCodeFeedback(verdict.feedback || `Approved: ${changeDescription}`);
                             stateMachine.transition(Event.CODE_APPROVED);
@@ -544,8 +546,9 @@ async function runExecutionStateMachine(
                         case 'task-complete':
                             // ALWAYS go back to Bean Counter - only Bean Counter decides task completion
                             log.orchestrator("✅ Chunk complete - returning to Bean Counter");
-                            // Commit the approved changes
-                            await commitChanges(cwd, changeDescription);
+                            // Generate proper commit message using scribe
+                            const commitMsg2 = await generateCommitMessage(provider, cwd);
+                            await commitChanges(cwd, commitMsg2);
                             // Store completion feedback for Bean Counter to track progress
                             stateMachine.setCodeFeedback(verdict.feedback || `Completed: ${changeDescription}`);
                             stateMachine.transition(Event.CODE_APPROVED);
@@ -568,8 +571,9 @@ async function runExecutionStateMachine(
                             );
 
                             if (codeDecision.decision === 'approve') {
-                                // Commit the approved changes
-                                await commitChanges(cwd, changeDescription);
+                                // Generate proper commit message using scribe
+                                const commitMsg3 = await generateCommitMessage(provider, cwd);
+                                await commitChanges(cwd, commitMsg3);
                                 // Store approval feedback for Bean Counter to track progress
                                 stateMachine.setCodeFeedback(codeDecision.feedback || `Human approved: ${changeDescription}`);
                                 stateMachine.transition(Event.CODE_APPROVED);
