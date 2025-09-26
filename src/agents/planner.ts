@@ -15,7 +15,8 @@ export async function runPlanner(
   cwd: string,
   task: string,
   taskId: string,
-  interactive: boolean = false
+  interactive: boolean = false,
+  curmudgeonFeedback?: string
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   const sys = readFileSync(
     new URL("../prompts/planner.md", import.meta.url),
@@ -26,6 +27,12 @@ export async function runPlanner(
     // Non-interactive with streaming
     log.startStreaming("Planner");
 
+    let userMessage = `Task: ${task}`;
+    if (curmudgeonFeedback) {
+      userMessage += `\n\nThe Curmudgeon has reviewed your previous plan and requests simplification:\n${curmudgeonFeedback}\n\nPlease revise the plan to be simpler and more straightforward.`;
+    }
+    userMessage += "\n\nProduce ONLY the Markdown plan.";
+
     const planMd = (
       await provider.query({
         cwd,
@@ -35,7 +42,7 @@ export async function runPlanner(
           { role: "system", content: sys },
           {
             role: "user",
-            content: `Task: ${task}\n\nProduce ONLY the Markdown plan.`,
+            content: userMessage,
           },
         ],
         callbacks: {
@@ -56,7 +63,7 @@ export async function runPlanner(
   }
 
   // Interactive planning with iterative refinement
-  return await interactivePlanning(provider, cwd, task, taskId, sys);
+  return await interactivePlanning(provider, cwd, task, taskId, sys, curmudgeonFeedback);
 }
 
 async function interactivePlanning(
@@ -64,7 +71,8 @@ async function interactivePlanning(
   cwd: string,
   task: string,
   taskId: string,
-  systemPrompt: string
+  systemPrompt: string,
+  curmudgeonFeedback?: string
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   let planMd = undefined;
   let approved = false;
@@ -73,7 +81,13 @@ async function interactivePlanning(
   let currentTask = task;
   let feedbackHistory: string[] = [];
 
-  log.planner("Starting interactive planning session...");
+  // If we have Curmudgeon feedback, add it to the feedback history
+  if (curmudgeonFeedback) {
+    feedbackHistory.push(`Curmudgeon simplification request: ${curmudgeonFeedback}`);
+    log.planner("Starting interactive planning with Curmudgeon feedback...");
+  } else {
+    log.planner("Starting interactive planning session...");
+  }
 
   while (!approved && iteration < maxIterations) {
     // Generate or refine plan with streaming

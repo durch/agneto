@@ -10,6 +10,7 @@ export enum TaskState {
   // Pre-execution phases
   TASK_REFINING = "TASK_REFINING",
   TASK_PLANNING = "TASK_PLANNING",
+  TASK_CURMUDGEONING = "TASK_CURMUDGEONING",
 
   // Execution phase (delegates to CoderReviewerStateMachine)
   TASK_EXECUTING = "TASK_EXECUTING",
@@ -36,6 +37,10 @@ export enum TaskEvent {
   // Planning events
   PLAN_CREATED = "PLAN_CREATED",
   PLAN_FAILED = "PLAN_FAILED",
+
+  // Curmudgeon events
+  CURMUDGEON_APPROVED = "CURMUDGEON_APPROVED",
+  CURMUDGEON_SIMPLIFY = "CURMUDGEON_SIMPLIFY",
 
   // Execution events
   EXECUTION_STARTED = "EXECUTION_STARTED",
@@ -94,6 +99,10 @@ export interface TaskContext {
 
   // Retry decision for super review
   retryFeedback?: string;
+
+  // Curmudgeon tracking
+  simplificationCount: number;
+  curmudgeonFeedback?: string;
 }
 
 export class TaskStateMachine {
@@ -111,6 +120,7 @@ export class TaskStateMachine {
       humanTask,
       workingDirectory,
       options,
+      simplificationCount: 0,
     };
     log.orchestrator(`Task state machine initialized: ${this.state}`);
   }
@@ -182,6 +192,26 @@ export class TaskStateMachine {
 
   isRetry(): boolean {
     return this.context.retryFeedback !== undefined;
+  }
+
+  incrementSimplificationCount() {
+    this.context.simplificationCount++;
+  }
+
+  getSimplificationCount(): number {
+    return this.context.simplificationCount;
+  }
+
+  setCurmudgeonFeedback(feedback: string) {
+    this.context.curmudgeonFeedback = feedback;
+  }
+
+  getCurmudgeonFeedback(): string | undefined {
+    return this.context.curmudgeonFeedback;
+  }
+
+  clearCurmudgeonFeedback() {
+    this.context.curmudgeonFeedback = undefined;
   }
 
   // Check if we can continue processing
@@ -262,12 +292,26 @@ export class TaskStateMachine {
 
       case TaskState.TASK_PLANNING:
         if (event === TaskEvent.PLAN_CREATED) {
-          this.state = TaskState.TASK_EXECUTING;
+          this.state = TaskState.TASK_CURMUDGEONING;
           // planMd and planPath should be set via setters before this event
           return true;
         } else if (event === TaskEvent.PLAN_FAILED) {
           this.state = TaskState.TASK_ABANDONED;
           this.context.lastError = data;
+          return true;
+        } else if (event === TaskEvent.ERROR_OCCURRED) {
+          this.handleError(data);
+          return true;
+        }
+        break;
+
+      case TaskState.TASK_CURMUDGEONING:
+        if (event === TaskEvent.CURMUDGEON_APPROVED) {
+          this.state = TaskState.TASK_EXECUTING;
+          return true;
+        } else if (event === TaskEvent.CURMUDGEON_SIMPLIFY) {
+          this.state = TaskState.TASK_PLANNING;
+          this.incrementSimplificationCount();
           return true;
         } else if (event === TaskEvent.ERROR_OCCURRED) {
           this.handleError(data);
@@ -361,6 +405,7 @@ export class TaskStateMachine {
         break;
 
       case TaskState.TASK_PLANNING:
+      case TaskState.TASK_CURMUDGEONING:
       case TaskState.TASK_EXECUTING:
       case TaskState.TASK_SUPER_REVIEWING:
       case TaskState.TASK_FINALIZING:

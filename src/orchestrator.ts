@@ -10,6 +10,7 @@ import { interactiveRefinement } from "./ui/refinement-interface.js";
 import { proposePlan, implementPlan } from "./agents/coder.js";
 import { reviewPlan, reviewCode } from "./agents/reviewer.js";
 import { getInitialChunk, getNextChunk } from "./agents/bean-counter.js";
+import { runCurmudgeon } from "./agents/curmudgeon.js";
 import { runSuperReviewer } from "./agents/super-reviewer.js";
 import { generateCommitMessage } from "./agents/scribe.js";
 import { ensureWorktree } from "./git/worktrees.js";
@@ -78,8 +79,14 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 case TaskState.TASK_PLANNING: {
                     // Planning phase
                     let taskToUse = taskStateMachine.getContext().taskToUse || humanTask;
+                    let curmudgeonFeedback: string | undefined = undefined;
 
-                    if (taskStateMachine.isRetry()) {
+                    // Check if we're coming from Curmudgeon with simplification request
+                    if (taskStateMachine.getCurmudgeonFeedback()) {
+                        curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
+                        log.orchestrator(`Re-planning with Curmudgeon feedback: ${curmudgeonFeedback}`);
+                        taskStateMachine.clearCurmudgeonFeedback();
+                    } else if (taskStateMachine.isRetry()) {
                         // This is a retry from super review - update the task
                         taskToUse = taskStateMachine.getContext().retryFeedback ||
                                     `Address SuperReviewer feedback: ${taskStateMachine.getSuperReviewResult()?.summary}`;
@@ -102,7 +109,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     }
 
                     try {
-                        const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive);
+                        const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback);
                         if (!interactive) {
                             log.planner(`Saved plan → ${planPath}`);
                         }
@@ -111,6 +118,51 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     } catch (error) {
                         log.warn(`Planning failed: ${error}`);
                         taskStateMachine.transition(TaskEvent.PLAN_FAILED, error);
+                    }
+                    break;
+                }
+
+                case TaskState.TASK_CURMUDGEONING: {
+                    // Curmudgeon review phase - check for over-engineering
+                    const planMd = taskStateMachine.getPlanMd();
+                    const simplificationCount = taskStateMachine.getSimplificationCount();
+                    const maxSimplifications = 2;
+
+                    // Check if we've exceeded the simplification limit
+                    if (simplificationCount >= maxSimplifications) {
+                        log.orchestrator(`Reached maximum simplification attempts (${maxSimplifications}). Proceeding with current plan.`);
+                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                        break;
+                    }
+
+                    try {
+                        log.orchestrator("🧐 Curmudgeon reviewing plan for over-engineering...");
+                        const result = await runCurmudgeon(provider, cwd, planMd || "");
+
+                        if (result.verdict === "approve") {
+                            log.orchestrator("✅ Curmudgeon approved the plan");
+                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                        } else if (result.verdict === "simplify") {
+                            // Check if we're still under the limit
+                            if (simplificationCount < maxSimplifications - 1) {
+                                log.orchestrator(`🔄 Curmudgeon requests simplification: ${result.reasoning}`);
+                                // Store the feedback for the planner
+                                taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                            } else {
+                                // This is the last allowed simplification
+                                log.orchestrator(`⚠️ Curmudgeon requests simplification but this is the final attempt (${simplificationCount + 1}/${maxSimplifications})`);
+                                taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                            }
+                        } else if (result.verdict === "reject") {
+                            log.orchestrator(`❌ Curmudgeon rejected the plan: ${result.reasoning}`);
+                            taskStateMachine.transition(TaskEvent.ERROR_OCCURRED, new Error(`Curmudgeon rejected: ${result.reasoning}`));
+                        }
+                    } catch (error) {
+                        log.warn(`Curmudgeon review failed: ${error}`);
+                        // On error, proceed without curmudgeon review
+                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                     }
                     break;
                 }

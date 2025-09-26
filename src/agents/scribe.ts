@@ -8,9 +8,10 @@ export async function generateCommitMessage(
   provider: LLMProvider,
   cwd: string
 ): Promise<string> {
-  const prompt = `You are a commit message generator. Analyze the staged git changes and create a proper commit message.
+  const prompt = `You are a commit message generator. Analyze git changes and create a proper commit message.
 
-Run git diff commands to understand what changed, then write a concise, descriptive commit message.
+First check for staged changes with 'git diff --cached'. If there are no staged changes, check unstaged changes with 'git diff'.
+Run the appropriate git diff commands to understand what changed, then write a concise, descriptive commit message.
 
 Output ONLY the commit message, nothing else.`;
 

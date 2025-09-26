@@ -15,6 +15,15 @@ export interface SuperReviewerResult {
   issues?: string[];
 }
 
+// Curmudgeon types
+export type CurmudgeonVerdict = "approve" | "simplify" | "reject";
+
+export interface CurmudgeonResult {
+  verdict: CurmudgeonVerdict;
+  reasoning: string;
+  suggestions?: string[];
+}
+
 // Task refinement types
 export interface RefinedTask {
   goal: string;
