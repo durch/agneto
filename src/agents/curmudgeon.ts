@@ -6,7 +6,8 @@ import { log } from "../ui/log.js";
 export async function runCurmudgeon(
   provider: LLMProvider,
   cwd: string,
-  planMd: string
+  planMd: string,
+  taskDescription?: string
 ): Promise<CurmudgeonResult | null> {
   const sys = readFileSync(
     new URL("../prompts/curmudgeon.md", import.meta.url),
@@ -15,6 +16,17 @@ export async function runCurmudgeon(
 
   log.startStreaming("Curmudgeon");
 
+  // Build the user message with optional task description
+  let userMessage = "";
+  if (taskDescription) {
+    userMessage = `Task Requirements:\n\n${taskDescription}\n\n`;
+  }
+  userMessage += `Plan (Markdown):\n\n${planMd}\n\nReview this plan for over-engineering, unnecessary complexity, or scope creep`;
+  if (taskDescription) {
+    userMessage += " in the context of the stated requirements";
+  }
+  userMessage += ". Provide your verdict.";
+
   const res = await provider.query({
     cwd,
     mode: "plan", // Read-only mode since Curmudgeon only reviews plans
@@ -22,7 +34,7 @@ export async function runCurmudgeon(
       { role: "system", content: sys },
       {
         role: "user",
-        content: `Plan (Markdown):\n\n${planMd}\n\nReview this plan for over-engineering, unnecessary complexity, or scope creep. Provide your verdict.`,
+        content: userMessage,
       },
     ],
     callbacks: {

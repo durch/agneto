@@ -137,7 +137,12 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                     try {
                         log.orchestrator("🧐 Curmudgeon reviewing plan for over-engineering...");
-                        const result = await runCurmudgeon(provider, cwd, planMd || "");
+
+                        // Get the task description to pass to Curmudgeon
+                        // This could be the refined task or the original task
+                        const taskDescription = taskStateMachine.getContext().taskToUse || humanTask;
+
+                        const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription);
 
                         if (!result) {
                             // Parsing failed, proceed without curmudgeon review
