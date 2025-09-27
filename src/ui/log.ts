@@ -296,23 +296,25 @@ class LogUI {
 
   coder(s: string): void {
     if (this.shouldLog('info')) {
-      this.clearToolStatus();
       this.checkPhaseTransition('CODING');
 
       // Check for raw response pattern
       if (s.startsWith('Raw ') && s.includes(' response:')) {
+        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
         this.bufferRawMessage(s, 'coder');
         return;
       }
 
       // Check for interpretation pattern
       if (s.startsWith('Interpreted ') && s.includes(' as:')) {
+        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
         if (this.consolidateWithInterpretation(s, 'coder')) {
           return; // Successfully consolidated
         }
       }
 
-      // Normal message output with badge and indentation
+      // Normal message output with badge and indentation - clear status for meaningful content
+      this.clearToolStatus(); // Substantive content - clear status
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const indentedMessage = this.applyIndentToMultiline(s);
@@ -326,23 +328,25 @@ class LogUI {
 
   review(s: string): void {
     if (this.shouldLog('info')) {
-      this.clearToolStatus();
       this.checkPhaseTransition('REVIEW');
 
       // Check for raw response pattern
       if (s.startsWith('Raw ') && s.includes(' response:')) {
+        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
         this.bufferRawMessage(s, 'review');
         return;
       }
 
       // Check for interpretation pattern
       if (s.startsWith('Interpreted ') && s.includes(' as:')) {
+        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
         if (this.consolidateWithInterpretation(s, 'review')) {
           return; // Successfully consolidated
         }
       }
 
-      // Normal message output with badge and indentation
+      // Normal message output with badge and indentation - clear status for meaningful content
+      this.clearToolStatus(); // Substantive content - clear status
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const indentedMessage = this.applyIndentToMultiline(s);
@@ -356,7 +360,6 @@ class LogUI {
 
   beanCounter(s: string): void {
     if (this.shouldLog('info')) {
-      this.clearToolStatus();
       this.checkPhaseTransition('CHUNKING');
 
       // Extract chunk/sprint info from Bean Counter messages
@@ -364,18 +367,21 @@ class LogUI {
 
       // Check for raw response pattern
       if (s.startsWith('Raw ') && s.includes(' response:')) {
+        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
         this.bufferRawMessage(s, 'beanCounter');
         return;
       }
 
       // Check for interpretation pattern
       if (s.startsWith('Interpreted ') && s.includes(' as:')) {
+        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
         if (this.consolidateWithInterpretation(s, 'beanCounter')) {
           return; // Successfully consolidated
         }
       }
 
-      // Normal message output with badge and indentation
+      // Normal message output with badge and indentation - clear status for meaningful content
+      this.clearToolStatus(); // Substantive content - clear status
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const indentedMessage = this.applyIndentToMultiline(s);
@@ -389,7 +395,6 @@ class LogUI {
 
   orchestrator(s: string): void {
     if (this.shouldLog('info')) {
-      this.clearToolStatus();
       this.checkPhaseTransition('ORCHESTRATION');
 
       // Check for task completion markers
@@ -400,18 +405,21 @@ class LogUI {
 
       // Check for raw response pattern
       if (s.startsWith('Raw ') && s.includes(' response:')) {
+        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
         this.bufferRawMessage(s, 'orchestrator');
         return;
       }
 
       // Check for interpretation pattern
       if (s.startsWith('Interpreted ') && s.includes(' as:')) {
+        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
         if (this.consolidateWithInterpretation(s, 'orchestrator')) {
           return; // Successfully consolidated
         }
       }
 
-      // Normal message output with badge and indentation
+      // Normal message output with badge and indentation - clear status for meaningful content
+      this.clearToolStatus(); // Substantive content - clear status
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const indentedMessage = this.applyIndentToMultiline(s);
@@ -462,7 +470,6 @@ class LogUI {
   }
 
   toolResult(agent: string, isError: boolean): void {
-    this.clearToolStatus();
     if (!this.shouldLog('debug')) return;
 
     const icon = isError ? '❌' : '✅';
@@ -760,9 +767,12 @@ class LogUI {
    * - When switching between different types of output to prevent status line interference
    * - At the end of a task or when cleaning up the display
    */
-  clearToolStatus(): void {
-    // Use carriage return to move cursor to line start, then clear to end of line
-    process.stdout.write('\r\x1b[K');
+  clearToolStatus(hasContent: boolean = true): void {
+    // Only clear the tool status when hasContent is true
+    if (hasContent) {
+      // Use carriage return to move cursor to line start, then clear to end of line
+      process.stdout.write('\r\x1b[K');
+    }
   }
 }
 
