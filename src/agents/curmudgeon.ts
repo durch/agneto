@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import type { LLMProvider } from "../providers/index.js";
 import type { CurmudgeonVerdict, CurmudgeonResult } from "../types.js";
 import { log } from "../ui/log.js";
+import { interpretCurmudgeonResponse } from "../protocol/interpreter.js";
 
 export async function runCurmudgeon(
   provider: LLMProvider,
@@ -46,43 +47,13 @@ export async function runCurmudgeon(
     },
   });
 
-  // Parse the response to extract verdict and reasoning
-  const lines = res?.trim().split("\n");
-  if (!lines) {
-    log.warn("Failed to get response from Curmudgeon - proceeding without review");
+  // Use interpreter to extract verdict and reasoning from natural language response
+  const interpretation = await interpretCurmudgeonResponse(provider, res, cwd);
+
+  if (!interpretation) {
+    log.warn("Failed to interpret Curmudgeon response - proceeding without review");
     return null;
   }
 
-  const verdictLine = lines.find((line) => line.startsWith("VERDICT:"));
-  const reasoningLine = lines.find((line) => line.startsWith("REASONING:"));
-  const suggestionLines = lines.filter((line) => line.startsWith("SUGGESTION:"));
-
-  // Parse verdict, return null if we can't parse it
-  if (!verdictLine) {
-    log.warn("Could not parse VERDICT from Curmudgeon response - proceeding without review");
-    return null;
-  }
-
-  let verdict: CurmudgeonVerdict;
-  if (verdictLine.includes("approve")) {
-    verdict = "approve";
-  } else if (verdictLine.includes("reject")) {
-    verdict = "reject";
-  } else if (verdictLine.includes("simplify")) {
-    verdict = "simplify";
-  } else {
-    log.warn(`Unknown verdict in Curmudgeon response: ${verdictLine} - proceeding without review`);
-    return null;
-  }
-
-  const reasoning =
-    reasoningLine?.replace("REASONING:", "").trim() ||
-    "No reasoning provided";
-
-  const suggestions =
-    suggestionLines.length > 0
-      ? suggestionLines.map((line) => line.replace("SUGGESTION:", "").trim())
-      : undefined;
-
-  return { verdict, reasoning, suggestions };
+  return interpretation;
 }

@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderResponse, ReviewerResponse } from "./schemas.js";
 import type { BeanCounterChunk } from "../agents/bean-counter.js";
-import type { SuperReviewerVerdict } from "../types.js";
+import type { SuperReviewerVerdict, CurmudgeonResult, CurmudgeonVerdict } from "../types.js";
 
 // Interpreter result types
 export interface CoderInterpretation {
@@ -37,6 +37,12 @@ export interface SuperReviewerInterpretation {
   verdict: SuperReviewerVerdict;
   summary: string;
   issues?: string[];
+}
+
+export interface CurmudgeonInterpretation {
+  verdict: CurmudgeonVerdict;
+  reasoning: string;
+  suggestions?: string[];
 }
 
 /**
@@ -200,6 +206,46 @@ export async function interpretSuperReviewerResponse(
 }
 
 /**
+ * Stateless interpreter for Curmudgeon responses
+ */
+export async function interpretCurmudgeonResponse(
+  provider: LLMProvider,
+  rawResponse: string | undefined,
+  cwd: string
+): Promise<CurmudgeonInterpretation | null> {
+  // Load interpreter prompt
+  const template = readFileSync(
+    new URL("../prompts/interpreter-curmudgeon.md", import.meta.url),
+    "utf8"
+  );
+
+  const messages: Msg[] = [
+    { role: "system", content: template },
+    {
+      role: "user",
+      content: `Extract the decision from this Curmudgeon response:\n\n${rawResponse}`,
+    },
+  ];
+
+  try {
+    const response = await provider.query({
+      cwd,
+      mode: "default", // Use default mode for consistent streaming
+      allowedTools: [],
+      model: "sonnet",
+      messages,
+    });
+
+    // Parse interpreter's simple keyword response
+    return parseCurmudgeonKeywords(response, rawResponse);
+  } catch (error) {
+    console.error("Interpreter failed to parse Curmudgeon response:", error);
+    console.error("Raw response was:", rawResponse);
+    return null;
+  }
+}
+
+/**
  * Convert interpreted Coder response to legacy format for orchestrator compatibility
  */
 export function convertCoderInterpretation(
@@ -250,6 +296,19 @@ export function convertReviewerInterpretation(
     verdict: interpretation.verdict,
     feedback: interpretation.feedback,
     continueNext: interpretation.continueNext,
+  };
+}
+
+/**
+ * Convert interpreted Curmudgeon response to CurmudgeonResult for orchestrator compatibility
+ */
+export function convertCurmudgeonInterpretation(
+  interpretation: CurmudgeonInterpretation
+): CurmudgeonResult {
+  return {
+    verdict: interpretation.verdict,
+    reasoning: interpretation.reasoning,
+    suggestions: interpretation.suggestions,
   };
 }
 
@@ -530,6 +589,100 @@ function extractContext(response: string | undefined): string {
   }
 
   return contextLines.join(" ").trim();
+}
+
+/**
+ * Parse Curmudgeon interpreter keywords
+ */
+function parseCurmudgeonKeywords(
+  response: string | undefined,
+  originalResponse: string | undefined
+): CurmudgeonInterpretation | null {
+  const lowerResponse = response?.toLowerCase().trim();
+  let verdict: CurmudgeonVerdict = "simplify"; // Default to simplify (most common)
+
+  // Map interpreter keywords to verdict
+  if (lowerResponse?.includes("approve")) {
+    verdict = "approve";
+  } else if (lowerResponse?.includes("simplify")) {
+    verdict = "simplify";
+  } else if (lowerResponse?.includes("reject")) {
+    verdict = "reject";
+  }
+  // Default to simplify
+
+  // Extract reasoning and suggestions from original response
+  const reasoning = extractReasoning(originalResponse) || "Plan complexity assessment completed";
+  const suggestions = extractSuggestions(originalResponse);
+
+  return {
+    verdict,
+    reasoning,
+    suggestions: suggestions.length > 0 ? suggestions : undefined,
+  };
+}
+
+/**
+ * Extract reasoning from Curmudgeon response text
+ */
+function extractReasoning(response: string | undefined): string | undefined {
+  if (!response) return undefined;
+
+  const lines = response.split("\n");
+
+  // Look for structured REASONING: line first
+  for (const line of lines) {
+    if (line.toLowerCase().includes("reasoning:")) {
+      const reasoningPart = line.split(":")[1]?.trim();
+      if (reasoningPart && reasoningPart.length > 5) {
+        return reasoningPart;
+      }
+    }
+  }
+
+  // Fallback: use the main content as reasoning
+  // Find the first substantial sentence that's not a verdict
+  const sentences = response.split(/[.!?]/);
+  for (const sentence of sentences) {
+    const cleanSentence = sentence.trim().toLowerCase();
+    if (
+      cleanSentence.length > 15 &&
+      !cleanSentence.includes("verdict:") &&
+      !cleanSentence.includes("suggestion:")
+    ) {
+      return sentence.trim();
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Extract suggestions from Curmudgeon response text
+ */
+function extractSuggestions(response: string | undefined): string[] {
+  if (!response) return [];
+  const suggestions: string[] = [];
+  const lines = response.split("\n");
+
+  for (const line of lines) {
+    // Look for SUGGESTION: patterns
+    if (line.toLowerCase().includes("suggestion:")) {
+      const suggestionPart = line.split(":")[1]?.trim();
+      if (suggestionPart && suggestionPart.length > 5) {
+        suggestions.push(suggestionPart);
+      }
+    }
+    // Look for bullet points that might be suggestions
+    else if (/^\s*[-*]/.test(line) && line.length > 10) {
+      const cleanLine = line.replace(/^\s*[-*]\s*/, "").trim();
+      if (cleanLine.length > 5) {
+        suggestions.push(cleanLine);
+      }
+    }
+  }
+
+  return suggestions;
 }
 
 /**
