@@ -1,0 +1,119 @@
+{
+  "metadata": {
+    "taskId": "test-audit-integration",
+    "description": "verify audit logging works",
+    "startTime": "2025-09-27T19:24:56.688Z",
+    "status": "active",
+    "auditVersion": "1.0.0",
+    "exportTime": "2025-09-27T19:44:23.014Z"
+  },
+  "analytics": {
+    "totalEvents": 5,
+    "agentStats": {
+      "planner": {
+        "messageCount": 2,
+        "toolUsageCount": 0,
+        "completionCount": 0,
+        "totalCost": 0,
+        "totalDuration": 0,
+        "avgCostPerCompletion": 0,
+        "avgDurationPerCompletion": 0
+      },
+      "orchestrator": {
+        "messageCount": 3,
+        "toolUsageCount": 0,
+        "completionCount": 0,
+        "totalCost": 0,
+        "totalDuration": 0,
+        "avgCostPerCompletion": 0,
+        "avgDurationPerCompletion": 0
+      }
+    },
+    "execution": {
+      "phases": [
+        "PLANNING",
+        "ORCHESTRATION"
+      ],
+      "totalChunks": 0,
+      "totalSprints": 0,
+      "chunkProgression": []
+    },
+    "toolUsage": {},
+    "performance": {
+      "totalCost": 0,
+      "totalDuration": 0,
+      "costByAgent": {
+        "planner": 0,
+        "orchestrator": 0
+      },
+      "durationByAgent": {
+        "planner": 0,
+        "orchestrator": 0
+      },
+      "costPerEvent": 0,
+      "costPerChunk": 0
+    },
+    "humanInteraction": {
+      "interventionCount": 0,
+      "interventionPoints": []
+    }
+  },
+  "events": [
+    {
+      "id": "c20526f7-b6df-4841-b9cf-579f6e2c0546",
+      "timestamp": "2025-09-27T19:24:56.690Z",
+      "agent": "planner",
+      "eventType": "message",
+      "message": "Planning \"verify audit logging works\"…",
+      "phase": "PLANNING"
+    },
+    {
+      "id": "a6967151-0f78-4b9a-8603-fef357542b16",
+      "timestamp": "2025-09-27T19:26:11.806Z",
+      "agent": "planner",
+      "eventType": "message",
+      "message": "Saved plan → /Users/drazen/playground/agneto/.worktrees/task-0r4rwwpq/.worktrees/test-audit-integration/.plans/test-audit-integration/plan.md",
+      "phase": "PLANNING"
+    },
+    {
+      "id": "7e2b5b95-30c4-4f64-bd2a-961fdfa95db3",
+      "timestamp": "2025-09-27T19:26:11.807Z",
+      "agent": "orchestrator",
+      "eventType": "message",
+      "message": "🧐 Curmudgeon reviewing plan for over-engineering...",
+      "phase": "ORCHESTRATION"
+    },
+    {
+      "id": "b4941aa8-8798-4854-a39b-e7a43023ea53",
+      "timestamp": "2025-09-27T19:26:18.707Z",
+      "agent": "orchestrator",
+      "eventType": "message",
+      "message": "✅ Curmudgeon approved the plan",
+      "phase": "ORCHESTRATION"
+    },
+    {
+      "id": "1e8633ab-b1ae-4cb4-bf2c-392182679039",
+      "timestamp": "2025-09-27T19:26:18.712Z",
+      "agent": "orchestrator",
+      "eventType": "message",
+      "message": "🧮 Bean Counter: Determining work chunk...",
+      "phase": "ORCHESTRATION"
+    }
+  ],
+  "sessions": {
+    "planner": {
+      "startTime": "2025-09-27T19:24:56.690Z",
+      "eventCount": 2,
+      "firstEventId": "c20526f7-b6df-4841-b9cf-579f6e2c0546",
+      "endTime": "2025-09-27T19:26:11.806Z",
+      "lastEventId": "a6967151-0f78-4b9a-8603-fef357542b16"
+    },
+    "orchestrator": {
+      "startTime": "2025-09-27T19:26:11.807Z",
+      "eventCount": 3,
+      "firstEventId": "7e2b5b95-30c4-4f64-bd2a-961fdfa95db3",
+      "endTime": "2025-09-27T19:26:18.712Z",
+      "lastEventId": "1e8633ab-b1ae-4cb4-bf2c-392182679039"
+    }
+  }
+}

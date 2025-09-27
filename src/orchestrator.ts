@@ -15,7 +15,8 @@ import { runSuperReviewer } from "./agents/super-reviewer.js";
 import { generateCommitMessage } from "./agents/scribe.js";
 import { ensureWorktree } from "./git/worktrees.js";
 import { mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
-import { log } from "./ui/log.js";
+import { log as originalLog } from "./ui/log.js";
+import { enableAuditLogging } from "./audit/integration-example.js";
 import { promptForSuperReviewerDecision } from "./ui/human-review.js";
 import { generateUUID } from "./utils/id-generator.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
@@ -32,6 +33,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId);
 
+    // Initialize audit logging - wrap the log instance for comprehensive audit capture
+    const { log, auditLogger } = enableAuditLogging(taskId, humanTask);
+
     // Initialize parent state machine
     const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
 
@@ -47,11 +51,13 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     // Start the task
     taskStateMachine.transition(TaskEvent.START_TASK);
 
-    // Main task state machine loop
+    // Main task state machine loop with audit lifecycle management
     const maxIterations = 200; // Safety limit for parent + child iterations
     let iterations = 0;
+    let taskCompleted = false;
 
-    while (taskStateMachine.canContinue() && iterations < maxIterations) {
+    try {
+        while (taskStateMachine.canContinue() && iterations < maxIterations) {
         iterations++;
 
         try {
@@ -203,7 +209,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         reviewerSessionId,
                         beanCounterInitialized,
                         coderInitialized,
-                        reviewerInitialized
+                        reviewerInitialized,
+                        log
                     );
 
                     beanCounterInitialized = executionResult.beanCounterInitialized;
@@ -298,6 +305,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                 case TaskState.TASK_COMPLETE:
                     log.orchestrator("🎉 Task completed successfully!");
+                    taskCompleted = true;
                     break;
 
                 case TaskState.TASK_ABANDONED:
@@ -315,8 +323,21 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         }
     }
 
-    if (iterations >= maxIterations) {
-        log.orchestrator(`⚠️ Reached maximum iteration limit (${maxIterations}). Stopping execution.`);
+        if (iterations >= maxIterations) {
+            log.orchestrator(`⚠️ Reached maximum iteration limit (${maxIterations}). Stopping execution.`);
+        }
+
+        // Mark audit task as completed if successful
+        if (taskCompleted) {
+            auditLogger.completeTask();
+        }
+
+    } catch (error) {
+        // Mark audit task as failed on any unhandled error
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        auditLogger.failTask(errorMessage);
+        log.warn(`Task execution failed: ${errorMessage}`);
+        throw error; // Re-throw to maintain existing error handling behavior
     }
 
     return { cwd };
@@ -333,7 +354,8 @@ async function runExecutionStateMachine(
     reviewerSessionId: string,
     beanCounterInitialized: boolean,
     coderInitialized: boolean,
-    reviewerInitialized: boolean
+    reviewerInitialized: boolean,
+    log: any
 ): Promise<{ beanCounterInitialized: boolean, coderInitialized: boolean, reviewerInitialized: boolean }> {
 
     // Run the execution state machine loop

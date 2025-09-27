@@ -1,0 +1,8 @@
+{
+  "taskId": "test-audit-integration",
+  "description": "verify audit logging works",
+  "startTime": "2025-09-27T19:24:56.688Z",
+  "status": "active",
+  "eventCount": 5,
+  "auditVersion": "1.0.0"
+}
