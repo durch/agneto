@@ -42,7 +42,6 @@ export interface SuperReviewerInterpretation {
 export interface CurmudgeonInterpretation {
   verdict: CurmudgeonVerdict;
   reasoning: string;
-  suggestions?: string[];
 }
 
 /**
@@ -308,7 +307,6 @@ export function convertCurmudgeonInterpretation(
   return {
     verdict: interpretation.verdict,
     reasoning: interpretation.reasoning,
-    suggestions: interpretation.suggestions,
   };
 }
 
@@ -611,79 +609,19 @@ function parseCurmudgeonKeywords(
   }
   // Default to simplify
 
-  // Extract reasoning and suggestions from original response
-  const reasoning = extractReasoning(originalResponse) || "Plan complexity assessment completed";
-  const suggestions = extractSuggestions(originalResponse);
+  // Use the full original response as reasoning for maximum context
+  const reasoning = originalResponse?.trim();
+  if (!reasoning) {
+    return null; // Don't mask problems with defaults
+  }
 
   return {
     verdict,
     reasoning,
-    suggestions: suggestions.length > 0 ? suggestions : undefined,
   };
 }
 
-/**
- * Extract reasoning from Curmudgeon response text
- */
-function extractReasoning(response: string | undefined): string | undefined {
-  if (!response) return undefined;
 
-  const lines = response.split("\n");
-
-  // Look for structured REASONING: line first
-  for (const line of lines) {
-    if (line.toLowerCase().includes("reasoning:")) {
-      const reasoningPart = line.split(":")[1]?.trim();
-      if (reasoningPart && reasoningPart.length > 5) {
-        return reasoningPart;
-      }
-    }
-  }
-
-  // Fallback: use the main content as reasoning
-  // Find the first substantial sentence that's not a verdict
-  const sentences = response.split(/[.!?]/);
-  for (const sentence of sentences) {
-    const cleanSentence = sentence.trim().toLowerCase();
-    if (
-      cleanSentence.length > 15 &&
-      !cleanSentence.includes("verdict:") &&
-      !cleanSentence.includes("suggestion:")
-    ) {
-      return sentence.trim();
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Extract suggestions from Curmudgeon response text
- */
-function extractSuggestions(response: string | undefined): string[] {
-  if (!response) return [];
-  const suggestions: string[] = [];
-  const lines = response.split("\n");
-
-  for (const line of lines) {
-    // Look for SUGGESTION: patterns
-    if (line.toLowerCase().includes("suggestion:")) {
-      const suggestionPart = line.split(":")[1]?.trim();
-      if (suggestionPart && suggestionPart.length > 5) {
-        suggestions.push(suggestionPart);
-      }
-    }
-    // Look for bullet points that might be suggestions
-    else if (/^\s*[-*]/.test(line) && line.length > 10) {
-      const cleanLine = line.replace(/^\s*[-*]\s*/, "").trim();
-      if (cleanLine.length > 5) {
-        suggestions.push(cleanLine);
-      }
-    }
-  }
-
-  return suggestions;
-}
 
 /**
  * Extract issues from SuperReviewer response text

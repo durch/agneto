@@ -752,9 +752,14 @@ class LogUI {
    * Creates a single updating status line using ANSI escape codes
    */
   showToolStatus(agent: string, tool: string, input?: any): void {
+    // Clear any existing status line first
+    process.stdout.write('\r\x1b[K');
+
     const paramSummary = this.summarizeToolParams(tool, input);
     const statusLine = `⚙️ [${agent}] → ${tool}${paramSummary}`;
-    process.stdout.write(`\r${statusLine}`);
+
+    // Write status line and ensure it ends properly positioned
+    process.stdout.write(statusLine);
   }
 
   /**
@@ -770,8 +775,8 @@ class LogUI {
   clearToolStatus(hasContent: boolean = true): void {
     // Only clear the tool status when hasContent is true
     if (hasContent) {
-      // Use carriage return to move cursor to line start, then clear to end of line
-      process.stdout.write('\r\x1b[K');
+      // Use carriage return to move cursor to line start, then clear to end of line, then newline
+      process.stdout.write('\r\x1b[K\n');
     }
   }
 }

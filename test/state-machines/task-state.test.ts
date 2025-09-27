@@ -93,7 +93,7 @@ describe('TaskStateMachine', () => {
       stateMachine.setPlan(planMd, planPath);
       stateMachine.transition(TaskEvent.PLAN_CREATED);
 
-      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_EXECUTING);
+      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_CURMUDGEONING);
       expect(stateMachine.getPlanMd()).toBe(planMd);
       expect(stateMachine.getPlanPath()).toBe(planPath);
     });
@@ -107,12 +107,52 @@ describe('TaskStateMachine', () => {
     });
   });
 
+  describe('Curmudgeon Phase', () => {
+    beforeEach(() => {
+      const nonInteractive = new TaskStateMachine(taskId, humanTask, cwd, { nonInteractive: true });
+      nonInteractive.transition(TaskEvent.START_TASK);
+      nonInteractive.setPlan('# Test Plan', '/test/plan.md');
+      nonInteractive.transition(TaskEvent.PLAN_CREATED);
+      stateMachine = nonInteractive;
+    });
+
+    it('enters curmudgeon state after planning', () => {
+      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_CURMUDGEONING);
+    });
+
+    it('handles curmudgeon approval', () => {
+      stateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_EXECUTING);
+    });
+
+    it('handles curmudgeon simplify request', () => {
+      stateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_PLANNING);
+      expect(stateMachine.getSimplificationCount()).toBe(1);
+    });
+
+    it('tracks simplification count', () => {
+      expect(stateMachine.getSimplificationCount()).toBe(0);
+      stateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+      expect(stateMachine.getSimplificationCount()).toBe(1);
+    });
+
+    it('manages curmudgeon feedback', () => {
+      stateMachine.setCurmudgeonFeedback('Too complex, simplify');
+      expect(stateMachine.getCurmudgeonFeedback()).toBe('Too complex, simplify');
+
+      stateMachine.clearCurmudgeonFeedback();
+      expect(stateMachine.getCurmudgeonFeedback()).toBeUndefined();
+    });
+  });
+
   describe('Execution Phase', () => {
     beforeEach(() => {
       const nonInteractive = new TaskStateMachine(taskId, humanTask, cwd, { nonInteractive: true });
       nonInteractive.transition(TaskEvent.START_TASK);
       nonInteractive.setPlan('# Test Plan', '/test/plan.md');
       nonInteractive.transition(TaskEvent.PLAN_CREATED);
+      nonInteractive.transition(TaskEvent.CURMUDGEON_APPROVED);
       stateMachine = nonInteractive;
     });
 
@@ -157,6 +197,7 @@ describe('TaskStateMachine', () => {
       nonInteractive.transition(TaskEvent.START_TASK);
       nonInteractive.setPlan('# Test Plan', '/test/plan.md');
       nonInteractive.transition(TaskEvent.PLAN_CREATED);
+      nonInteractive.transition(TaskEvent.CURMUDGEON_APPROVED);
       nonInteractive.transition(TaskEvent.EXECUTION_COMPLETE);
       stateMachine = nonInteractive;
     });
@@ -218,6 +259,7 @@ describe('TaskStateMachine', () => {
       nonInteractive.transition(TaskEvent.START_TASK);
       nonInteractive.setPlan('# Test Plan', '/test/plan.md');
       nonInteractive.transition(TaskEvent.PLAN_CREATED);
+      nonInteractive.transition(TaskEvent.CURMUDGEON_APPROVED);
       nonInteractive.transition(TaskEvent.EXECUTION_COMPLETE);
       nonInteractive.transition(TaskEvent.SUPER_REVIEW_PASSED);
       stateMachine = nonInteractive;
@@ -232,6 +274,7 @@ describe('TaskStateMachine', () => {
       autoMerge.transition(TaskEvent.START_TASK);
       autoMerge.setPlan('# Test Plan', '/test/plan.md');
       autoMerge.transition(TaskEvent.PLAN_CREATED);
+      autoMerge.transition(TaskEvent.CURMUDGEON_APPROVED);
       autoMerge.transition(TaskEvent.EXECUTION_COMPLETE);
       autoMerge.transition(TaskEvent.SUPER_REVIEW_PASSED);
 
@@ -273,6 +316,7 @@ describe('TaskStateMachine', () => {
       nonInteractive.transition(TaskEvent.START_TASK);
       nonInteractive.setPlan('# Test Plan', '/test/plan.md');
       nonInteractive.transition(TaskEvent.PLAN_CREATED);
+      nonInteractive.transition(TaskEvent.CURMUDGEON_APPROVED);
       nonInteractive.transition(TaskEvent.EXECUTION_COMPLETE);
       nonInteractive.setRetryFeedback('Fix issues');
       nonInteractive.transition(TaskEvent.HUMAN_RETRY);

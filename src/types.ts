@@ -21,7 +21,6 @@ export type CurmudgeonVerdict = "approve" | "simplify" | "reject";
 export interface CurmudgeonResult {
   verdict: CurmudgeonVerdict;
   reasoning: string;
-  suggestions?: string[];
 }
 
 // Task refinement types

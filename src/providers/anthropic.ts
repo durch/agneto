@@ -266,7 +266,7 @@ const anthropic: LLMProvider = {
       } catch (error) {
         if (DEBUG) {
           console.error(`=== DEBUG: Query attempt ${attempt}/${maxRetries} failed ===`);
-          console.error("Error:", error.message);
+          console.error("Error:", error instanceof Error ? error.message : String(error));
           console.error("===============================================");
         }
 

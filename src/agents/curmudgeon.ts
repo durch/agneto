@@ -47,7 +47,7 @@ export async function runCurmudgeon(
     },
   });
 
-  // Use interpreter to extract verdict and reasoning from natural language response
+  // Use interpreter to extract verdict from natural language response
   const interpretation = await interpretCurmudgeonResponse(provider, res, cwd);
 
   if (!interpretation) {
@@ -55,5 +55,9 @@ export async function runCurmudgeon(
     return null;
   }
 
-  return interpretation;
+  // Return both the verdict and the full original response for planner context
+  return {
+    verdict: interpretation.verdict,
+    reasoning: res?.trim() || "No response received",
+  };
 }

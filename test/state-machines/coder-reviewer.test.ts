@@ -18,10 +18,43 @@ describe('CoderReviewerStateMachine', () => {
     });
   });
 
+  describe('Bean Counter Coordination', () => {
+    it('starts with chunking before planning', () => {
+      // Start chunking (Bean Counter phase)
+      stateMachine.transition(Event.START_CHUNKING);
+      expect(stateMachine.getCurrentState()).toBe(State.BEAN_COUNTING);
+
+      // Bean Counter provides chunk
+      const chunk = {
+        description: 'Implement user authentication',
+        requirements: ['Add login form', 'Add validation'],
+        context: 'Working on auth module'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
+      expect(stateMachine.getCurrentState()).toBe(State.PLANNING);
+      expect(stateMachine.getCurrentChunk()).toEqual(chunk);
+    });
+
+    it('can complete task directly from Bean Counter', () => {
+      stateMachine.transition(Event.START_CHUNKING);
+      stateMachine.transition(Event.TASK_COMPLETED);
+      expect(stateMachine.getCurrentState()).toBe(State.TASK_COMPLETE);
+    });
+  });
+
   describe('Planning Cycle', () => {
+    beforeEach(() => {
+      // Get to planning state via Bean Counter
+      stateMachine.transition(Event.START_CHUNKING);
+      const chunk = {
+        description: 'Test chunk',
+        requirements: ['Requirement 1'],
+        context: 'Test context'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
+    });
+
     it('transitions through planning states correctly', () => {
-      // Start planning
-      stateMachine.transition(Event.START_PLANNING);
       expect(stateMachine.getCurrentState()).toBe(State.PLANNING);
 
       // Propose a plan
@@ -34,7 +67,6 @@ describe('CoderReviewerStateMachine', () => {
     });
 
     it('handles plan revision requests', () => {
-      stateMachine.transition(Event.START_PLANNING);
       stateMachine.transition(Event.PLAN_PROPOSED);
 
       // Request revision
@@ -46,7 +78,6 @@ describe('CoderReviewerStateMachine', () => {
     });
 
     it('handles plan rejection', () => {
-      stateMachine.transition(Event.START_PLANNING);
       stateMachine.transition(Event.PLAN_PROPOSED);
 
       stateMachine.transition(Event.PLAN_REJECTED);
@@ -58,7 +89,6 @@ describe('CoderReviewerStateMachine', () => {
     });
 
     it('tracks planning attempts', () => {
-      stateMachine.transition(Event.START_PLANNING);
       expect(stateMachine.getPlanAttempts()).toBe(0);
 
       stateMachine.incrementPlanAttempts();
@@ -69,8 +99,6 @@ describe('CoderReviewerStateMachine', () => {
     });
 
     it('handles max planning attempts', () => {
-      stateMachine.transition(Event.START_PLANNING);
-
       // Max out attempts
       for (let i = 0; i < 4; i++) {
         stateMachine.incrementPlanAttempts();
@@ -83,8 +111,14 @@ describe('CoderReviewerStateMachine', () => {
 
   describe('Implementation Cycle', () => {
     beforeEach(() => {
-      // Get to implementation state
-      stateMachine.transition(Event.START_PLANNING);
+      // Get to implementation state via Bean Counter flow
+      stateMachine.transition(Event.START_CHUNKING);
+      const chunk = {
+        description: 'Test chunk',
+        requirements: ['Requirement 1'],
+        context: 'Test context'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
       stateMachine.transition(Event.PLAN_PROPOSED);
       stateMachine.transition(Event.PLAN_APPROVED);
     });
@@ -98,7 +132,7 @@ describe('CoderReviewerStateMachine', () => {
 
       // Approve code
       stateMachine.transition(Event.CODE_APPROVED);
-      expect(stateMachine.getCurrentState()).toBe(State.PLANNING);
+      expect(stateMachine.getCurrentState()).toBe(State.BEAN_COUNTING);
     });
 
     it('handles code revision requests', () => {
@@ -115,8 +149,8 @@ describe('CoderReviewerStateMachine', () => {
       stateMachine.transition(Event.CODE_APPLIED);
       stateMachine.transition(Event.CODE_REJECTED);
 
-      // Rejection goes back to planning phase
-      expect(stateMachine.getCurrentState()).toBe(State.PLANNING);
+      // Rejection goes back to Bean Counter for re-chunking
+      expect(stateMachine.getCurrentState()).toBe(State.BEAN_COUNTING);
       expect(stateMachine.canContinue()).toBe(true);
       // Attempts should be reset
       expect(stateMachine.getPlanAttempts()).toBe(0);
@@ -145,35 +179,46 @@ describe('CoderReviewerStateMachine', () => {
   });
 
   describe('Task Completion', () => {
-    it('completes task when signaled', () => {
-      stateMachine.transition(Event.START_PLANNING);
+    it('completes task when signaled from Bean Counter', () => {
+      stateMachine.transition(Event.START_CHUNKING);
       stateMachine.transition(Event.TASK_COMPLETED);
 
       expect(stateMachine.getCurrentState()).toBe(State.TASK_COMPLETE);
       expect(stateMachine.canContinue()).toBe(false);
     });
 
-    it('continues to next step when approved with continueNext=true', () => {
+    it('continues to next step when approved - goes to Bean Counter', () => {
       // Get to code review
-      stateMachine.transition(Event.START_PLANNING);
+      stateMachine.transition(Event.START_CHUNKING);
+      const chunk = {
+        description: 'Test chunk',
+        requirements: ['Requirement 1'],
+        context: 'Test context'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
       stateMachine.transition(Event.PLAN_PROPOSED);
       stateMachine.transition(Event.PLAN_APPROVED);
       stateMachine.transition(Event.CODE_APPLIED);
 
-      // Approve with continue
+      // Approve with continue - goes back to Bean Counter
       stateMachine.transition(Event.CODE_APPROVED);
-      expect(stateMachine.getCurrentState()).toBe(State.PLANNING);
+      expect(stateMachine.getCurrentState()).toBe(State.BEAN_COUNTING);
     });
 
-    it('completes when approved with continueNext=false', () => {
+    it('completes when task is done', () => {
       // Get to code review
-      stateMachine.transition(Event.START_PLANNING);
+      stateMachine.transition(Event.START_CHUNKING);
+      const chunk = {
+        description: 'Test chunk',
+        requirements: ['Requirement 1'],
+        context: 'Test context'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
       stateMachine.transition(Event.PLAN_PROPOSED);
       stateMachine.transition(Event.PLAN_APPROVED);
       stateMachine.transition(Event.CODE_APPLIED);
 
-      // Approve without continue (task done)
-      stateMachine.transition(Event.CONTINUE_TO_NEXT);
+      // Complete the task from code review
       stateMachine.transition(Event.TASK_COMPLETED);
 
       expect(stateMachine.getCurrentState()).toBe(State.TASK_COMPLETE);
@@ -182,7 +227,13 @@ describe('CoderReviewerStateMachine', () => {
 
   describe('Human Interaction', () => {
     it('handles plan needs_human verdict', () => {
-      stateMachine.transition(Event.START_PLANNING);
+      stateMachine.transition(Event.START_CHUNKING);
+      const chunk = {
+        description: 'Test chunk',
+        requirements: ['Requirement 1'],
+        context: 'Test context'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
       stateMachine.transition(Event.PLAN_PROPOSED);
       stateMachine.transition(Event.PLAN_NEEDS_HUMAN);
 
@@ -191,7 +242,13 @@ describe('CoderReviewerStateMachine', () => {
     });
 
     it('handles code needs_human verdict', () => {
-      stateMachine.transition(Event.START_PLANNING);
+      stateMachine.transition(Event.START_CHUNKING);
+      const chunk = {
+        description: 'Test chunk',
+        requirements: ['Requirement 1'],
+        context: 'Test context'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
       stateMachine.transition(Event.PLAN_PROPOSED);
       stateMachine.transition(Event.PLAN_APPROVED);
       stateMachine.transition(Event.CODE_APPLIED);
@@ -202,7 +259,7 @@ describe('CoderReviewerStateMachine', () => {
     });
 
     it('handles human abort', () => {
-      stateMachine.transition(Event.START_PLANNING);
+      stateMachine.transition(Event.START_CHUNKING);
       stateMachine.transition(Event.HUMAN_ABORT);
 
       expect(stateMachine.getCurrentState()).toBe(State.TASK_ABORTED);
@@ -212,26 +269,38 @@ describe('CoderReviewerStateMachine', () => {
 
   describe('Error Handling', () => {
     it('handles errors during planning', () => {
-      stateMachine.transition(Event.START_PLANNING);
+      stateMachine.transition(Event.START_CHUNKING);
+      const chunk = {
+        description: 'Test chunk',
+        requirements: ['Requirement 1'],
+        context: 'Test context'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
 
       const error = new Error('Planning failed');
       stateMachine.transition(Event.ERROR_OCCURRED, error);
 
-      // Should retry since we have attempts left (0 < 3)
+      // Should retry since we have attempts left (0 < 7)
       expect(stateMachine.getCurrentState()).toBe(State.PLANNING);
       expect(stateMachine.getLastError()).toBe(error);
       expect(stateMachine.getPlanFeedback()).toBe('Previous attempt failed: Planning failed');
     });
 
     it('handles errors during implementation', () => {
-      stateMachine.transition(Event.START_PLANNING);
+      stateMachine.transition(Event.START_CHUNKING);
+      const chunk = {
+        description: 'Test chunk',
+        requirements: ['Requirement 1'],
+        context: 'Test context'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
       stateMachine.transition(Event.PLAN_PROPOSED);
       stateMachine.transition(Event.PLAN_APPROVED);
 
       const error = new Error('Implementation failed');
       stateMachine.transition(Event.ERROR_OCCURRED, error);
 
-      // Should retry since we have attempts left (0 < 3)
+      // Should retry since we have attempts left (0 < 7)
       expect(stateMachine.getCurrentState()).toBe(State.IMPLEMENTING);
       expect(stateMachine.getLastError()).toBe(error);
       expect(stateMachine.getCodeFeedback()).toBe('Previous attempt failed: Implementation failed');
@@ -242,8 +311,8 @@ describe('CoderReviewerStateMachine', () => {
     it('maintains context through transitions', () => {
       const context = stateMachine.getContext();
 
-      expect(context.maxPlanAttempts).toBe(3);
-      expect(context.maxCodeAttempts).toBe(3);
+      expect(context.maxPlanAttempts).toBe(7);
+      expect(context.maxCodeAttempts).toBe(7);
       expect(context.planAttempts).toBe(0);
       expect(context.codeAttempts).toBe(0);
     });
@@ -264,7 +333,13 @@ describe('CoderReviewerStateMachine', () => {
     });
 
     it('resets attempts when moving to new phase', () => {
-      stateMachine.transition(Event.START_PLANNING);
+      stateMachine.transition(Event.START_CHUNKING);
+      const chunk = {
+        description: 'Test chunk',
+        requirements: ['Requirement 1'],
+        context: 'Test context'
+      };
+      stateMachine.transition(Event.CHUNK_READY, chunk);
       stateMachine.incrementPlanAttempts();
       stateMachine.incrementPlanAttempts();
 
