@@ -228,7 +228,62 @@ const anthropic: LLMProvider = {
     callbacks,
   }) {
     const prompt = flattenMessages(messages);
-    return runClaudeCLI(cwd, prompt, mode, allowedTools, sessionId, model, isInitialized, callbacks);
+    const maxRetries = 3;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await runClaudeCLI(cwd, prompt, mode, allowedTools, sessionId, model, isInitialized, callbacks);
+
+        // Check if result is empty, undefined, or the literal string "undefined"
+        if (result === undefined || result === null || result === "undefined" || result.trim() === "") {
+          if (DEBUG) {
+            console.error(`=== DEBUG: Query attempt ${attempt}/${maxRetries} returned empty result ===`);
+            console.error("Result:", result);
+            console.error("Type:", typeof result);
+            console.error("===============================================");
+          }
+
+          if (attempt === maxRetries) {
+            console.error(`❌ Provider query failed after ${maxRetries} attempts - no content received from Claude CLI`);
+            return undefined; // Return undefined to maintain existing behavior
+          }
+
+          // Exponential backoff: wait 1s, then 2s, then 4s
+          const delayMs = Math.pow(2, attempt - 1) * 1000;
+          if (DEBUG) {
+            console.error(`Retrying in ${delayMs}ms...`);
+          }
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+
+        // Valid result received
+        if (attempt > 1 && DEBUG) {
+          console.error(`✅ Provider query succeeded on attempt ${attempt}`);
+        }
+
+        return result;
+      } catch (error) {
+        if (DEBUG) {
+          console.error(`=== DEBUG: Query attempt ${attempt}/${maxRetries} failed ===`);
+          console.error("Error:", error.message);
+          console.error("===============================================");
+        }
+
+        if (attempt === maxRetries) {
+          throw error; // Re-throw the last error
+        }
+
+        // Exponential backoff for errors too
+        const delayMs = Math.pow(2, attempt - 1) * 1000;
+        if (DEBUG) {
+          console.error(`Retrying in ${delayMs}ms...`);
+        }
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+
+    return undefined; // This should never be reached, but TypeScript needs it
   },
 };
 

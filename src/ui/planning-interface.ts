@@ -20,7 +20,23 @@ export async function displayPlan(planMd: string | undefined, iteration: number)
     console.log("\n" + chalk.cyan("=".repeat(50)));
     console.log(chalk.cyan.bold(`📋 PLAN v${iteration}`));
     console.log(chalk.cyan("=".repeat(50)));
-    console.log(planMd);
+
+    // Validate plan content
+    if (planMd === undefined || planMd === null || planMd === "undefined" || planMd.trim() === "") {
+        console.log(chalk.red.bold("⚠️  PLAN GENERATION FAILED"));
+        console.log(chalk.red("No content received from the planning agent."));
+        console.log("");
+        console.log(chalk.yellow("This usually indicates:"));
+        console.log(chalk.yellow("• Claude CLI connection issues"));
+        console.log(chalk.yellow("• Provider timeout or error"));
+        console.log(chalk.yellow("• Plan content was too complex to generate"));
+        console.log("");
+        console.log(chalk.blue("Try running with DEBUG=true for more details:"));
+        console.log(chalk.blue("DEBUG=true npm start -- <task-id> \"task description\""));
+    } else {
+        console.log(planMd);
+    }
+
     console.log(chalk.cyan("=".repeat(50)) + "\n");
 }
 

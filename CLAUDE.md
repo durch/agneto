@@ -24,6 +24,12 @@ make build     # Build TypeScript
 make task ID=fix-1 DESC="fix the bug"  # Start a task
 make merge ID=fix-1  # Auto-merge and cleanup (non-interactive!)
 make list      # See all worktrees
+make check     # System health check
+make debug ID=fix-1 DESC="task"  # Run with debug output
+make quick DESC="task"  # Non-interactive with auto-generated ID
+make auto DESC="task"  # Non-interactive with auto-merge
+make continue ID=fix-1 DESC="next steps"  # Continue existing task
+make commit MSG="message"  # Commit with Claude Code attribution
 ```
 
 ### If you're here to...
@@ -75,20 +81,23 @@ npm start -- <task-id> "continue work"
 
 ## 🎯 How Agneto Works (Essential Understanding)
 
-Agneto is a **human-in-the-loop AI development system** with six personas acting as an **Agile AI Development Team**:
+Agneto is a **human-in-the-loop AI development system** with seven main personas and one utility agent acting as an **Agile AI Development Team**:
 
 1. **Task Refiner** → Pre-processes vague task descriptions (interactive mode only)
 2. **Planner** → Creates high-level strategic plans from your task description
-3. **Bean Counter** → "Scrum Master" - breaks plans into small chunks, tracks progress, coordinates sprints
-4. **Coder** → Pure implementation executor - implements pre-defined chunks from Bean Counter
-5. **Reviewer** → Validates chunk implementations against requirements
-6. **SuperReviewer** → Final quality gate checking acceptance criteria and tests
+3. **Curmudgeon** → Reviews plans for over-engineering and unnecessary complexity (NEW!)
+4. **Bean Counter** → "Scrum Master" - breaks plans into small chunks, tracks progress, coordinates sprints
+5. **Coder** → Pure implementation executor - implements pre-defined chunks from Bean Counter
+6. **Reviewer** → Validates chunk implementations against requirements
+7. **SuperReviewer** → Final quality gate checking acceptance criteria and tests
+8. **Scribe** (utility) → Generates commit messages using fast Sonnet model
 
 **Key Concept:** Everything happens in isolated git worktrees (`.worktrees/<task-id>`), so the main branch is never at risk.
 
-### The New Flow (Bean Counter Coordinated)
+### The Complete Flow (With Curmudgeon Gate)
 ```
-You describe task → Task refinement (optional) → Interactive planning → Plan approved →
+You describe task → Task refinement (optional) → Interactive planning →
+Curmudgeon review (simplify if needed) → Plan approved →
 Bean Counter: First chunk → Coder: Implements chunk → Reviewer: Approves →
 Bean Counter: Next chunk → Coder: Implements → Reviewer: Approves → [repeat] →
 Bean Counter: Task complete → SuperReviewer final check → Review in worktree → Merge
@@ -104,11 +113,14 @@ Bean Counter: Task complete → SuperReviewer final check → Review in worktree
 
 ### Running a Task (Most Common)
 ```bash
-# NEW: No need to specify task ID - auto-generated!
-npm start -- "implement user authentication"
+# NEW: Using npx (no installation needed!)
+npx agneto "implement user authentication"
 
 # With custom ID (still supported)
-npm start -- auth-1 "implement user authentication"
+npx agneto auth-1 "implement user authentication"
+
+# If working on Agneto itself, use npm start
+npm start -- "implement user authentication"
 
 # For CI/automation - skip interactive planning
 npm start -- "fix typo in README" --non-interactive
@@ -166,6 +178,8 @@ npm run cleanup-task <task-id>
 ### Empty Planner Output
 **Symptom:** Plan comes back empty or just a title
 
+**Note:** The Curmudgeon agent now helps prevent this by reviewing and simplifying overly complex plans
+
 **Root Causes & Solutions (in order of likelihood):**
 
 1. **Claude CLI not responding properly**
@@ -210,11 +224,10 @@ ls .worktrees/<task-id>/src/  # Is the structure there?
 - After 3 attempts, it stops - review the feedback
 
 ### Coder Completion Signals
-**Coder signals completion via JSON:**
-
-```json
-{"action": "complete"}
-```
+**Coder signals completion naturally:**
+- "All the planned features have been implemented successfully."
+- "I've completed all the required changes."
+- The interpreter converts this to: `{"action": "complete"}`
 
 **This triggers:**
 - System recognizes all plan work is done
@@ -233,6 +246,20 @@ rm -rf .worktrees/task-1     # Remove directory
 
 ## 🏗️ Architecture Reference
 
+### State Machine Architecture
+
+Agneto uses a two-level state machine architecture:
+
+1. **Task State Machine** (`task-state-machine.ts`):
+   - Manages the overall task lifecycle
+   - States: INIT → REFINING → PLANNING → CURMUDGEONING → EXECUTING → SUPER_REVIEWING → COMPLETE
+   - Handles high-level task flow and agent coordination
+
+2. **Execution State Machine** (`state-machine.ts`):
+   - Manages the Bean Counter/Coder/Reviewer loop
+   - States: BEAN_COUNTING → PLANNING → PLAN_REVIEW → IMPLEMENTING → CODE_REVIEW
+   - Handles chunk-by-chunk implementation cycles
+
 ### Key Files to Know
 
 | File | Purpose | Modify when... |
@@ -242,16 +269,23 @@ rm -rf .worktrees/task-1     # Remove directory
 | `src/agents/bean-counter.ts` | Work chunking & progress tracking | Adjusting chunking strategy |
 | `src/agents/coder.ts` | Implementation execution | Changing implementation logic |
 | `src/agents/reviewer.ts` | Review logic | Adjusting approval criteria |
+| `src/agents/curmudgeon.ts` | Plan simplification logic | Preventing over-engineering |
+| `src/agents/scribe.ts` | Commit message generation | Auto-generating commits |
 | `src/providers/anthropic.ts` | Claude CLI integration | Fixing LLM communication |
 | `src/protocol/interpreter.ts` | Natural language interpreter | Changing response interpretation |
-| `src/protocol/schemas.ts` | Legacy JSON schemas (deprecated) | Historical reference only |
-| `src/protocol/validators.ts` | Legacy validation (deprecated) | Historical reference only |
+| `src/protocol/schemas.ts` | JSON schemas (still used for validation) | Schema definitions |
+| `src/protocol/validators.ts` | Input validation | Validation logic |
 | `src/protocol/prompt-template.ts` | Template rendering | Changing prompt injection |
 | `src/prompts/interpreter-*.md` | Interpreter prompts | Improving response interpretation |
 | `src/ui/planning-interface.ts` | Interactive prompts | Changing feedback types |
 | `src/prompts/*.md` | Agent instructions | Improving agent behavior |
+| `src/state-machine.ts` | Bean Counter execution state machine | Chunk execution flow |
+| `src/task-state-machine.ts` | Parent task state machine | Overall task lifecycle |
+| `src/orchestrator-helpers.ts` | Helper functions for orchestration | Utility functions |
 
 ### Data Formats (Natural Language → Interpreter Protocol)
+
+**AIDEV-NOTE:** The system uses natural language communication between agents, with a stateless interpreter converting responses to structured decisions. This eliminates JSON parsing failures and makes agent responses more readable and debuggable.
 
 **Agent Communication Flow:**
 ```
@@ -384,11 +418,11 @@ Set `DEBUG=true` to see:
 ### Known Limitations
 - ⚠️ No parallel task execution
 - ⚠️ Limited to Claude CLI capabilities
-- ⚠️ No built-in test suite yet
+- ⚠️ Test suite exists but needs expansion (see test/ directory)
 
 ### Common Gotchas
 - **Bean Counter drives all work chunking** - Coder no longer decides what to work on
-- **Three separate sessions** - Bean Counter, Coder, and Reviewer don't share context
+- **Four separate sessions** - Bean Counter, Coder, Reviewer, and SuperReviewer each have their own context
 - **Bean Counter maintains progress memory** - Its session accumulates all completed work
 - **Coder is now pure executor** - Receives pre-defined chunks, focuses only on implementation
 - **Small chunks are the goal** - Bean Counter breaks work into frequent review cycles
@@ -422,21 +456,36 @@ Set `DEBUG=true` to see:
 - Makefile for easier operations
 - AI playbook integration in prompts
 
-### Next: Test Suite
-- Add comprehensive test suite for Agneto itself
-- Integration tests for the full flow
-- Unit tests for individual agents
+### Next: Enhanced Testing
+- Expand existing test suite (test/ directory has fixtures and basic tests)
+- Add integration tests for the full flow
+- Add unit tests for individual agents
+- Add CI/CD pipeline for automated testing
 
-### Future: Phase 3 - Curmudgeon
-- Fourth persona to prevent over-engineering
-- Reviews plans before execution
-- Keeps solutions simple and pragmatic
+### ✅ Recently Completed (Phase 3)
+- **Curmudgeon Agent** - Implemented! Reviews plans for over-engineering
+- **Scribe Agent** - Generates commit messages with Sonnet
+- **Enhanced Makefile** - More commands for easier operations
+- **State Machine Architecture** - Clear separation of task and execution states
 
 ### Long-term: Enhanced UX
 - TUI Interface with three-pane view
 - Real-time execution monitoring
 - Parallel task execution
 - Memory between retries (context passing)
+
+## 📦 NPX Usage (NEW!)
+
+Agneto is now available as an NPM package! You can use it without installation:
+
+```bash
+# Use directly with npx (no installation needed)
+npx agneto "fix authentication bug"
+
+# Or install globally
+npm install -g agneto
+agneto "your task description"
+```
 
 ## 🎯 Pro Tips (From Experience)
 
@@ -470,6 +519,8 @@ Set `DEBUG=true` to see:
 ### Quick Diagnosis Checklist
 ```bash
 # Run these in order when something's wrong:
+make check                        # Run all health checks at once
+# OR manually:
 npm run build                     # 1. Does it compile?
 echo "OK" | claude -p              # 2. Is Claude CLI working?
 DEBUG=true npx tsx test-provider.ts  # 3. Is provider working?
