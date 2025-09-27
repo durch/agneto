@@ -4,7 +4,7 @@
   "description": "AI-powered autonomous coding agent with human-in-the-loop planning",
   "type": "module",
   "bin": {
-    "agneto": "./bin/agneto.js"
+    "agneto": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -33,7 +33,9 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -p . && npm run copy-prompts && npm run add-shebang",
+    "copy-prompts": "mkdir -p dist/prompts && cp -r src/prompts/*.md dist/prompts/",
+    "add-shebang": "echo '#!/usr/bin/env node' | cat - dist/cli.js > temp && mv temp dist/cli.js && chmod +x dist/cli.js",
     "prepublishOnly": "npm run build",
     "start": "tsx src/cli.ts",
     "new-task": "bash scripts/new-task.sh",
