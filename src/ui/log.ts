@@ -281,6 +281,7 @@ class LogUI {
   // Agent start messages (info level - always shown in normal operation)
   planner(s: string): void {
     if (this.shouldLog('info')) {
+      this.clearToolStatus();
       this.checkPhaseTransition('PLANNING');
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
@@ -295,6 +296,7 @@ class LogUI {
 
   coder(s: string): void {
     if (this.shouldLog('info')) {
+      this.clearToolStatus();
       this.checkPhaseTransition('CODING');
 
       // Check for raw response pattern
@@ -324,6 +326,7 @@ class LogUI {
 
   review(s: string): void {
     if (this.shouldLog('info')) {
+      this.clearToolStatus();
       this.checkPhaseTransition('REVIEW');
 
       // Check for raw response pattern
@@ -353,6 +356,7 @@ class LogUI {
 
   beanCounter(s: string): void {
     if (this.shouldLog('info')) {
+      this.clearToolStatus();
       this.checkPhaseTransition('CHUNKING');
 
       // Extract chunk/sprint info from Bean Counter messages
@@ -385,6 +389,7 @@ class LogUI {
 
   orchestrator(s: string): void {
     if (this.shouldLog('info')) {
+      this.clearToolStatus();
       this.checkPhaseTransition('ORCHESTRATION');
 
       // Check for task completion markers
@@ -441,6 +446,9 @@ class LogUI {
 
   // Tool usage tracking (debug level - only shown in debug mode)
   toolUse(agent: string, tool: string, input?: any): void {
+    // Show real-time status at all log levels
+    this.showToolStatus(agent, tool, input);
+
     if (!this.shouldLog('debug')) return;
 
     const paramSummary = this.summarizeToolParams(tool, input);
@@ -454,6 +462,7 @@ class LogUI {
   }
 
   toolResult(agent: string, isError: boolean): void {
+    this.clearToolStatus();
     if (!this.shouldLog('debug')) return;
 
     const icon = isError ? '❌' : '✅';
@@ -729,6 +738,31 @@ class LogUI {
           return ' (complex params)';
         }
     }
+  }
+
+  /**
+   * Show persistent tool status that overwrites itself on each call
+   * Creates a single updating status line using ANSI escape codes
+   */
+  showToolStatus(agent: string, tool: string, input?: any): void {
+    const paramSummary = this.summarizeToolParams(tool, input);
+    const statusLine = `⚙️ [${agent}] → ${tool}${paramSummary}`;
+    process.stdout.write(`\r${statusLine}`);
+  }
+
+  /**
+   * Clear the current tool status line and reset cursor position
+   * Uses ANSI escape codes to clear the current line and return cursor to start
+   *
+   * Call this method when:
+   * - A tool operation has completed
+   * - Before outputting normal logging messages to ensure clean lines
+   * - When switching between different types of output to prevent status line interference
+   * - At the end of a task or when cleaning up the display
+   */
+  clearToolStatus(): void {
+    // Use carriage return to move cursor to line start, then clear to end of line
+    process.stdout.write('\r\x1b[K');
   }
 }
 
