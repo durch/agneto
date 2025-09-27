@@ -2,6 +2,7 @@ import { select, input, confirm } from "@inquirer/prompts";
 import chalk from "chalk";
 import { log } from "./log.js";
 import type { RefinedTask } from "../types.js";
+import { prettyPrint } from "./pretty.js";
 
 export type RefinementFeedbackType =
     | "approve"
@@ -13,29 +14,13 @@ export interface RefinementFeedback {
 }
 
 export async function displayRefinedTask(refinedTask: RefinedTask, iteration: number) {
-    console.log("\n" + chalk.blue("=".repeat(50)));
+    console.log("\n" + chalk.blue("=".repeat(120)));
     console.log(chalk.blue.bold(`🔍 REFINED TASK v${iteration}`));
-    console.log(chalk.blue("=".repeat(50)));
+    console.log(chalk.blue("=".repeat(120)));
     
-    console.log(chalk.bold("\n📎 Goal:"));
-    console.log(refinedTask.goal);
+    console.log(prettyPrint(refinedTask.raw || "", { indent: 2 }));
     
-    if (refinedTask.context) {
-        console.log(chalk.bold("\n📝 Context:"));
-        console.log(refinedTask.context);
-    }
-    
-    if (refinedTask.constraints.length > 0) {
-        console.log(chalk.bold("\n⚠️ Constraints:"));
-        refinedTask.constraints.forEach(c => console.log(`  • ${c}`));
-    }
-    
-    if (refinedTask.successCriteria.length > 0) {
-        console.log(chalk.bold("\n✅ Success Criteria:"));
-        refinedTask.successCriteria.forEach(c => console.log(`  • ${c}`));
-    }
-    
-    console.log("\n" + chalk.blue("=".repeat(50)) + "\n");
+    console.log("\n" + chalk.blue("=".repeat(120)) + "\n");
 }
 
 export async function getRefinementFeedback(): Promise<RefinementFeedback> {

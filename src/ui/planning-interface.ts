@@ -1,6 +1,7 @@
 import { select, input, confirm } from "@inquirer/prompts";
 import chalk from "chalk";
 import { log } from "./log.js";
+import { prettyPrint } from "./pretty.js";
 
 export type PlanFeedbackType =
     | "approve"
@@ -17,9 +18,9 @@ export interface PlanFeedback {
 }
 
 export async function displayPlan(planMd: string | undefined, iteration: number) {
-    console.log("\n" + chalk.cyan("=".repeat(50)));
+    console.log("\n" + chalk.cyan("=".repeat(120)));
     console.log(chalk.cyan.bold(`📋 PLAN v${iteration}`));
-    console.log(chalk.cyan("=".repeat(50)));
+    console.log(chalk.cyan("=".repeat(120)));
 
     // Validate plan content
     if (planMd === undefined || planMd === null || planMd === "undefined" || planMd.trim() === "") {
@@ -34,10 +35,10 @@ export async function displayPlan(planMd: string | undefined, iteration: number)
         console.log(chalk.blue("Try running with DEBUG=true for more details:"));
         console.log(chalk.blue("DEBUG=true npm start -- <task-id> \"task description\""));
     } else {
-        console.log(planMd);
+        console.log(prettyPrint(planMd, { indent: 2 }));
     }
 
-    console.log(chalk.cyan("=".repeat(50)) + "\n");
+    console.log(chalk.cyan("=".repeat(120)) + "\n");
 }
 
 export async function displayPlanDiff(oldPlan: string, newPlan: string) {

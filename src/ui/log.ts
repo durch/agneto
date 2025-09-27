@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import { prettyPrint } from "./pretty.js";
 
 // Log level types and hierarchy
 type LogLevel = 'debug' | 'verbose' | 'info';
@@ -191,10 +192,10 @@ class LogUI {
     if (this.rawResponseBuffer && this.bufferAgentType) {
       // Output the buffered message normally based on agent type
       const agentFormatters: Record<string, (s: string) => void> = {
-        'coder': (s) => console.log(chalk.magenta("🤖 Coder:"), s),
-        'review': (s) => console.log(chalk.yellow("👀 Reviewer:"), s),
-        'beanCounter': (s) => console.log(chalk.blue("🧮 Bean Counter:"), s),
-        'orchestrator': (s) => console.log(chalk.green("🙋 Orchestrator:"), s)
+        'coder': (s) => console.log(chalk.magenta("🤖 Coder:"), "\n" + prettyPrint(s, { indent: 2 })),
+        'review': (s) => console.log(chalk.yellow("👀 Reviewer:"), "\n" + prettyPrint(s, { indent: 2 })),
+        'beanCounter': (s) => console.log(chalk.blue("🧮 Bean Counter:"), "\n" + prettyPrint(s, { indent: 2 })),
+        'orchestrator': (s) => console.log(chalk.green("🙋 Orchestrator:"), "\n" + prettyPrint(s, { indent: 2 }))
       };
 
       const formatter = agentFormatters[this.bufferAgentType];
@@ -245,10 +246,10 @@ class LogUI {
 
       // Output with appropriate agent formatting
       const agentFormatters: Record<string, (s: string) => void> = {
-        'coder': (s) => console.log(chalk.magenta("🤖 Coder:"), s),
-        'review': (s) => console.log(chalk.yellow("👀 Reviewer:"), s),
-        'beanCounter': (s) => console.log(chalk.blue("🧮 Bean Counter:"), s),
-        'orchestrator': (s) => console.log(chalk.green("🙋 Orchestrator:"), s)
+        'coder': (s) => console.log(chalk.magenta("🤖 Coder:"), "\n" + prettyPrint(s, { indent: 2 })),
+        'review': (s) => console.log(chalk.yellow("👀 Reviewer:"), "\n" + prettyPrint(s, { indent: 2 })),
+        'beanCounter': (s) => console.log(chalk.blue("🧮 Bean Counter:"), "\n" + prettyPrint(s, { indent: 2 })),
+        'orchestrator': (s) => console.log(chalk.green("🙋 Orchestrator:"), "\n" + prettyPrint(s, { indent: 2 }))
       };
 
       const formatter = agentFormatters[agentType];
@@ -285,11 +286,11 @@ class LogUI {
       this.checkPhaseTransition('PLANNING');
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
-      const indentedMessage = this.applyIndentToMultiline(s);
+      const prettyMessage = prettyPrint(s, { indent: 2 });
       if (prefix) {
-        console.log(prefix + badge + chalk.cyan("📝 Planner:"), indentedMessage);
+        console.log(prefix + badge + chalk.cyan("📝 Planner:"), "\n" + prettyMessage);
       } else {
-        console.log(badge + chalk.cyan("📝 Planner:"), indentedMessage);
+        console.log(badge + chalk.cyan("📝 Planner:"), "\n" + prettyMessage);
       }
     }
   }
@@ -317,11 +318,11 @@ class LogUI {
       this.clearToolStatus(); // Substantive content - clear status
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
-      const indentedMessage = this.applyIndentToMultiline(s);
+      const prettyMessage = prettyPrint(s, { indent: 2 });
       if (prefix) {
-        console.log(prefix + badge + chalk.magenta("🤖 Coder:"), indentedMessage);
+        console.log(prefix + badge + chalk.magenta("🤖 Coder:"), "\n" + prettyMessage);
       } else {
-        console.log(badge + chalk.magenta("🤖 Coder:"), indentedMessage);
+        console.log(badge + chalk.magenta("🤖 Coder:"), "\n" + prettyMessage);
       }
     }
   }
@@ -349,11 +350,11 @@ class LogUI {
       this.clearToolStatus(); // Substantive content - clear status
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
-      const indentedMessage = this.applyIndentToMultiline(s);
+      const prettyMessage = prettyPrint(s, { indent: 2 });
       if (prefix) {
-        console.log(prefix + badge + chalk.yellow("👀 Reviewer:"), indentedMessage);
+        console.log(prefix + badge + chalk.yellow("👀 Reviewer:"), "\n" + prettyMessage);
       } else {
-        console.log(badge + chalk.yellow("👀 Reviewer:"), indentedMessage);
+        console.log(badge + chalk.yellow("👀 Reviewer:"), "\n" + prettyMessage);
       }
     }
   }
@@ -384,11 +385,11 @@ class LogUI {
       this.clearToolStatus(); // Substantive content - clear status
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
-      const indentedMessage = this.applyIndentToMultiline(s);
+      const prettyMessage = prettyPrint(s, { indent: 2 });
       if (prefix) {
-        console.log(prefix + badge + chalk.blue("🧮 Bean Counter:"), indentedMessage);
+        console.log(prefix + badge + chalk.blue("🧮 Bean Counter:"), "\n" + prettyMessage);
       } else {
-        console.log(badge + chalk.blue("🧮 Bean Counter:"), indentedMessage);
+        console.log(badge + chalk.blue("🧮 Bean Counter:"), "\n" + prettyMessage);
       }
     }
   }
