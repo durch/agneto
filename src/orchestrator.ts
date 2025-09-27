@@ -494,7 +494,7 @@ async function runExecutionStateMachine(
                         case 'already-complete':
                             // Work is already done, mark chunk as complete and continue to next
                             log.orchestrator(`✅ Chunk already complete: ${verdict.feedback}`);
-                            stateMachine.transition(Event.CODE_APPROVED);
+                            stateMachine.transition(Event.CODE_APPROVED, verdict.feedback);
                             break;
 
                         case 'revise-plan':

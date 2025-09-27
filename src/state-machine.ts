@@ -255,6 +255,10 @@ export class CoderReviewerStateMachine {
         } else if (event === Event.CODE_APPROVED) {
           // Work is already complete for this chunk, move to next
           this.state = State.BEAN_COUNTING;
+          // Store feedback about what was already complete for Bean Counter
+          if (data !== undefined) {
+            this.context.codeFeedback = data;
+          }
           return true;
         } else if (event === Event.PLAN_REVISION_REQUESTED) {
           if (this.context.planAttempts >= this.context.maxPlanAttempts) {
