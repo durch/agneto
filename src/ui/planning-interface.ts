@@ -1,6 +1,7 @@
 import { select, input, confirm } from "@inquirer/prompts";
 import chalk from "chalk";
 import { log } from "./log.js";
+import { renderMarkdown } from "../ui/markdown-renderer.js";
 
 export type PlanFeedbackType =
     | "approve"
@@ -34,7 +35,7 @@ export async function displayPlan(planMd: string | undefined, iteration: number)
         console.log(chalk.blue("Try running with DEBUG=true for more details:"));
         console.log(chalk.blue("DEBUG=true npm start -- <task-id> \"task description\""));
     } else {
-        console.log(planMd);
+        console.log(renderMarkdown(planMd));
     }
 
     console.log(chalk.cyan("=".repeat(50)) + "\n");
