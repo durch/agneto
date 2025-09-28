@@ -1,3 +1,5 @@
+import type { LLMProvider } from "../providers/index.js";
+
 /**
  * Generate a short, unique, git-safe task ID
  */
@@ -45,4 +47,64 @@ export function isValidGitBranchName(name: string): boolean {
   if (/\.\.|\/{2,}/.test(name)) return false;
   
   return true;
+}
+
+/**
+ * Generate a descriptive task name from task description using LLM
+ * Falls back to generateTaskId() on any error to ensure CLI reliability
+ */
+export async function generateTaskName(
+  provider: LLMProvider,
+  taskDescription: string
+): Promise<string> {
+  try {
+    const prompt = `Generate a short, descriptive task name from this description: "${taskDescription}"
+
+Requirements:
+- Use 2-3 words maximum
+- Use kebab-case format (lowercase, dash-separated)
+- Focus on the main action or feature
+- Must be valid for git branch names
+- Examples: "fix-auth", "add-login", "update-tests"
+
+Output ONLY the task name, nothing else.`;
+
+    const response = await provider.query({
+      cwd: process.cwd(),
+      mode: "plan", // Read-only mode, no tools needed
+      model: "sonnet", // Use fast Sonnet model
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    if (!response || typeof response !== 'string') {
+      return generateTaskId();
+    }
+
+    // Clean and format the response
+    let taskName = response.trim().toLowerCase();
+
+    // Convert spaces to dashes for kebab-case
+    taskName = taskName.replace(/\s+/g, '-');
+
+    // Remove any non-alphanumeric characters except dashes
+    taskName = taskName.replace(/[^a-z0-9-]/g, '');
+
+    // Remove consecutive dashes
+    taskName = taskName.replace(/-+/g, '-');
+
+    // Remove leading/trailing dashes
+    taskName = taskName.replace(/^-|-$/g, '');
+
+    // Validate the generated name using existing git validation
+    if (taskName && isValidGitBranchName(taskName)) {
+      return taskName;
+    }
+
+    // Fall back to generated ID if validation fails
+    return generateTaskId();
+
+  } catch (error) {
+    // On any error, fall back to generated ID to ensure CLI never breaks
+    return generateTaskId();
+  }
 }

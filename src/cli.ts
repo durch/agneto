@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { runTask } from "./orchestrator.js";
-import { generateTaskId } from "./utils/id-generator.js";
+import { generateTaskId, generateTaskName } from "./utils/id-generator.js";
+import { selectProvider } from "./providers/index.js";
 
 const program = new Command();
 program
@@ -35,7 +36,8 @@ Examples:
                 taskDescription = task;
             } else {
                 // Only one argument: it's the description, generate ID
-                taskId = generateTaskId();
+                const provider = await selectProvider();
+                taskId = await generateTaskName(provider, taskOrId);
                 taskDescription = taskOrId;
             }
             
