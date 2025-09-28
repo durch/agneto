@@ -19,6 +19,7 @@ import { mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
 import { log as originalLog } from "./ui/log.js";
 import { enableAuditLogging } from "./audit/integration-example.js";
 import { CheckpointService } from "./audit/checkpoint-service.js";
+import { RestorationService } from "./audit/restoration-service.js";
 import { promptForSuperReviewerDecision } from "./ui/human-review.js";
 import { generateUUID } from "./utils/id-generator.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
@@ -42,17 +43,152 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     // Initialize checkpoint service for audit-driven recovery
     const checkpointService = new CheckpointService(taskId, cwd);
 
-    // Initialize parent state machine
-    const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
-
-    // Separate sessions for Bean Counter, Coder and Reviewer
-    const beanCounterSessionId = generateUUID();
+    // Initialize session variables (may be overridden by restoration)
+    let beanCounterSessionId = generateUUID();
     let coderSessionId = generateUUID();
     let reviewerSessionId = generateUUID();
-    taskStateMachine.setSessionIds(coderSessionId, reviewerSessionId);
     let beanCounterInitialized = false;
     let coderInitialized = false;
     let reviewerInitialized = false;
+
+    // Check for checkpoint restoration request
+    if (options?.recoveryDecision?.action === "resume") {
+        log.orchestrator("🔄 Checkpoint restoration requested...");
+
+        const restorationService = new RestorationService(taskId, cwd);
+        const checkpointNumber = options.recoveryDecision.checkpointNumber;
+
+        if (!checkpointNumber) {
+            log.warn("❌ No checkpoint number provided for restoration. Starting fresh.");
+        } else {
+            try {
+                // Validate restoration possibility
+                const canRestore = restorationService.canRestore();
+                if (!canRestore.possible) {
+                    log.warn(`❌ Restoration not possible: ${canRestore.reason}. Starting fresh.`);
+                } else {
+                    // Attempt restoration
+                    const restorationResult = await restorationService.restoreFromCheckpoint(checkpointNumber);
+
+                    if (restorationResult.success && restorationResult.restoredState) {
+                        log.orchestrator("✅ Checkpoint restoration completed successfully!");
+
+                        // Initialize parent state machine with restored context
+                        const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
+
+                        // Restore task state machine
+                        const taskStateRestore = restorationService.restoreTaskStateMachine(
+                            taskStateMachine,
+                            restorationResult.restoredState.taskState
+                        );
+
+                        if (!taskStateRestore.success) {
+                            log.warn(`⚠️ Task state restoration failed: ${taskStateRestore.error}. Starting fresh.`);
+                        } else {
+                            // Restore execution state machine if present
+                            let restoredExecutionStateMachine: CoderReviewerStateMachine | undefined;
+                            if (restorationResult.restoredState.executionState) {
+                                restoredExecutionStateMachine = new CoderReviewerStateMachine(7, 7, restorationResult.restoredState.fileSystemState.baseCommitHash);
+                                const execStateRestore = restorationService.restoreExecutionStateMachine(
+                                    restoredExecutionStateMachine,
+                                    restorationResult.restoredState.executionState
+                                );
+
+                                if (!execStateRestore.success) {
+                                    log.warn(`⚠️ Execution state restoration failed: ${execStateRestore.error}. Will reinitialize during execution.`);
+                                    restoredExecutionStateMachine = undefined;
+                                } else {
+                                    taskStateMachine.setExecutionStateMachine(restoredExecutionStateMachine);
+                                }
+                            }
+
+                            // Restore session data
+                            const sessionRestore = restorationService.restoreAgentSessions(restorationResult.restoredState.sessionState);
+                            let restoredBeanCounterSessionId = beanCounterSessionId;
+                            let restoredCoderSessionId = coderSessionId;
+                            let restoredReviewerSessionId = reviewerSessionId;
+                            let restoredBeanCounterInitialized = false;
+                            let restoredCoderInitialized = false;
+                            let restoredReviewerInitialized = false;
+
+                            if (sessionRestore.success && sessionRestore.restoredSessions) {
+                                // Use restored session IDs if available
+                                if (sessionRestore.restoredSessions.beanCounter) {
+                                    restoredBeanCounterSessionId = sessionRestore.restoredSessions.beanCounter;
+                                    restoredBeanCounterInitialized = restorationResult.restoredState.sessionState.initialized.beanCounterInitialized;
+                                }
+                                if (sessionRestore.restoredSessions.coder) {
+                                    restoredCoderSessionId = sessionRestore.restoredSessions.coder;
+                                    restoredCoderInitialized = restorationResult.restoredState.sessionState.initialized.coderInitialized;
+                                }
+                                if (sessionRestore.restoredSessions.reviewer) {
+                                    restoredReviewerSessionId = sessionRestore.restoredSessions.reviewer;
+                                    restoredReviewerInitialized = restorationResult.restoredState.sessionState.initialized.reviewerInitialized;
+                                }
+
+                                // Update task state machine with restored session IDs
+                                taskStateMachine.setSessionIds(restoredCoderSessionId, restoredReviewerSessionId);
+
+                                // Restore Bean Counter session
+                                const beanCounterRestore = restorationService.restoreBeanCounterSession(
+                                    restoredBeanCounterSessionId,
+                                    restorationResult.restoredState.beanCounterState
+                                );
+
+                                if (!beanCounterRestore.success) {
+                                    log.warn(`⚠️ Bean Counter session restoration failed: ${beanCounterRestore.error}. Will reinitialize.`);
+                                    restoredBeanCounterInitialized = false;
+                                }
+                            }
+
+                            // Set baseline commit from restored file system state
+                            if (restorationResult.restoredState.fileSystemState.baseCommitHash) {
+                                taskStateMachine.setBaselineCommit(restorationResult.restoredState.fileSystemState.baseCommitHash);
+                                log.orchestrator(`📍 Baseline commit restored: ${restorationResult.restoredState.fileSystemState.baseCommitHash.substring(0, 8)}`);
+                            }
+
+                            // Override the initialization variables with restored state
+                            beanCounterSessionId = restoredBeanCounterSessionId;
+                            coderSessionId = restoredCoderSessionId;
+                            reviewerSessionId = restoredReviewerSessionId;
+                            beanCounterInitialized = restoredBeanCounterInitialized;
+                            coderInitialized = restoredCoderInitialized;
+                            reviewerInitialized = restoredReviewerInitialized;
+
+                            log.orchestrator("🎯 Task resuming from checkpoint...");
+
+                            // Continue with the restored task state machine
+                            return await runRestoredTask(
+                                taskStateMachine,
+                                provider,
+                                cwd,
+                                log,
+                                auditLogger,
+                                checkpointService,
+                                beanCounterSessionId,
+                                coderSessionId,
+                                reviewerSessionId,
+                                beanCounterInitialized,
+                                coderInitialized,
+                                reviewerInitialized,
+                                options
+                            );
+                        }
+                    } else {
+                        log.warn(`❌ Checkpoint restoration failed: ${restorationResult.error}. Starting fresh.`);
+                    }
+                }
+            } catch (error) {
+                log.warn(`❌ Restoration error: ${error instanceof Error ? error.message : 'Unknown error'}. Starting fresh.`);
+            }
+        }
+    }
+
+    // Initialize parent state machine
+    const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
+
+    // Set session IDs for task state machine
+    taskStateMachine.setSessionIds(coderSessionId, reviewerSessionId);
 
     // Start the task
     taskStateMachine.transition(TaskEvent.START_TASK);
@@ -351,6 +487,329 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
             taskStateMachine.transition(TaskEvent.ERROR_OCCURRED, error);
         }
     }
+
+        if (iterations >= maxIterations) {
+            log.orchestrator(`⚠️ Reached maximum iteration limit (${maxIterations}). Stopping execution.`);
+        }
+
+        // Mark audit task as completed if successful
+        if (taskCompleted) {
+            auditLogger.completeTask();
+        }
+
+    } catch (error) {
+        // Mark audit task as failed on any unhandled error
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        auditLogger.failTask(errorMessage);
+        log.warn(`Task execution failed: ${errorMessage}`);
+        throw error; // Re-throw to maintain existing error handling behavior
+    }
+
+    return { cwd };
+}
+
+// Helper function to run restored task with existing state machines
+async function runRestoredTask(
+    taskStateMachine: TaskStateMachine,
+    provider: any,
+    cwd: string,
+    log: any,
+    auditLogger: any,
+    checkpointService: CheckpointService,
+    beanCounterSessionId: string,
+    coderSessionId: string,
+    reviewerSessionId: string,
+    beanCounterInitialized: boolean,
+    coderInitialized: boolean,
+    reviewerInitialized: boolean,
+    options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }
+): Promise<{ cwd: string }> {
+    // Main task state machine loop with audit lifecycle management
+    const maxIterations = 200; // Safety limit for parent + child iterations
+    let iterations = 0;
+    let taskCompleted = false;
+
+    try {
+        while (taskStateMachine.canContinue() && iterations < maxIterations) {
+            iterations++;
+
+            try {
+                const currentState = taskStateMachine.getCurrentState();
+
+                switch (currentState) {
+                    case TaskState.TASK_REFINING: {
+                        // Task refinement (interactive only)
+                        log.info("🔍 Refining task description...");
+                        const refinerAgent = new RefinerAgent(provider);
+                        const refinedTask = await interactiveRefinement(refinerAgent, cwd, taskStateMachine.getContext().humanTask, taskStateMachine.getContext().taskId);
+
+                        if (refinedTask) {
+                            const taskToUse = formatRefinedTaskForPlanner(refinedTask);
+                            taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                            log.orchestrator("Using refined task specification for planning.");
+                            taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
+                        } else {
+                            log.warn("Task refinement cancelled. Using original description.");
+                            taskStateMachine.transition(TaskEvent.REFINEMENT_CANCELLED);
+                        }
+                        break;
+                    }
+
+                    case TaskState.TASK_PLANNING: {
+                        // Planning phase
+                        let taskToUse = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
+                        let curmudgeonFeedback: string | undefined = undefined;
+
+                        // Check if we're coming from Curmudgeon with simplification request
+                        if (taskStateMachine.getCurmudgeonFeedback()) {
+                            curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
+                            log.orchestrator(`Re-planning with Curmudgeon feedback: ${curmudgeonFeedback}`);
+                            taskStateMachine.clearCurmudgeonFeedback();
+                        } else if (taskStateMachine.isRetry()) {
+                            // This is a retry from super review - update the task
+                            taskToUse = taskStateMachine.getContext().retryFeedback ||
+                                        `Address SuperReviewer feedback: ${taskStateMachine.getSuperReviewResult()?.summary}`;
+                            log.orchestrator(`Re-planning with feedback: ${taskToUse}`);
+
+                            // Update context with new task and clear retry feedback
+                            taskStateMachine.setRefinedTask(
+                                { goal: taskToUse, context: "", constraints: [], successCriteria: [], raw: "" },
+                                taskToUse
+                            );
+                            taskStateMachine.clearRetryFeedback();
+
+                            // Reset the execution state machine for a fresh cycle
+                            taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit()));
+                        }
+
+                        const interactive = !options?.nonInteractive;
+                        if (!interactive) {
+                            log.planner(`Planning "${taskToUse}"…`);
+                        }
+
+                        try {
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback);
+                            if (!interactive) {
+                                log.planner(`Saved plan → ${planPath}`);
+                            }
+                            taskStateMachine.setPlan(planMd, planPath);
+                            taskStateMachine.transition(TaskEvent.PLAN_CREATED);
+                        } catch (error) {
+                            log.warn(`Planning failed: ${error}`);
+                            taskStateMachine.transition(TaskEvent.PLAN_FAILED, error);
+                        }
+                        break;
+                    }
+
+                    case TaskState.TASK_CURMUDGEONING: {
+                        // Curmudgeon review phase - check for over-engineering
+                        const planMd = taskStateMachine.getPlanMd();
+                        const simplificationCount = taskStateMachine.getSimplificationCount();
+                        const maxSimplifications = 2;
+
+                        // Check if we've exceeded the simplification limit
+                        if (simplificationCount >= maxSimplifications) {
+                            log.orchestrator(`Reached maximum simplification attempts (${maxSimplifications}). Proceeding with current plan.`);
+                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                            break;
+                        }
+
+                        try {
+                            log.orchestrator("🧐 Curmudgeon reviewing plan for over-engineering...");
+
+                            // Get the task description to pass to Curmudgeon
+                            // This could be the refined task or the original task
+                            const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
+
+                            const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription);
+
+                            if (!result) {
+                                // Parsing failed, proceed without curmudgeon review
+                                log.warn("Could not parse Curmudgeon response - proceeding with plan as-is");
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                            } else if (result.verdict === "approve") {
+                                log.orchestrator("✅ Curmudgeon approved the plan");
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                            } else if (result.verdict === "simplify") {
+                                // Check if we're still under the limit
+                                if (simplificationCount < maxSimplifications - 1) {
+                                    log.orchestrator(`🔄 Curmudgeon requests simplification: ${result.reasoning}`);
+                                    // Store the feedback for the planner
+                                    taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
+                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                } else {
+                                    // This is the last allowed simplification
+                                    log.orchestrator(`⚠️ Curmudgeon requests simplification but this is the final attempt (${simplificationCount + 1}/${maxSimplifications})`);
+                                    taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
+                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                }
+                            } else if (result.verdict === "reject") {
+                                log.orchestrator(`❌ Curmudgeon rejected the plan: ${result.reasoning}`);
+                                taskStateMachine.transition(TaskEvent.ERROR_OCCURRED, new Error(`Curmudgeon rejected: ${result.reasoning}`));
+                            }
+                        } catch (error) {
+                            log.warn(`Curmudgeon review failed: ${error}`);
+                            // On error, proceed without curmudgeon review
+                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                        }
+                        break;
+                    }
+
+                    case TaskState.TASK_EXECUTING: {
+                        // Execution phase - delegate to CoderReviewerStateMachine
+                        let executionStateMachine = taskStateMachine.getExecutionStateMachine();
+
+                        if (!executionStateMachine) {
+                            // Capture baseline commit to prevent reverting pre-task changes
+                            if (!taskStateMachine.getBaselineCommit()) {
+                                try {
+                                    const baselineCommit = execSync(`git -C "${cwd}" rev-parse HEAD`, { encoding: "utf8" }).trim();
+                                    taskStateMachine.setBaselineCommit(baselineCommit);
+                                    log.orchestrator(`📍 Task baseline set: ${baselineCommit.substring(0, 8)}`);
+                                } catch (error) {
+                                    log.warn(`Failed to capture baseline commit: ${error}`);
+                                }
+                            }
+
+                            // Initialize the execution state machine
+                            executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit());
+                            taskStateMachine.setExecutionStateMachine(executionStateMachine);
+                            executionStateMachine.transition(Event.START_CHUNKING);
+                        } else if (taskStateMachine.getContext().retryFeedback) {
+                            // We're retrying after SuperReviewer feedback - reset the state machine
+                            log.orchestrator("🔄 Resetting execution state machine for retry cycle");
+                            executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit());
+                            taskStateMachine.setExecutionStateMachine(executionStateMachine);
+                            executionStateMachine.transition(Event.START_CHUNKING);
+                        }
+
+                        // Run the execution state machine
+                        const planMd = taskStateMachine.getPlanMd();
+                        if (!planMd) {
+                            throw new Error("No plan available for execution");
+                        }
+
+                        const executionResult = await runExecutionStateMachine(
+                            executionStateMachine,
+                            provider,
+                            cwd,
+                            planMd,
+                            beanCounterSessionId,
+                            coderSessionId,
+                            reviewerSessionId,
+                            beanCounterInitialized,
+                            coderInitialized,
+                            reviewerInitialized,
+                            log,
+                            checkpointService,
+                            taskStateMachine
+                        );
+
+                        // Check execution result
+                        const finalExecutionState = executionStateMachine.getCurrentState();
+                        if (finalExecutionState === State.TASK_COMPLETE) {
+                            taskStateMachine.transition(TaskEvent.EXECUTION_COMPLETE);
+                        } else if (finalExecutionState === State.TASK_FAILED || finalExecutionState === State.TASK_ABORTED) {
+                            const error = executionStateMachine.getLastError() || new Error("Execution failed");
+                            taskStateMachine.transition(TaskEvent.EXECUTION_FAILED, error);
+                        } else {
+                            // Should not happen, but handle gracefully
+                            taskStateMachine.transition(TaskEvent.EXECUTION_FAILED, new Error("Unexpected execution state"));
+                        }
+                        break;
+                    }
+
+                    case TaskState.TASK_SUPER_REVIEWING: {
+                        // Super review phase
+                        const planMd = taskStateMachine.getPlanMd();
+                        if (!planMd) {
+                            throw new Error("No plan available for super review");
+                        }
+
+                        log.orchestrator("🔍 Running SuperReviewer for final quality check...");
+                        const superReviewResult = await runSuperReviewer(provider, cwd, planMd);
+                        taskStateMachine.setSuperReviewResult(superReviewResult);
+
+                        log.review(`SuperReviewer verdict: ${superReviewResult.verdict}`);
+                        log.review(`Summary: ${superReviewResult.summary}`);
+
+                        if (superReviewResult.issues) {
+                            superReviewResult.issues.forEach(issue => {
+                                log.review(`Issue: ${issue}`);
+                            });
+                        }
+
+                        if (superReviewResult.verdict === "needs-human") {
+                            log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
+                            taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
+
+                            const humanDecision = await promptForSuperReviewerDecision(
+                                superReviewResult.summary,
+                                superReviewResult.issues
+                            );
+
+                            if (humanDecision.decision === "approve") {
+                                log.orchestrator("Human accepted work despite identified issues.");
+                                taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
+                            } else if (humanDecision.decision === "retry") {
+                                log.orchestrator("Human requested a new development cycle to address issues.");
+                                taskStateMachine.setRetryFeedback(humanDecision.feedback ||
+                                    `Address SuperReviewer feedback: ${superReviewResult.summary}`);
+                                taskStateMachine.transition(TaskEvent.HUMAN_RETRY);
+                            } else {
+                                log.orchestrator("Human chose to abandon. Task remains in worktree for manual review.");
+                                taskStateMachine.transition(TaskEvent.HUMAN_ABANDON);
+                            }
+                        } else {
+                            log.orchestrator("✅ SuperReviewer approved - implementation ready for merge!");
+                            taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
+                        }
+                        break;
+                    }
+
+                    case TaskState.TASK_FINALIZING: {
+                        // Finalization phase - merge or manual review
+                        if (options?.autoMerge) {
+                            log.orchestrator("📦 Auto-merging to master...");
+                            mergeToMaster(taskStateMachine.getContext().taskId, cwd);
+                            cleanupWorktree(taskStateMachine.getContext().taskId, cwd);
+                            taskStateMachine.transition(TaskEvent.AUTO_MERGE);
+                        } else {
+                            // Provide direct git commands for npx users
+                            log.orchestrator(`\nNext steps:
+1. Review changes in worktree: ${cwd}
+2. Run tests to verify
+3. Merge to master:
+   git checkout master
+   git merge sandbox/${taskStateMachine.getContext().taskId} --squash
+   git commit -m "Task ${taskStateMachine.getContext().taskId} completed"
+4. Clean up:
+   git worktree remove .worktrees/${taskStateMachine.getContext().taskId}
+   git branch -D sandbox/${taskStateMachine.getContext().taskId}`);
+                            taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
+                        }
+                        break;
+                    }
+
+                    case TaskState.TASK_COMPLETE:
+                        log.orchestrator("🎉 Task completed successfully!");
+                        taskCompleted = true;
+                        break;
+
+                    case TaskState.TASK_ABANDONED:
+                        const error = taskStateMachine.getLastError();
+                        log.orchestrator(`❌ Task abandoned: ${error?.message || "Unknown reason"}`);
+                        break;
+
+                    default:
+                        log.warn(`Unexpected task state: ${currentState}`);
+                        taskStateMachine.transition(TaskEvent.ERROR_OCCURRED, new Error(`Unexpected state: ${currentState}`));
+                }
+            } catch (error) {
+                log.warn(`Error in task state ${taskStateMachine.getCurrentState()}: ${error}`);
+                taskStateMachine.transition(TaskEvent.ERROR_OCCURRED, error);
+            }
+        }
 
         if (iterations >= maxIterations) {
             log.orchestrator(`⚠️ Reached maximum iteration limit (${maxIterations}). Stopping execution.`);

@@ -1,5 +1,6 @@
 import { log } from "./ui/log.js";
 import type { CoderPlanProposal } from "./types.js";
+import type { ExecutionStateCheckpoint } from "./audit/types.js";
 
 // State definitions for the Bean Counter coordinated protocol
 // AIDEV-NOTE: Bean Counter acts as "Scrum Master" - maintains session-based progress ledger,
@@ -429,6 +430,79 @@ export class CoderReviewerStateMachine {
       maxPlanAttempts: this.context.maxPlanAttempts,
       maxCodeAttempts: this.context.maxCodeAttempts
     };
+  }
+
+  // Restore state machine from checkpoint data
+  restoreFromCheckpoint(checkpoint: ExecutionStateCheckpoint): void {
+    try {
+      log.orchestrator(`🔄 Restoring execution state machine from checkpoint...`);
+
+      // Validate checkpoint data
+      if (!checkpoint) {
+        throw new Error('Checkpoint data is required');
+      }
+
+      // Restore current plan if available
+      if (checkpoint.currentPlan) {
+        this.context.currentPlan = {
+          type: checkpoint.currentPlan.type,
+          description: checkpoint.currentPlan.description,
+          steps: [...checkpoint.currentPlan.steps],
+          affectedFiles: [...checkpoint.currentPlan.affectedFiles]
+        } as CoderPlanProposal;
+      } else {
+        this.context.currentPlan = undefined;
+      }
+
+      // Restore Bean Counter work chunk context
+      if (checkpoint.currentChunk) {
+        this.context.currentChunk = {
+          description: checkpoint.currentChunk.description,
+          requirements: [...checkpoint.currentChunk.requirements],
+          context: checkpoint.currentChunk.context
+        };
+      } else {
+        this.context.currentChunk = undefined;
+      }
+
+      // Restore feedback properties
+      this.context.planFeedback = checkpoint.planFeedback;
+      this.context.codeFeedback = checkpoint.codeFeedback;
+
+      // Restore attempt counters
+      this.context.planAttempts = checkpoint.planAttempts || 0;
+      this.context.codeAttempts = checkpoint.codeAttempts || 0;
+
+      // Restore attempt limits
+      this.context.maxPlanAttempts = checkpoint.maxPlanAttempts || 7;
+      this.context.maxCodeAttempts = checkpoint.maxCodeAttempts || 7;
+
+      // Restore error information with proper Error object reconstruction
+      if (checkpoint.lastError) {
+        this.context.lastError = new Error(checkpoint.lastError.message);
+        if (checkpoint.lastError.stack) {
+          this.context.lastError.stack = checkpoint.lastError.stack;
+        }
+      } else {
+        this.context.lastError = undefined;
+      }
+
+      // Validate and restore state
+      // Convert string state back to State enum
+      if (checkpoint.currentState && Object.values(State).includes(checkpoint.currentState as State)) {
+        this.state = checkpoint.currentState as State;
+      } else {
+        throw new Error(`Invalid state in checkpoint: ${checkpoint.currentState}`);
+      }
+
+      log.orchestrator(`✅ Execution state machine restored to state: ${this.state}`);
+      log.orchestrator(`📋 Restored context: plan=${this.context.currentPlan ? 'set' : 'unset'}, chunk=${this.context.currentChunk ? 'set' : 'unset'}, attempts=${this.context.planAttempts}/${this.context.codeAttempts}`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      log.orchestrator(`❌ Failed to restore execution state machine: ${errorMessage}`);
+      throw new Error(`Execution state machine restoration failed: ${errorMessage}`);
+    }
   }
 
   // Get a human-readable status

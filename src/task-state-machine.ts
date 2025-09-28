@@ -1,6 +1,7 @@
 import { log } from "./ui/log.js";
 import { CoderReviewerStateMachine } from "./state-machine.js";
 import type { RefinedTask, SuperReviewerResult } from "./types.js";
+import type { TaskStateCheckpoint } from "./audit/types.js";
 
 // Parent states representing the complete task lifecycle
 export enum TaskState {
@@ -428,6 +429,107 @@ export class TaskStateMachine {
 
       default:
         this.state = TaskState.TASK_ABANDONED;
+    }
+  }
+
+  // Restore state machine from checkpoint data
+  restoreFromCheckpoint(checkpoint: TaskStateCheckpoint): void {
+    try {
+      log.orchestrator(`🔄 Restoring task state machine from checkpoint...`);
+
+      // Validate checkpoint data
+      if (!checkpoint) {
+        throw new Error('Checkpoint data is required');
+      }
+
+      // Validate task ID compatibility
+      if (checkpoint.taskId !== this.context.taskId) {
+        throw new Error(`Task ID mismatch: checkpoint is for task '${checkpoint.taskId}', but current task is '${this.context.taskId}'`);
+      }
+
+      // Validate working directory compatibility
+      if (checkpoint.workingDirectory !== this.context.workingDirectory) {
+        log.orchestrator(`⚠️ Working directory mismatch: checkpoint from '${checkpoint.workingDirectory}', currently in '${this.context.workingDirectory}'`);
+      }
+
+      // Restore basic task information
+      this.context.humanTask = checkpoint.humanTask;
+      this.context.workingDirectory = checkpoint.workingDirectory;
+
+      // Restore refined task data if available
+      if (checkpoint.refinedTask && checkpoint.taskToUse) {
+        // Ensure raw property is set for RefinedTask compatibility
+        const refinedTask: RefinedTask = {
+          ...checkpoint.refinedTask,
+          raw: checkpoint.refinedTask.raw || undefined
+        };
+        this.context.refinedTask = refinedTask;
+        this.context.taskToUse = checkpoint.taskToUse;
+      } else if (checkpoint.taskToUse) {
+        this.context.taskToUse = checkpoint.taskToUse;
+      }
+
+      // Restore planning outputs
+      if (checkpoint.planMd !== undefined) {
+        this.context.planMd = checkpoint.planMd;
+      }
+      if (checkpoint.planPath !== undefined) {
+        this.context.planPath = checkpoint.planPath;
+      }
+
+      // Restore configuration options
+      this.context.options = {
+        ...this.context.options,
+        ...checkpoint.options
+      };
+
+      // Restore error tracking
+      if (checkpoint.lastError) {
+        this.context.lastError = new Error(checkpoint.lastError.message);
+        if (checkpoint.lastError.stack) {
+          this.context.lastError.stack = checkpoint.lastError.stack;
+        }
+      } else {
+        this.context.lastError = undefined;
+      }
+
+      // Restore retry feedback
+      if (checkpoint.retryFeedback !== undefined) {
+        this.context.retryFeedback = checkpoint.retryFeedback;
+      }
+
+      // Restore curmudgeon tracking
+      this.context.simplificationCount = checkpoint.simplificationCount || 0;
+      if (checkpoint.curmudgeonFeedback !== undefined) {
+        this.context.curmudgeonFeedback = checkpoint.curmudgeonFeedback;
+      }
+
+      // Restore super review result if available
+      if (checkpoint.superReviewResult) {
+        // Cast verdict to proper SuperReviewerVerdict type
+        const superReviewResult: SuperReviewerResult = {
+          verdict: checkpoint.superReviewResult.verdict as any, // Type assertion for verdict
+          summary: checkpoint.superReviewResult.summary,
+          issues: checkpoint.superReviewResult.issues || []
+        };
+        this.context.superReviewResult = superReviewResult;
+      }
+
+      // Restore the state machine state
+      // Convert string state back to TaskState enum
+      if (checkpoint.currentState && Object.values(TaskState).includes(checkpoint.currentState as TaskState)) {
+        this.state = checkpoint.currentState as TaskState;
+      } else {
+        throw new Error(`Invalid state in checkpoint: ${checkpoint.currentState}`);
+      }
+
+      log.orchestrator(`✅ Task state machine restored to state: ${this.state}`);
+      log.orchestrator(`📋 Restored context: taskToUse=${this.context.taskToUse ? 'set' : 'unset'}, planPath=${this.context.planPath ? 'set' : 'unset'}, refinedTask=${this.context.refinedTask ? 'set' : 'unset'}`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      log.orchestrator(`❌ Failed to restore task state machine: ${errorMessage}`);
+      throw new Error(`Task state machine restoration failed: ${errorMessage}`);
     }
   }
 
