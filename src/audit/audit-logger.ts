@@ -5,6 +5,7 @@ import { AuditEvent, TaskAuditMetadata, AuditConfig } from './types';
 import { SummaryGenerator } from './summary-generator.js';
 import { JSONExporter } from './json-exporter.js';
 import { DashboardEventEmitter } from '../dashboard/event-emitter.js';
+import type { TaskStateMachine } from '../task-state-machine.js';
 
 /**
  * AuditLogger class for capturing and storing agent interaction audit trails
@@ -20,6 +21,7 @@ export class AuditLogger {
   private eventsDir: string;
   private metadataFile: string;
   private dashboardEmitter: DashboardEventEmitter;
+  private taskStateMachine?: TaskStateMachine;
 
   constructor(taskId: string, taskDescription: string = '') {
     // Check if audit is disabled via environment variable
@@ -289,8 +291,8 @@ This file will be updated with a summary of key events as the task progresses.
                 const message = args[0] || '';
                 const agentName = prop as string;
 
-                // Extract phase, chunk, and sprint info from the LogUI instance
-                const phase = (target as any).currentPhase || undefined;
+                // Get current TaskState from TaskStateMachine if available, fall back to LogUI phase
+                const phase = auditLogger.taskStateMachine?.getCurrentState() || (target as any).currentPhase || undefined;
                 const chunkNumber = (target as any).currentChunkNumber || undefined;
                 const sprintNumber = (target as any).currentSprintNumber || undefined;
 
@@ -314,6 +316,13 @@ This file will be updated with a summary of key events as the task progresses.
         return originalMethod;
       }
     });
+  }
+
+  /**
+   * Set the TaskStateMachine reference for capturing current phase in events
+   */
+  setTaskStateMachine(taskStateMachine: TaskStateMachine): void {
+    this.taskStateMachine = taskStateMachine;
   }
 
   /**

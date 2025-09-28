@@ -76,6 +76,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // Initialize parent state machine with restored context
                         const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
 
+                        // Set TaskStateMachine reference in AuditLogger for phase tracking
+                        auditLogger.setTaskStateMachine(taskStateMachine);
+
                         // Restore task state machine
                         const taskStateRestore = restorationService.restoreTaskStateMachine(
                             taskStateMachine,
@@ -189,6 +192,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
     // Set session IDs for task state machine
     taskStateMachine.setSessionIds(coderSessionId, reviewerSessionId);
+
+    // Set TaskStateMachine reference in AuditLogger for phase tracking
+    auditLogger.setTaskStateMachine(taskStateMachine);
 
     // Start the task
     taskStateMachine.transition(TaskEvent.START_TASK);

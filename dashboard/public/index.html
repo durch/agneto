@@ -418,19 +418,7 @@
                 this.tasks = new Map();
                 this.events = [];
                 this.maxEvents = 100;
-
-                // TaskState enum mapping for phase progress
-                this.taskStates = [
-                    'TASK_INIT',
-                    'TASK_REFINING',
-                    'TASK_PLANNING',
-                    'TASK_CURMUDGEONING',
-                    'TASK_EXECUTING',
-                    'TASK_SUPER_REVIEWING',
-                    'TASK_FINALIZING',
-                    'TASK_COMPLETE',
-                    'TASK_ABANDONED'
-                ];
+                this.currentPhase = null;
 
                 this.init();
             }
@@ -536,8 +524,8 @@
                     lastActivity: data.timestamp
                 });
 
-                // Update phase progress if this is a phase transition
-                if (data.event.eventType === 'phase_transition') {
+                // Update phase progress from event's phase field
+                if (data.event.phase) {
                     this.updatePhaseProgress(data.event.phase);
                 }
             }
@@ -603,20 +591,24 @@
             }
 
             updatePhaseProgress(currentPhase) {
+                // Store current phase
+                this.currentPhase = currentPhase;
+
+                // Update phase display directly based on phase name
                 const phaseElements = document.querySelectorAll('.phase-item');
 
-                phaseElements.forEach((element, index) => {
-                    const stateName = this.taskStates[index];
+                phaseElements.forEach((element) => {
+                    const phaseName = element.querySelector('.phase-name').textContent;
                     const statusElement = element.querySelector('.phase-status');
 
                     element.classList.remove('active', 'completed');
 
-                    if (stateName === currentPhase) {
+                    // Match phase name to current phase (remove TASK_ prefix for display matching)
+                    const displayName = currentPhase.replace('TASK_', '');
+
+                    if (phaseName === displayName || phaseName === currentPhase) {
                         element.classList.add('active');
                         statusElement.textContent = 'Active';
-                    } else if (this.taskStates.indexOf(currentPhase) > index) {
-                        element.classList.add('completed');
-                        statusElement.textContent = 'Done';
                     } else {
                         statusElement.textContent = 'Waiting';
                     }
