@@ -38,6 +38,7 @@
     "add-shebang": "echo '#!/usr/bin/env node' | cat - dist/cli.js > temp && mv temp dist/cli.js && chmod +x dist/cli.js",
     "prepublishOnly": "npm run build",
     "start": "tsx src/cli.ts",
+    "dashboard": "npx tsx dashboard/server.ts",
     "new-task": "bash scripts/new-task.sh",
     "cleanup-task": "bash scripts/cleanup-task.sh",
     "merge-task": "bash scripts/merge-worktree.sh",
@@ -55,12 +56,18 @@
     "chalk": "^5.3.0",
     "cli-highlight": "^2.1.11",
     "commander": "^12.1.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
     "simple-git": "^3.24.0",
     "strip-ansi": "^7.1.0",
-    "wrap-ansi": "^9.0.0"
+    "wrap-ansi": "^9.0.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
     "@types/node": "^24.4.0",
+    "@types/ws": "^8.5.12",
     "@vitest/ui": "^3.2.4",
     "tsx": "^4.19.0",
     "typescript": "^5.6.3",

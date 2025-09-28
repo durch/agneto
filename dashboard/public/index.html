@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Agneto Dashboard">
+    <title>Agneto Development Dashboard</title>
+    <style>
+        /* CSS Reset and Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+            font-size: 14px;
+        }
+
+        /* Mobile-First Responsive Layout */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 10px;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            min-height: 100vh;
+            gap: 15px;
+        }
+
+        /* Header Section */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ff6b6b;
+            transition: background-color 0.3s ease;
+        }
+
+        .status-indicator.connected {
+            background-color: #51cf66;
+        }
+
+        /* Main Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+
+        /* Task List Section */
+        .task-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #495057;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 8px;
+        }
+
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 100px;
+        }
+
+        .task-item {
+            padding: 12px 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            background: #f8f9fa;
+            transition: all 0.2s ease;
+        }
+
+        .task-item:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+        }
+
+        .task-id {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+        }
+
+        .task-description {
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+
+        /* Phase Progress Section */
+        .phase-progress {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .phase-item {
+            text-align: center;
+            padding: 10px 8px;
+            border-radius: 6px;
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            transition: all 0.3s ease;
+            font-size: 0.8rem;
+        }
+
+        .phase-item.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .phase-item.completed {
+            background: #51cf66;
+            color: white;
+            border-color: #51cf66;
+        }
+
+        .phase-name {
+            font-weight: 600;
+            display: block;
+        }
+
+        .phase-status {
+            font-size: 0.7rem;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        /* Event Log Section */
+        .event-log {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            background: #fff;
+        }
+
+        .event-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #f1f3f4;
+            font-size: 0.85rem;
+        }
+
+        .event-item:last-child {
+            border-bottom: none;
+        }
+
+        .event-timestamp {
+            color: #6c757d;
+            font-size: 0.75rem;
+        }
+
+        .event-agent {
+            font-weight: 600;
+            color: #495057;
+            text-transform: capitalize;
+        }
+
+        .event-message {
+            color: #333;
+            margin-top: 4px;
+        }
+
+        /* Controls Section */
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .control-button {
+            padding: 8px 16px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background: white;
+            color: #495057;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s ease;
+        }
+
+        .control-button:hover {
+            background: #e9ecef;
+        }
+
+        .control-button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.8rem;
+            padding: 15px;
+        }
+
+        /* Responsive Design */
+        @media (min-width: 768px) {
+            body {
+                font-size: 16px;
+            }
+
+            .container {
+                padding: 20px;
+                gap: 20px;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 2fr 1fr;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .phase-progress {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr 1fr 1fr;
+            }
+
+            .task-section:first-child {
+                grid-column: span 2;
+            }
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Utility Classes */
+        .hidden {
+            display: none;
+        }
+
+        .text-muted {
+            color: #6c757d;
+        }
+
+        .text-success {
+            color: #51cf66;
+        }
+
+        .text-warning {
+            color: #ffd43b;
+        }
+
+        .text-danger {
+            color: #ff6b6b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header Section -->
+        <header class="header">
+            <div class="header-content">
+                <h1>Agneto Dashboard</h1>
+                <div class="connection-status">
+                    <span class="status-indicator" id="connectionStatus"></span>
+                    <span id="connectionText">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Content -->
+        <main class="dashboard-grid">
+            <!-- Task List Section -->
+            <section class="task-section">
+                <h2 class="section-title">Active Tasks</h2>
+                <div class="task-list" id="taskList">
+                    <!-- Tasks will be populated here -->
+                    <div class="text-muted">No active tasks</div>
+                </div>
+            </section>
+
+            <!-- Phase Progress Section -->
+            <section class="task-section">
+                <h2 class="section-title">Task Progress</h2>
+                <div class="phase-progress" id="phaseProgress">
+                    <!-- Phase indicators will be populated here -->
+                    <div class="phase-item">
+                        <span class="phase-name">INIT</span>
+                        <span class="phase-status">Ready</span>
+                    </div>
+                    <div class="phase-item">
+                        <span class="phase-name">REFINING</span>
+                        <span class="phase-status">Waiting</span>
+                    </div>
+                    <div class="phase-item">
+                        <span class="phase-name">PLANNING</span>
+                        <span class="phase-status">Waiting</span>
+                    </div>
+                    <div class="phase-item">
+                        <span class="phase-name">CURMUDGEONING</span>
+                        <span class="phase-status">Waiting</span>
+                    </div>
+                    <div class="phase-item">
+                        <span class="phase-name">EXECUTING</span>
+                        <span class="phase-status">Waiting</span>
+                    </div>
+                    <div class="phase-item">
+                        <span class="phase-name">SUPER_REV</span>
+                        <span class="phase-status">Waiting</span>
+                    </div>
+                    <div class="phase-item">
+                        <span class="phase-name">FINALIZING</span>
+                        <span class="phase-status">Waiting</span>
+                    </div>
+                    <div class="phase-item">
+                        <span class="phase-name">COMPLETE</span>
+                        <span class="phase-status">Waiting</span>
+                    </div>
+                    <div class="phase-item">
+                        <span class="phase-name">ABANDONED</span>
+                        <span class="phase-status">Waiting</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Event Log Section -->
+            <section class="task-section">
+                <h2 class="section-title">Recent Events</h2>
+                <div class="controls" id="eventControls">
+                    <button class="control-button active" data-filter="all">All</button>
+                    <button class="control-button" data-filter="planner">Planner</button>
+                    <button class="control-button" data-filter="coder">Coder</button>
+                    <button class="control-button" data-filter="reviewer">Reviewer</button>
+                    <button class="control-button" data-filter="system">System</button>
+                </div>
+                <div class="event-log" id="eventLog">
+                    <!-- Events will be populated here -->
+                    <div class="event-item text-muted">
+                        <div class="event-timestamp">Waiting for events...</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Agneto Development Dashboard - Real-time Task Monitoring</p>
+        </footer>
+    </div>
+
+    <script>
+        // Dashboard Application State
+        class AgnetoDashboard {
+            constructor() {
+                this.ws = null;
+                this.isConnected = false;
+                this.currentFilter = 'all';
+                this.tasks = new Map();
+                this.events = [];
+                this.maxEvents = 100;
+
+                // TaskState enum mapping for phase progress
+                this.taskStates = [
+                    'TASK_INIT',
+                    'TASK_REFINING',
+                    'TASK_PLANNING',
+                    'TASK_CURMUDGEONING',
+                    'TASK_EXECUTING',
+                    'TASK_SUPER_REVIEWING',
+                    'TASK_FINALIZING',
+                    'TASK_COMPLETE',
+                    'TASK_ABANDONED'
+                ];
+
+                this.init();
+            }
+
+            init() {
+                this.setupEventListeners();
+                this.connectWebSocket();
+                this.updateConnectionStatus();
+            }
+
+            setupEventListeners() {
+                // Filter controls
+                document.getElementById('eventControls').addEventListener('click', (e) => {
+                    if (e.target.matches('.control-button')) {
+                        this.setEventFilter(e.target.dataset.filter);
+                    }
+                });
+
+                // Auto-reconnect on visibility change
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden && !this.isConnected) {
+                        setTimeout(() => this.connectWebSocket(), 1000);
+                    }
+                });
+            }
+
+            connectWebSocket() {
+                try {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+                    this.ws = new WebSocket(wsUrl);
+
+                    this.ws.onopen = () => {
+                        console.log('Connected to Agneto Dashboard WebSocket');
+                        this.isConnected = true;
+                        this.updateConnectionStatus();
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        this.handleWebSocketMessage(event);
+                    };
+
+                    this.ws.onclose = () => {
+                        console.log('Disconnected from WebSocket');
+                        this.isConnected = false;
+                        this.updateConnectionStatus();
+
+                        // Auto-reconnect after 3 seconds
+                        setTimeout(() => this.connectWebSocket(), 3000);
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        this.isConnected = false;
+                        this.updateConnectionStatus();
+                    };
+
+                } catch (error) {
+                    console.error('Failed to connect WebSocket:', error);
+                    this.isConnected = false;
+                    this.updateConnectionStatus();
+                }
+            }
+
+            handleWebSocketMessage(event) {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    switch (data.type) {
+                        case 'welcome':
+                            this.handleWelcomeMessage(data);
+                            break;
+                        case 'new_event':
+                            this.handleNewEvent(data);
+                            break;
+                        default:
+                            console.log('Unknown message type:', data.type);
+                    }
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            }
+
+            handleWelcomeMessage(data) {
+                console.log('Dashboard connected:', data.message);
+
+                // Update task counts from welcome message
+                if (data.taskCounts) {
+                    data.taskCounts.forEach(task => {
+                        this.updateTaskInfo(task.taskId, { eventCount: task.eventCount });
+                    });
+                }
+            }
+
+            handleNewEvent(data) {
+                // Add event to local storage
+                this.addEvent(data.event, data.taskId);
+
+                // Update task info
+                this.updateTaskInfo(data.taskId, {
+                    lastEvent: data.event,
+                    lastActivity: data.timestamp
+                });
+
+                // Update phase progress if this is a phase transition
+                if (data.event.eventType === 'phase_transition') {
+                    this.updatePhaseProgress(data.event.phase);
+                }
+            }
+
+            addEvent(event, taskId) {
+                // Add to events array with taskId
+                const eventWithTask = { ...event, taskId };
+                this.events.unshift(eventWithTask);
+
+                // Trim to max events
+                if (this.events.length > this.maxEvents) {
+                    this.events = this.events.slice(0, this.maxEvents);
+                }
+
+                // Update event log display
+                this.updateEventLog();
+            }
+
+            updateTaskInfo(taskId, info) {
+                if (!taskId) return;
+
+                const existing = this.tasks.get(taskId) || {};
+                this.tasks.set(taskId, { ...existing, ...info, taskId });
+
+                this.updateTaskList();
+            }
+
+            updateTaskList() {
+                const taskList = document.getElementById('taskList');
+
+                if (this.tasks.size === 0) {
+                    taskList.innerHTML = '<div class="text-muted">No active tasks</div>';
+                    return;
+                }
+
+                const tasksArray = Array.from(this.tasks.values());
+                taskList.innerHTML = tasksArray.map(task => `
+                    <div class="task-item">
+                        <div class="task-id">${task.taskId}</div>
+                        <div class="task-description">
+                            ${task.lastEvent ? task.lastEvent.message : 'No recent activity'}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            updateEventLog() {
+                const eventLog = document.getElementById('eventLog');
+                const filteredEvents = this.getFilteredEvents();
+
+                if (filteredEvents.length === 0) {
+                    eventLog.innerHTML = '<div class="event-item text-muted"><div class="event-timestamp">No events match current filter</div></div>';
+                    return;
+                }
+
+                eventLog.innerHTML = filteredEvents.slice(0, 50).map(event => `
+                    <div class="event-item">
+                        <div class="event-timestamp">${new Date(event.timestamp).toLocaleTimeString()}</div>
+                        <div class="event-agent">${event.agent}</div>
+                        <div class="event-message">${event.message}</div>
+                    </div>
+                `).join('');
+            }
+
+            updatePhaseProgress(currentPhase) {
+                const phaseElements = document.querySelectorAll('.phase-item');
+
+                phaseElements.forEach((element, index) => {
+                    const stateName = this.taskStates[index];
+                    const statusElement = element.querySelector('.phase-status');
+
+                    element.classList.remove('active', 'completed');
+
+                    if (stateName === currentPhase) {
+                        element.classList.add('active');
+                        statusElement.textContent = 'Active';
+                    } else if (this.taskStates.indexOf(currentPhase) > index) {
+                        element.classList.add('completed');
+                        statusElement.textContent = 'Done';
+                    } else {
+                        statusElement.textContent = 'Waiting';
+                    }
+                });
+            }
+
+            getFilteredEvents() {
+                if (this.currentFilter === 'all') {
+                    return this.events;
+                }
+                return this.events.filter(event => event.agent === this.currentFilter);
+            }
+
+            setEventFilter(filter) {
+                this.currentFilter = filter;
+
+                // Update button states
+                document.querySelectorAll('.control-button').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.filter === filter);
+                });
+
+                // Update event log
+                this.updateEventLog();
+            }
+
+            updateConnectionStatus() {
+                const statusIndicator = document.getElementById('connectionStatus');
+                const statusText = document.getElementById('connectionText');
+
+                if (this.isConnected) {
+                    statusIndicator.classList.add('connected');
+                    statusText.textContent = 'Connected';
+                } else {
+                    statusIndicator.classList.remove('connected');
+                    statusText.textContent = 'Disconnected';
+                }
+            }
+        }
+
+        // Initialize dashboard when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            window.dashboard = new AgnetoDashboard();
+        });
+    </script>
+</body>
+</html>
