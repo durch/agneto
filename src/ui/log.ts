@@ -44,6 +44,7 @@ class LogUI {
 
     // Bind all public methods to maintain 'this' context when used as callbacks
     this.planner = this.planner.bind(this);
+    this.curmudgeon = this.curmudgeon.bind(this);
     this.coder = this.coder.bind(this);
     this.review = this.review.bind(this);
     this.beanCounter = this.beanCounter.bind(this);
@@ -193,6 +194,7 @@ class LogUI {
       // Output the buffered message normally based on agent type
       const agentFormatters: Record<string, (s: string) => void> = {
         'coder': (s) => console.log(chalk.magenta("🤖 Coder:"), "\n" + prettyPrint(s, { indent: 2 })),
+        'curmudgeon': (s) => console.log(chalk.red("🎭 Curmudgeon:"), "\n" + prettyPrint(s, { indent: 2 })),
         'review': (s) => console.log(chalk.yellow("👀 Reviewer:"), "\n" + prettyPrint(s, { indent: 2 })),
         'beanCounter': (s) => console.log(chalk.blue("🧮 Bean Counter:"), "\n" + prettyPrint(s, { indent: 2 })),
         'orchestrator': (s) => console.log(chalk.green("🙋 Orchestrator:"), "\n" + prettyPrint(s, { indent: 2 }))
@@ -208,6 +210,7 @@ class LogUI {
           const prefix = this.getIndentPrefix();
           const indentedMessage = this.applyIndentToMultiline(this.rawResponseBuffer);
           const agentPrefix = this.bufferAgentType === 'coder' ? chalk.magenta("🤖 Coder:") :
+                             this.bufferAgentType === 'curmudgeon' ? chalk.red("🎭 Curmudgeon:") :
                              this.bufferAgentType === 'review' ? chalk.yellow("👀 Reviewer:") :
                              this.bufferAgentType === 'beanCounter' ? chalk.blue("🧮 Bean Counter:") :
                              chalk.green("🙋 Orchestrator:");
@@ -247,6 +250,7 @@ class LogUI {
       // Output with appropriate agent formatting
       const agentFormatters: Record<string, (s: string) => void> = {
         'coder': (s) => console.log(chalk.magenta("🤖 Coder:"), "\n" + prettyPrint(s, { indent: 2 })),
+        'curmudgeon': (s) => console.log(chalk.red("🎭 Curmudgeon:"), "\n" + prettyPrint(s, { indent: 2 })),
         'review': (s) => console.log(chalk.yellow("👀 Reviewer:"), "\n" + prettyPrint(s, { indent: 2 })),
         'beanCounter': (s) => console.log(chalk.blue("🧮 Bean Counter:"), "\n" + prettyPrint(s, { indent: 2 })),
         'orchestrator': (s) => console.log(chalk.green("🙋 Orchestrator:"), "\n" + prettyPrint(s, { indent: 2 }))
@@ -262,6 +266,7 @@ class LogUI {
           const prefix = this.getIndentPrefix();
           const indentedMessage = this.applyIndentToMultiline(consolidated);
           const agentPrefix = agentType === 'coder' ? chalk.magenta("🤖 Coder:") :
+                             agentType === 'curmudgeon' ? chalk.red("🎭 Curmudgeon:") :
                              agentType === 'review' ? chalk.yellow("👀 Reviewer:") :
                              agentType === 'beanCounter' ? chalk.blue("🧮 Bean Counter:") :
                              chalk.green("🙋 Orchestrator:");
@@ -291,6 +296,38 @@ class LogUI {
         console.log(prefix + badge + chalk.cyan("📝 Planner:"), "\n" + prettyMessage);
       } else {
         console.log(badge + chalk.cyan("📝 Planner:"), "\n" + prettyMessage);
+      }
+    }
+  }
+
+  curmudgeon(s: string, phase?: string): void {
+    if (this.shouldLog('info')) {
+      this.checkPhaseTransition('CURMUDGEONING');
+
+      // Check for raw response pattern
+      if (s.startsWith('Raw ') && s.includes(' response:')) {
+        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
+        this.bufferRawMessage(s, 'curmudgeon');
+        return;
+      }
+
+      // Check for interpretation pattern
+      if (s.startsWith('Interpreted ') && s.includes(' as:')) {
+        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
+        if (this.consolidateWithInterpretation(s, 'curmudgeon')) {
+          return; // Successfully consolidated
+        }
+      }
+
+      // Normal message output with badge and indentation - clear status for meaningful content
+      this.clearToolStatus(); // Substantive content - clear status
+      const badge = this.generatePhaseBadge();
+      const prefix = this.getIndentPrefix();
+      const prettyMessage = prettyPrint(s, { indent: 2 });
+      if (prefix) {
+        console.log(prefix + badge + chalk.red("🎭 Curmudgeon:"), "\n" + prettyMessage);
+      } else {
+        console.log(badge + chalk.red("🎭 Curmudgeon:"), "\n" + prettyMessage);
       }
     }
   }
@@ -626,6 +663,9 @@ class LogUI {
     switch (phaseToUse) {
       case 'PLANNING':
         badge = chalk.cyan('[PLANNING]');
+        break;
+      case 'CURMUDGEONING':
+        badge = chalk.red('[CURMUDGEONING]');
         break;
       case 'CHUNKING':
         badge = chalk.blue('[CHUNKING]');
