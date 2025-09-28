@@ -1,6 +1,7 @@
 import { select, input } from "@inquirer/prompts";
 import chalk from "chalk";
 import { HumanDecision, HumanInteractionResult } from "../types.js";
+import { bell } from '../utils/terminal-bell.js';
 
 export async function promptHumanReview(
     proposal: string,
@@ -26,6 +27,7 @@ export async function promptHumanReview(
     console.log(chalk.dim("-".repeat(120)));
 
     // Get human decision
+    bell();
     const decision = await select({
         message: "How would you like to proceed?",
         choices: [
@@ -83,6 +85,7 @@ export async function promptForSuperReviewerDecision(
     console.log(chalk.dim("-".repeat(120)));
 
     // Get human decision with terminal-state-aware options
+    bell();
     const decision = await select({
         message: "Select final disposition for this completed work:",
         choices: [

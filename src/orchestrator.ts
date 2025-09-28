@@ -22,6 +22,7 @@ import { CheckpointService } from "./audit/checkpoint-service.js";
 import { RestorationService } from "./audit/restoration-service.js";
 import { promptForSuperReviewerDecision } from "./ui/human-review.js";
 import { generateUUID } from "./utils/id-generator.js";
+import { bell } from "./utils/terminal-bell.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
 import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
 import {
@@ -475,6 +476,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 }
 
                 case TaskState.TASK_COMPLETE:
+                    bell();
                     log.orchestrator("🎉 Task completed successfully!");
                     taskCompleted = true;
                     break;
@@ -500,6 +502,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
         // Mark audit task as completed if successful
         if (taskCompleted) {
+            bell();
             auditLogger.completeTask();
         }
 

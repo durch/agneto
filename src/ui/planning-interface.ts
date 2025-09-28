@@ -2,6 +2,7 @@ import { select, input, confirm } from "@inquirer/prompts";
 import chalk from "chalk";
 import { log } from "./log.js";
 import { prettyPrint } from "./pretty.js";
+import { bell } from "../utils/terminal-bell.js";
 
 export type PlanFeedbackType =
     | "approve"
@@ -49,6 +50,7 @@ export async function displayPlanDiff(oldPlan: string, newPlan: string) {
 }
 
 export async function getPlanFeedback(): Promise<PlanFeedback> {
+    bell();
     const action = await select({
         message: "How would you like to proceed with this plan?",
         choices: [
@@ -62,6 +64,7 @@ export async function getPlanFeedback(): Promise<PlanFeedback> {
     }
 
     // For reject, prompt for free-form feedback
+    bell();
     const details = await input({
         message: "What needs to be changed? (Be specific about what's wrong and what you'd prefer):",
     });
@@ -78,6 +81,7 @@ export async function confirmPlanApproval(iterations: number): Promise<boolean> 
         log.orchestrator(`Plan approved after ${iterations + 1} iterations 📝`);
     }
 
+    bell();
     return await confirm({
         message: "Ready to start coding with this plan?",
         default: true,
