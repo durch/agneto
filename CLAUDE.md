@@ -30,6 +30,9 @@ make quick DESC="task"  # Non-interactive with auto-generated ID
 make auto DESC="task"  # Non-interactive with auto-merge
 make continue ID=fix-1 DESC="next steps"  # Continue existing task
 make commit MSG="message"  # Commit with Claude Code attribution
+make status    # Show git status
+make test      # Run all tests
+make provider  # Test Claude provider connection
 ```
 
 ### If you're here to...
@@ -173,6 +176,309 @@ npm run merge-task <task-id>
 npm run cleanup-task <task-id>
 ```
 
+## 📊 Audit System & Task Monitoring
+
+Agneto includes a comprehensive audit system that logs all agent interactions, providing detailed insights for debugging, compliance, and task analysis.
+
+### Audit Features
+
+- **Comprehensive Logging**: All agent communications, tool usage, and phase transitions captured
+- **Persistent Storage**: Events stored in `.agneto/task-{id}/` directories
+- **Checkpoint System**: State snapshots for recovery and restoration
+- **Rich Metadata**: Cost tracking, duration metrics, and execution context
+- **Human-Readable Output**: Both JSON events and markdown summaries generated
+- **Non-Intrusive**: Zero changes to existing code - wraps LogUI transparently
+
+### Audit Directory Structure
+
+Every task creates an audit trail:
+```
+.agneto/task-{id}/
+├── events/               # Individual JSON event files
+│   ├── 1727462285785-uuid.json
+│   └── ...
+├── metadata.json         # Task metadata and summary
+└── summary.md           # Human-readable execution summary
+```
+
+### Environment Variables
+
+Control audit system behavior:
+
+```bash
+# Disable audit logging entirely
+DISABLE_AUDIT=true npm start -- "your task"
+
+# Disable checkpoint creation
+DISABLE_CHECKPOINTS=true npm start -- "your task"
+
+# Control checkpoint limits (default: 10)
+MAX_CHECKPOINTS=5 npm start -- "your task"
+
+# Enable checkpoint compression
+CHECKPOINT_COMPRESSION=true npm start -- "your task"
+
+# Set checkpoint naming format (hybrid, timestamp, sequential)
+CHECKPOINT_NAMING=timestamp npm start -- "your task"
+```
+
+### Checkpoint & Recovery System
+
+The audit system includes sophisticated checkpoint and recovery capabilities:
+
+**Checkpoint Service**
+- Captures comprehensive state snapshots during execution
+- Includes agent session state, progress ledger, file modifications
+- Configurable naming formats and compression
+- Automatic cleanup of old checkpoints
+
+**Recovery Service**
+- Restores task execution from any checkpoint
+- Filters and searches checkpoints efficiently
+- Provides detailed recovery status reporting
+
+**Restoration Service**
+- Startup-only restoration from previous executions
+- Preserves session continuity and progress state
+- Graceful handling of corrupted or missing data
+
+### Audit Event Types
+
+The system captures:
+
+- **Agent Messages**: All planner, coder, reviewer communications
+- **Tool Usage**: ReadFile, Write, Edit, Bash command executions
+- **Phase Transitions**: PLANNING → CODING → REVIEW cycles
+- **Completion Metrics**: Cost, duration, success/failure status
+- **Context Data**: Chunk numbers, sprint tracking, session IDs
+
+### Usage Examples
+
+**Review audit trail for a task:**
+```bash
+# View all events
+ls .agneto/task-abc123/events/
+
+# Read human-readable summary
+cat .agneto/task-abc123/summary.md
+
+# Check task metadata
+cat .agneto/task-abc123/metadata.json
+```
+
+**Debug using audit data:**
+```bash
+# Find all coder events
+grep -r "\"agent\": \"coder\"" .agneto/task-abc123/events/
+
+# Check for errors
+grep -r "error\|failed" .agneto/task-abc123/events/
+```
+
+## 📱 Web Dashboard Interface
+
+Agneto includes a real-time web dashboard for monitoring task execution, providing a visual interface to track agent interactions and progress.
+
+### Dashboard Features
+
+- **Real-time Event Streaming**: Live updates as agents communicate and execute tasks
+- **Task History**: Complete audit trail visualization with filtering and search
+- **Agent Activity Monitoring**: See planner, coder, and reviewer interactions in real-time
+- **Performance Metrics**: Cost tracking, duration analysis, and execution statistics
+- **WebSocket Integration**: Instant updates without page refreshes
+- **Event Storage**: In-memory storage for up to 1000 events per task
+- **Cross-Platform**: Works in any modern web browser
+
+### Starting the Dashboard
+
+Launch the dashboard server alongside your tasks:
+
+```bash
+# Start dashboard server (runs on port 3000)
+npm run dashboard
+
+# Or use the direct command
+npx tsx dashboard/server.ts
+```
+
+### Dashboard Architecture
+
+The dashboard integrates seamlessly with Agneto's audit system:
+
+```
+┌─────────────────┐    HTTP POST     ┌─────────────────┐    WebSocket    ┌─────────────────┐
+│   Agneto Task   │ ──────────────→ │ Dashboard Server│ ──────────────→ │  Web Interface  │
+│   (EventEmitter)│    /events       │   (Express)     │   Real-time     │   (Browser)     │
+└─────────────────┘                  └─────────────────┘                 └─────────────────┘
+```
+
+**Components:**
+- **EventEmitter** (`src/dashboard/event-emitter.ts`): Sends audit events to dashboard
+- **Express Server** (`dashboard/server.ts`): Receives events via HTTP, serves WebSocket
+- **Web Interface** (`dashboard/public/`): Real-time visualization and controls
+
+### Environment Configuration
+
+```bash
+# Set custom dashboard endpoint (default: http://localhost:3000)
+AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start -- "your task"
+
+# Enable dashboard debug output
+DEBUG=true npm run dashboard
+```
+
+### Dashboard API
+
+The dashboard provides HTTP and WebSocket APIs:
+
+**HTTP Endpoints:**
+- `POST /events` - Receive audit events from EventEmitter
+- `GET /tasks/{taskId}` - Retrieve task history and metadata
+- `GET /` - Serve dashboard interface
+
+**WebSocket Events:**
+- `task_started` - New task execution began
+- `agent_message` - Agent communication event
+- `tool_usage` - Tool execution event
+- `phase_transition` - Execution phase change
+- `task_completed` - Task finished successfully
+
+### Usage Examples
+
+**Monitor a task in real-time:**
+```bash
+# Terminal 1: Start dashboard
+npm run dashboard
+
+# Terminal 2: Run task with dashboard integration
+npm start -- "implement new feature"
+
+# Browser: Open http://localhost:3000
+```
+
+**Custom dashboard endpoint:**
+```bash
+# Start dashboard on different port
+PORT=8080 npm run dashboard
+
+# Point Agneto to custom endpoint
+AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start -- "your task"
+```
+
+### Dashboard Benefits
+
+1. **Real-time Monitoring**: See execution progress as it happens
+2. **Visual Debugging**: Understand agent decision-making and tool usage
+3. **Performance Analysis**: Track costs and execution times across tasks
+4. **Team Collaboration**: Share task progress with stakeholders via web interface
+5. **Historical Analysis**: Review past executions and identify patterns
+6. **Compliance Visibility**: Real-time audit trail for regulatory requirements
+
+## 🔧 Environment Variables Reference
+
+Agneto supports various environment variables to control execution, debugging, and system behavior.
+
+### Core System Variables
+
+| Variable | Default | Description | Example |
+|----------|---------|-------------|---------|
+| `DEBUG` | `false` | Enable verbose debugging output showing prompts, responses, and command construction | `DEBUG=true npm start` |
+| `LOG_LEVEL` | `info` | Control logging verbosity (`debug`, `info`, `warn`, `error`) | `LOG_LEVEL=debug npm start` |
+
+### Audit System Variables
+
+| Variable | Default | Description | Example |
+|----------|---------|-------------|---------|
+| `DISABLE_AUDIT` | `false` | Disable all audit logging and event capture | `DISABLE_AUDIT=true npm start` |
+| `DISABLE_CHECKPOINTS` | `false` | Disable checkpoint creation during execution | `DISABLE_CHECKPOINTS=true npm start` |
+| `MAX_CHECKPOINTS` | `10` | Maximum number of checkpoints to retain per task | `MAX_CHECKPOINTS=5 npm start` |
+| `CHECKPOINT_COMPRESSION` | `false` | Enable compression for checkpoint files | `CHECKPOINT_COMPRESSION=true npm start` |
+| `CHECKPOINT_NAMING` | `hybrid` | Checkpoint naming format (`hybrid`, `timestamp`, `sequential`) | `CHECKPOINT_NAMING=timestamp npm start` |
+
+### Dashboard Integration Variables
+
+| Variable | Default | Description | Example |
+|----------|---------|-------------|---------|
+| `AGNETO_DASHBOARD_ENDPOINT` | `http://localhost:3000` | Dashboard server endpoint for event streaming | `AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start` |
+| `PORT` | `3000` | Dashboard server port (when running dashboard) | `PORT=8080 npm run dashboard` |
+
+### Usage Examples
+
+**Full debugging setup:**
+```bash
+# Maximum verbosity with all debugging enabled
+DEBUG=true LOG_LEVEL=debug npm start -- "debug task" --non-interactive
+```
+
+**Minimal setup for CI/CD:**
+```bash
+# Disable all extra features for clean CI runs
+DISABLE_AUDIT=true DISABLE_CHECKPOINTS=true npm start -- "ci task" --non-interactive
+```
+
+**Development with dashboard:**
+```bash
+# Terminal 1: Start dashboard with custom port
+PORT=8080 npm run dashboard
+
+# Terminal 2: Run task with dashboard integration
+AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 DEBUG=true npm start -- "development task"
+```
+
+**Checkpoint management:**
+```bash
+# Keep only 3 checkpoints with compression enabled
+MAX_CHECKPOINTS=3 CHECKPOINT_COMPRESSION=true npm start -- "large task"
+```
+
+**Production deployment:**
+```bash
+# Production-ready configuration
+LOG_LEVEL=warn MAX_CHECKPOINTS=5 CHECKPOINT_COMPRESSION=true npm start -- "production task" --non-interactive
+```
+
+### Variable Precedence
+
+Environment variables can be set in multiple ways:
+
+1. **Command line** (highest precedence): `DEBUG=true npm start`
+2. **Shell export**: `export DEBUG=true && npm start`
+3. **`.envrc` file** (if using direnv): `echo "export DEBUG=true" > .envrc`
+4. **System defaults** (lowest precedence): Built-in defaults
+
+### Terminal Bell Notifications
+
+Agneto includes cross-platform terminal bell notifications to alert you when tasks complete or encounter errors.
+
+**Features:**
+- **Cross-platform compatibility**: Works on macOS, Windows, and Linux terminal emulators
+- **ASCII BEL character**: Uses standard `\x07` control character for maximum compatibility
+- **Silent failure**: Never breaks application flow if audio is unavailable
+- **Zero configuration**: Enabled by default, works out of the box
+
+**Supported terminals:**
+- **macOS**: Terminal.app, iTerm2, Hyper
+- **Windows**: Command Prompt, PowerShell, Windows Terminal
+- **Linux**: gnome-terminal, konsole, xterm, alacritty, kitty
+
+**How it works:**
+```typescript
+// Automatic notifications triggered by Agneto during:
+// - Task completion (success)
+// - Task failure (errors)
+// - Human intervention required
+// - Long-running operation milestones
+```
+
+**Terminal configuration:**
+Most terminals have bell notifications enabled by default. If you don't hear notifications:
+- **macOS Terminal**: Preferences → Profiles → Advanced → "Audible bell"
+- **iTerm2**: Preferences → Profiles → Terminal → "Flash visual bell" / "Ring terminal bell"
+- **Windows Terminal**: Settings → Profiles → Advanced → "Use acrylic" (system sound)
+- **Linux**: Check terminal emulator preferences for "Terminal bell" or "Audible bell"
+
+This feature helps you stay productive by providing immediate audio feedback when tasks require attention or complete execution.
+
 ## 🚨 Troubleshooting
 
 ### Empty Planner Output
@@ -264,24 +570,50 @@ Agneto uses a two-level state machine architecture:
 
 | File | Purpose | Modify when... |
 |------|---------|----------------|
+| **Core Orchestration** |
 | `src/orchestrator.ts` | Main control flow | Changing the task flow |
+| `src/orchestrator-helpers.ts` | Helper functions for orchestration | Utility functions |
+| `src/state-machine.ts` | Bean Counter execution state machine | Chunk execution flow |
+| `src/task-state-machine.ts` | Parent task state machine | Overall task lifecycle |
+| **Agents** |
 | `src/agents/planner.ts` | High-level planning logic | Improving strategic plan generation |
 | `src/agents/bean-counter.ts` | Work chunking & progress tracking | Adjusting chunking strategy |
 | `src/agents/coder.ts` | Implementation execution | Changing implementation logic |
 | `src/agents/reviewer.ts` | Review logic | Adjusting approval criteria |
 | `src/agents/curmudgeon.ts` | Plan simplification logic | Preventing over-engineering |
+| `src/agents/super-reviewer.ts` | Final quality gate | Changing acceptance criteria |
+| `src/agents/refiner.ts` | Task description refinement | Pre-processing vague descriptions |
 | `src/agents/scribe.ts` | Commit message generation | Auto-generating commits |
+| **Protocol & Communication** |
 | `src/providers/anthropic.ts` | Claude CLI integration | Fixing LLM communication |
 | `src/protocol/interpreter.ts` | Natural language interpreter | Changing response interpretation |
 | `src/protocol/schemas.ts` | JSON schemas (still used for validation) | Schema definitions |
 | `src/protocol/validators.ts` | Input validation | Validation logic |
 | `src/protocol/prompt-template.ts` | Template rendering | Changing prompt injection |
 | `src/prompts/interpreter-*.md` | Interpreter prompts | Improving response interpretation |
-| `src/ui/planning-interface.ts` | Interactive prompts | Changing feedback types |
 | `src/prompts/*.md` | Agent instructions | Improving agent behavior |
-| `src/state-machine.ts` | Bean Counter execution state machine | Chunk execution flow |
-| `src/task-state-machine.ts` | Parent task state machine | Overall task lifecycle |
-| `src/orchestrator-helpers.ts` | Helper functions for orchestration | Utility functions |
+| **Audit & Monitoring System** |
+| `src/audit/audit-logger.ts` | Main audit logging implementation | Capturing agent interactions |
+| `src/audit/checkpoint-service.ts` | State snapshot creation | Task recovery capabilities |
+| `src/audit/recovery-service.ts` | Checkpoint restoration | Recovery from failures |
+| `src/audit/restoration-service.ts` | Startup restoration | Session continuity |
+| `src/audit/summary-generator.ts` | Human-readable summaries | Report generation |
+| `src/audit/json-exporter.ts` | Structured data export | Data analysis integration |
+| **Dashboard & UI** |
+| `src/dashboard/event-emitter.ts` | Real-time event streaming | Dashboard integration |
+| `dashboard/server.ts` | Web dashboard server | Monitoring interface |
+| `src/ui/planning-interface.ts` | Interactive prompts | Changing feedback types |
+| `src/ui/human-review.ts` | Human interaction prompts | Review workflows |
+| `src/ui/refinement-interface.ts` | Task refinement prompts | Description improvement |
+| `src/ui/log.ts` | Logging and display | Output formatting |
+| `src/ui/pretty.ts` | Pretty printing utilities | Display formatting |
+| **Utilities** |
+| `src/utils/terminal-bell.ts` | Audio notifications | Terminal bell alerts |
+| `src/utils/id-generator.ts` | Task ID generation | Unique identifier creation |
+| `src/utils/json-cleaner.ts` | JSON sanitization | Data cleaning |
+| **Git Integration** |
+| `src/git/sandbox.ts` | Git worktree management | Sandbox isolation |
+| `src/git/worktrees.ts` | Worktree operations | Repository management |
 
 ### Data Formats (Natural Language → Interpreter Protocol)
 
@@ -404,7 +736,7 @@ Set `DEBUG=true` to see:
 
 ### What Works Well
 - ✅ Interactive planning with feedback loop
-- ✅ Safe sandbox execution
+- ✅ Safe sandbox execution with git worktrees
 - ✅ Bean Counter coordinated work breakdown (prevents loops!)
 - ✅ Small chunk implementation with frequent review cycles
 - ✅ Session-based progress tracking and memory
@@ -414,6 +746,13 @@ Set `DEBUG=true` to see:
 - ✅ Reject handling with enhanced feedback
 - ✅ Bash tool for testing and verification
 - ✅ Squash merge tooling for clean history
+- ✅ **Comprehensive audit system** - Full logging and checkpoint recovery
+- ✅ **Real-time web dashboard** - Live monitoring and visualization
+- ✅ **Terminal bell notifications** - Audio feedback for task completion
+- ✅ **Environment variable controls** - Flexible configuration options
+- ✅ **NPX package distribution** - No installation required
+- ✅ **State machine architecture** - Clear task and execution lifecycle
+- ✅ **Natural language protocol** - Robust agent communication
 
 ### Known Limitations
 - ⚠️ No parallel task execution
@@ -487,6 +826,10 @@ npm install -g agneto
 agneto "your task description"
 ```
 
+**Current version**: 0.2.1
+**Repository**: https://github.com/durch/agneto.git
+**NPM Package**: https://www.npmjs.com/package/agneto
+
 ## 🎯 Pro Tips (From Experience)
 
 1. **Just provide the description** - IDs are auto-generated now!
@@ -521,10 +864,11 @@ agneto "your task description"
 # Run these in order when something's wrong:
 make check                        # Run all health checks at once
 # OR manually:
-npm run build                     # 1. Does it compile?
+make build                        # 1. Does it compile?
 echo "OK" | claude -p              # 2. Is Claude CLI working?
-DEBUG=true npx tsx test-provider.ts  # 3. Is provider working?
-git worktree list                 # 4. Any stuck worktrees?
+make provider                     # 3. Is provider working?
+make status                       # 4. Check git status
+git worktree list                 # 5. Any stuck worktrees?
 ```
 
 ### If All Else Fails
