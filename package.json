@@ -23,8 +23,7 @@
     "agile",
     "autonomous"
   ],
-  "author": "",
-  "license": "MIT",
+  "author": "Drazen Urch",
   "repository": {
     "type": "git",
     "url": "https://github.com/durch/agneto.git"
