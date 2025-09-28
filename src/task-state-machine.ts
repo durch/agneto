@@ -97,6 +97,9 @@ export interface TaskContext {
   // Error tracking
   lastError?: Error;
 
+  // Task baseline tracking (prevents reverting pre-task commits)
+  baselineCommit?: string;
+
   // Retry decision for super review
   retryFeedback?: string;
 
@@ -212,6 +215,15 @@ export class TaskStateMachine {
 
   clearCurmudgeonFeedback() {
     this.context.curmudgeonFeedback = undefined;
+  }
+
+  // Task baseline commit management (prevents reverting pre-task commits)
+  setBaselineCommit(commitHash: string) {
+    this.context.baselineCommit = commitHash;
+  }
+
+  getBaselineCommit(): string | undefined {
+    return this.context.baselineCommit;
   }
 
   // Check if we can continue processing

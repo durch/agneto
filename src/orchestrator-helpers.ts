@@ -87,9 +87,25 @@ export async function commitChanges(cwd: string, description: string): Promise<v
 
 /**
  * Revert the last commit or clean uncommitted changes
+ * AIDEV-NOTE: Added baseline commit check to prevent reverting pre-task commits
  */
-export async function revertLastCommit(cwd: string): Promise<void> {
+export async function revertLastCommit(cwd: string, baselineCommit?: string): Promise<void> {
   try {
+    // Get current HEAD to compare with baseline
+    const currentHead = (() => {
+      try {
+        return execSync(`git -C "${cwd}" rev-parse HEAD`, { encoding: "utf8" }).trim();
+      } catch {
+        return null;
+      }
+    })();
+
+    // If we have a baseline and we're at the baseline, nothing to revert
+    if (baselineCommit && currentHead === baselineCommit) {
+      log.orchestrator("🔒 No task-specific changes to revert (at baseline commit)");
+      return;
+    }
+
     // Check if we have commits to revert
     const hasCommits = (() => {
       try {

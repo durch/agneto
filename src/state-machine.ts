@@ -77,6 +77,9 @@ export interface StateMachineContext {
   // Error information
   lastError?: Error;
 
+  // Task baseline tracking (prevents reverting pre-task commits)
+  baselineCommit?: string;
+
   // Configuration
   maxPlanAttempts: number;
   maxCodeAttempts: number;
@@ -86,12 +89,13 @@ export class CoderReviewerStateMachine {
   private state: State = State.TASK_START;
   private context: StateMachineContext;
 
-  constructor(maxPlanAttempts = 7, maxCodeAttempts = 7) {
+  constructor(maxPlanAttempts = 7, maxCodeAttempts = 7, baselineCommit?: string) {
     this.context = {
       planAttempts: 0,
       codeAttempts: 0,
       maxPlanAttempts,
-      maxCodeAttempts
+      maxCodeAttempts,
+      baselineCommit
     };
     log.orchestrator(`State machine initialized: ${this.state}`);
   }

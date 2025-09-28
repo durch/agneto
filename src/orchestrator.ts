@@ -3,6 +3,7 @@
 // Bean Counter acts as "Scrum Master" maintaining session-based progress ledger and coordinating sprint cycles
 // Coder becomes pure implementation executor, no longer handles chunking decisions
 
+import { execSync } from "node:child_process";
 import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
 import { RefinerAgent } from "./agents/refiner.js";
@@ -106,7 +107,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         taskStateMachine.clearRetryFeedback();
 
                         // Reset the execution state machine for a fresh cycle
-                        taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine());
+                        taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit()));
                     }
 
                     const interactive = !options?.nonInteractive;
@@ -187,8 +188,19 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     let executionStateMachine = taskStateMachine.getExecutionStateMachine();
 
                     if (!executionStateMachine) {
+                        // Capture baseline commit to prevent reverting pre-task changes
+                        if (!taskStateMachine.getBaselineCommit()) {
+                            try {
+                                const baselineCommit = execSync(`git -C "${cwd}" rev-parse HEAD`, { encoding: "utf8" }).trim();
+                                taskStateMachine.setBaselineCommit(baselineCommit);
+                                log.orchestrator(`📍 Task baseline set: ${baselineCommit.substring(0, 8)}`);
+                            } catch (error) {
+                                log.warn(`Failed to capture baseline commit: ${error}`);
+                            }
+                        }
+
                         // Initialize the execution state machine
-                        executionStateMachine = new CoderReviewerStateMachine();
+                        executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit());
                         taskStateMachine.setExecutionStateMachine(executionStateMachine);
                         executionStateMachine.transition(Event.START_CHUNKING);
                     }
@@ -639,12 +651,12 @@ async function runExecutionStateMachine(
                             break;
 
                         case 'revise-code':
-                            await revertLastCommit(cwd);
+                            await revertLastCommit(cwd, stateMachine.getContext().baselineCommit);
                             stateMachine.transition(Event.CODE_REVISION_REQUESTED, verdict.feedback);
                             break;
 
                         case 'reject-code':
-                            await revertLastCommit(cwd);
+                            await revertLastCommit(cwd, stateMachine.getContext().baselineCommit);
                             stateMachine.transition(Event.CODE_REJECTED, verdict.feedback);
                             break;
 
@@ -662,10 +674,10 @@ async function runExecutionStateMachine(
                                 stateMachine.setCodeFeedback(codeDecision.feedback || `Human approved: ${changeDescription}`);
                                 stateMachine.transition(Event.CODE_APPROVED);
                             } else if (codeDecision.decision === 'revise') {
-                                await revertLastCommit(cwd);
+                                await revertLastCommit(cwd, stateMachine.getContext().baselineCommit);
                                 stateMachine.transition(Event.CODE_REVISION_REQUESTED, codeDecision.feedback);
                             } else {
-                                await revertLastCommit(cwd);
+                                await revertLastCommit(cwd, stateMachine.getContext().baselineCommit);
                                 stateMachine.transition(Event.CODE_REJECTED, codeDecision.feedback);
                             }
                             break;
