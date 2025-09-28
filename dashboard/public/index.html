@@ -270,10 +270,15 @@
 
         @media (min-width: 1024px) {
             .dashboard-grid {
-                grid-template-columns: 1fr 1fr 1fr;
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: auto auto;
             }
 
             .task-section:first-child {
+                grid-column: span 1;
+            }
+
+            .task-section:nth-child(3) {
                 grid-column: span 2;
             }
         }
@@ -292,6 +297,74 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* Markdown Rendering Styles */
+        .markdown-content {
+            font-family: 'SF Mono', Monaco, 'Inconsolata', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            line-height: 1.5;
+        }
+
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            margin: 0.5em 0 0.3em 0;
+            font-weight: 600;
+        }
+
+        .markdown-content h1 { color: #2b77e6; font-size: 1.1em; }
+        .markdown-content h2 { color: #f59e0b; font-size: 1.05em; }
+        .markdown-content h3 { color: #3b82f6; font-size: 1.0em; }
+
+        .markdown-content strong { color: #1f2937; font-weight: 600; }
+        .markdown-content em { color: #374151; font-style: italic; }
+        .markdown-content code {
+            background: #f3f4f6;
+            color: #f59e0b;
+            padding: 0.1em 0.3em;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+
+        .markdown-content .code-block {
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 0.8em;
+            border-radius: 6px;
+            margin: 0.5em 0;
+            overflow-x: auto;
+            border: 1px solid #374151;
+        }
+
+        .markdown-content ul, .markdown-content ol {
+            margin: 0.3em 0;
+            padding-left: 1.2em;
+        }
+
+        .markdown-content li {
+            margin: 0.1em 0;
+        }
+
+        .markdown-content blockquote {
+            border-left: 3px solid #d1d5db;
+            margin: 0.5em 0;
+            padding-left: 0.8em;
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        .markdown-content hr {
+            border: none;
+            border-top: 1px solid #d1d5db;
+            margin: 0.8em 0;
+        }
+
+        .markdown-content .keyword {
+            font-weight: 600;
+        }
+
+        .markdown-content .keyword.intent { color: #059669; }
+        .markdown-content .keyword.risk { color: #dc2626; }
+        .markdown-content .keyword.context { color: #2563eb; }
+        .markdown-content .keyword.steps { color: #0891b2; }
+        .markdown-content .keyword.acceptance { color: #7c3aed; }
 
         /* Utility Classes */
         .hidden {
@@ -409,6 +482,142 @@
     </div>
 
     <script>
+        // Markdown Renderer - Web-compatible version of Agneto's pretty printer
+        class MarkdownRenderer {
+            static renderMarkdown(text) {
+                if (!text || typeof text !== 'string') return text;
+
+                // Split into paragraphs (similar to pretty printer logic)
+                const paragraphs = this.splitIntoParagraphs(text);
+                let html = '';
+                let inCodeFence = false;
+                let codeContent = '';
+                let codeLang = '';
+
+                for (const paragraph of paragraphs) {
+                    // Handle code fences
+                    if (paragraph.some(line => /^```/.test(line.trim()))) {
+                        for (const line of paragraph) {
+                            const trimmed = line.trim();
+                            if (/^```/.test(trimmed)) {
+                                if (!inCodeFence) {
+                                    inCodeFence = true;
+                                    codeLang = trimmed.replace(/```+/, '').trim();
+                                    codeContent = '';
+                                } else {
+                                    // Close fence - render code block
+                                    html += `<div class="code-block">${this.escapeHtml(codeContent)}</div>`;
+                                    inCodeFence = false;
+                                    codeContent = '';
+                                    codeLang = '';
+                                }
+                            } else if (inCodeFence) {
+                                codeContent += (codeContent ? '\n' : '') + line;
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (inCodeFence) {
+                        codeContent += (codeContent ? '\n' : '') + paragraph.join('\n');
+                        continue;
+                    }
+
+                    // Process each line in the paragraph
+                    for (const line of paragraph) {
+                        // Headers
+                        if (/^#{1,6}\s+/.test(line)) {
+                            const level = (line.match(/^(#{1,6})/)?.[1].length || 1);
+                            const text = line.replace(/^#{1,6}\s+/, '');
+                            const enhanced = this.enhanceInlineFormatting(text);
+                            html += `<h${Math.min(level, 3)}>${enhanced}</h${Math.min(level, 3)}>`;
+                            continue;
+                        }
+
+                        // Horizontal rules
+                        if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line.trim())) {
+                            html += '<hr>';
+                            continue;
+                        }
+
+                        // Bullet lists
+                        if (/^(\s*)([-*•]|\d+\.)\s+/.test(line)) {
+                            const match = line.match(/^(\s*)([-*•]|\d+\.)\s+(.*)$/);
+                            if (match) {
+                                const [, indent, bullet, content] = match;
+                                const isOrdered = bullet.includes('.');
+                                const enhanced = this.enhanceInlineFormatting(content);
+                                const listType = isOrdered ? 'ol' : 'ul';
+                                html += `<${listType}><li>${enhanced}</li></${listType}>`;
+                            }
+                            continue;
+                        }
+
+                        // Blockquotes
+                        if (/^\s*>\s?/.test(line)) {
+                            const content = line.replace(/^\s*>\s?/, '');
+                            const enhanced = this.enhanceInlineFormatting(content);
+                            html += `<blockquote>${enhanced}</blockquote>`;
+                            continue;
+                        }
+
+                        // Regular paragraphs
+                        if (line.trim()) {
+                            const enhanced = this.enhanceInlineFormatting(line);
+                            html += `<p>${enhanced}</p>`;
+                        }
+                    }
+                }
+
+                return html;
+            }
+
+            static splitIntoParagraphs(text) {
+                const lines = text.replace(/\r\n/g, '\n').split('\n');
+                const paragraphs = [];
+                let current = [];
+                let blankCount = 0;
+
+                for (const line of lines) {
+                    if (line.trim() === '') {
+                        blankCount++;
+                        if (blankCount <= 1) current.push('');
+                        else if (current.length) {
+                            paragraphs.push(current);
+                            current = [];
+                        }
+                    } else {
+                        blankCount = 0;
+                        current.push(line);
+                    }
+                }
+                if (current.length) paragraphs.push(current);
+                return paragraphs;
+            }
+
+            static enhanceInlineFormatting(text) {
+                return this.escapeHtml(text)
+                    // Bold (process first to avoid conflicts)
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    // Italic (simple pattern to avoid conflicts with bold)
+                    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+                    // Inline code
+                    .replace(/`([^`]+)`/g, '<code>$1</code>')
+                    // Special keywords with semantic classes
+                    .replace(/^(Intent|Files|Verification|Verify):/gm, '<span class="keyword intent">$1:</span>')
+                    .replace(/^(Risk|Warning|Note|Error):/gm, '<span class="keyword risk">$1:</span>')
+                    .replace(/^(Context|Background|Summary):/gm, '<span class="keyword context">$1:</span>')
+                    .replace(/^(Steps?|Actions?|Tasks?):/gm, '<span class="keyword steps">$1:</span>')
+                    .replace(/^(Acceptance Criteria|Success Criteria|Requirements?):/gm, '<span class="keyword acceptance">$1:</span>');
+            }
+
+            static escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
         // Dashboard Application State
         class AgnetoDashboard {
             constructor() {
@@ -512,6 +721,34 @@
                         this.updateTaskInfo(task.taskId, { eventCount: task.eventCount });
                     });
                 }
+
+                // Load recent events from welcome message
+                if (data.recentEvents && Array.isArray(data.recentEvents)) {
+                    console.log(`Loading ${data.recentEvents.length} historical events`);
+
+                    // Clear existing events and load from server
+                    this.events = [];
+
+                    // Add events to local storage
+                    data.recentEvents.forEach(event => {
+                        this.addEventToMemory(event, event.taskId);
+                    });
+
+                    // Update display
+                    this.updateEventLog();
+                    console.log(`Loaded ${this.events.length} events from server`);
+                }
+            }
+
+            addEventToMemory(event, taskId) {
+                // Add to events array with taskId (without updating display)
+                const eventWithTask = { ...event, taskId };
+                this.events.unshift(eventWithTask);
+
+                // Trim to max events
+                if (this.events.length > this.maxEvents) {
+                    this.events = this.events.slice(0, this.maxEvents);
+                }
             }
 
             handleNewEvent(data) {
@@ -531,14 +768,8 @@
             }
 
             addEvent(event, taskId) {
-                // Add to events array with taskId
-                const eventWithTask = { ...event, taskId };
-                this.events.unshift(eventWithTask);
-
-                // Trim to max events
-                if (this.events.length > this.maxEvents) {
-                    this.events = this.events.slice(0, this.maxEvents);
-                }
+                // Add to memory
+                this.addEventToMemory(event, taskId);
 
                 // Update event log display
                 this.updateEventLog();
@@ -562,14 +793,29 @@
                 }
 
                 const tasksArray = Array.from(this.tasks.values());
-                taskList.innerHTML = tasksArray.map(task => `
-                    <div class="task-item">
-                        <div class="task-id">${task.taskId}</div>
-                        <div class="task-description">
-                            ${task.lastEvent ? task.lastEvent.message : 'No recent activity'}
+                taskList.innerHTML = tasksArray.map(task => {
+                    let taskDescription = 'No recent activity';
+
+                    if (task.lastEvent && task.lastEvent.message) {
+                        // Check if the message contains markdown
+                        const hasMarkdown = /(?:^#{1,6}\s+|^\s*[-*•]\s+|```|^\*{3,}|_{3,}|-{3,}|\*\*.*?\*\*|\*.*?\*|`.*?`)/m.test(task.lastEvent.message);
+
+                        if (hasMarkdown) {
+                            taskDescription = `<div class="markdown-content">${MarkdownRenderer.renderMarkdown(task.lastEvent.message)}</div>`;
+                        } else {
+                            taskDescription = this.escapeHtml(task.lastEvent.message);
+                        }
+                    }
+
+                    return `
+                        <div class="task-item">
+                            <div class="task-id">${task.taskId}</div>
+                            <div class="task-description">
+                                ${taskDescription}
+                            </div>
                         </div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             }
 
             updateEventLog() {
@@ -581,13 +827,28 @@
                     return;
                 }
 
-                eventLog.innerHTML = filteredEvents.slice(0, 50).map(event => `
-                    <div class="event-item">
-                        <div class="event-timestamp">${new Date(event.timestamp).toLocaleTimeString()}</div>
-                        <div class="event-agent">${event.agent}</div>
-                        <div class="event-message">${event.message}</div>
-                    </div>
-                `).join('');
+                eventLog.innerHTML = filteredEvents.slice(0, 50).map(event => {
+                    // Detect if message contains markdown (headers, bullets, code fences, bold/italic)
+                    const hasMarkdown = /(?:^#{1,6}\s+|^\s*[-*•]\s+|```|^\*{3,}|_{3,}|-{3,}|\*\*.*?\*\*|\*.*?\*|`.*?`)/m.test(event.message);
+
+                    const renderedMessage = hasMarkdown
+                        ? `<div class="markdown-content">${MarkdownRenderer.renderMarkdown(event.message)}</div>`
+                        : `<div class="event-message">${this.escapeHtml(event.message)}</div>`;
+
+                    return `
+                        <div class="event-item">
+                            <div class="event-timestamp">${new Date(event.timestamp).toLocaleTimeString()}</div>
+                            <div class="event-agent">${event.agent}</div>
+                            ${renderedMessage}
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
             }
 
             updatePhaseProgress(currentPhase) {

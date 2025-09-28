@@ -14,14 +14,112 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from 'fs';
+import { join, dirname } from 'path';
 import { AuditEvent } from '../src/audit/types.js';
 
 // Server configuration
 const PORT = 3000;
 const MAX_EVENTS_PER_TASK = 1000;
+const EVENTS_DIR = 'dashboard/events';
 
 // In-memory event storage: taskId -> AuditEvent[]
 const eventStore = new Map<string, AuditEvent[]>();
+
+// Ensure events directory exists
+if (!existsSync(EVENTS_DIR)) {
+    mkdirSync(EVENTS_DIR, { recursive: true });
+}
+
+/**
+ * Get the file path for a task's events
+ */
+function getTaskEventFile(taskId: string): string {
+    const safeTaskId = taskId.replace(/[^a-zA-Z0-9\-_]/g, '_');
+    return join(EVENTS_DIR, `${safeTaskId}.jsonl`);
+}
+
+/**
+ * Load events from file for a specific task
+ */
+function loadTaskEvents(taskId: string): AuditEvent[] {
+    const filePath = getTaskEventFile(taskId);
+
+    if (!existsSync(filePath)) {
+        return [];
+    }
+
+    try {
+        const content = readFileSync(filePath, 'utf-8');
+        const lines = content.trim().split('\n').filter(line => line.trim());
+
+        const events: AuditEvent[] = [];
+        for (const line of lines) {
+            try {
+                const event = JSON.parse(line) as AuditEvent;
+                events.push(event);
+            } catch (parseError) {
+                console.warn(`Failed to parse event line in ${filePath}:`, parseError);
+            }
+        }
+
+        console.log(`Loaded ${events.length} events for task ${taskId}`);
+        return events;
+    } catch (error) {
+        console.error(`Failed to load events for task ${taskId}:`, error);
+        return [];
+    }
+}
+
+/**
+ * Append an event to the task's file
+ */
+function appendEventToFile(taskId: string, event: AuditEvent): void {
+    const filePath = getTaskEventFile(taskId);
+
+    try {
+        // Ensure directory exists
+        const dir = dirname(filePath);
+        if (!existsSync(dir)) {
+            mkdirSync(dir, { recursive: true });
+        }
+
+        // Append as JSON line
+        const eventLine = JSON.stringify(event) + '\n';
+        writeFileSync(filePath, eventLine, { flag: 'a', encoding: 'utf-8' });
+
+    } catch (error) {
+        console.error(`Failed to persist event for task ${taskId}:`, error);
+        // Don't throw - dashboard should continue working even if persistence fails
+    }
+}
+
+/**
+ * Load all existing task events on startup
+ */
+function loadAllTaskEvents(): void {
+    try {
+        if (!existsSync(EVENTS_DIR)) {
+            return;
+        }
+
+        const files = readdirSync(EVENTS_DIR).filter((file: string) => file.endsWith('.jsonl'));
+
+        for (const file of files) {
+            const taskId = file.replace('.jsonl', '').replace(/_/g, '-'); // Convert back from safe filename
+            const events = loadTaskEvents(taskId);
+
+            if (events.length > 0) {
+                eventStore.set(taskId, events);
+                console.log(`Pre-loaded ${events.length} events for task ${taskId}`);
+            }
+        }
+
+        console.log(`Loaded events for ${eventStore.size} tasks from disk`);
+    } catch (error) {
+        console.error('Failed to load existing task events:', error);
+    }
+}
 
 // Initialize Express application
 const app = express();
@@ -54,16 +152,27 @@ wss.on('connection', (ws) => {
     console.log('Dashboard client connected');
     connectedClients.add(ws);
 
-    // Send welcome message with current event counts
+    // Send welcome message with current event counts and recent events
     const taskCounts = Array.from(eventStore.entries()).map(([taskId, events]) => ({
         taskId,
         eventCount: events.length
     }));
 
+    // Send recent events from all tasks (last 50 events across all tasks)
+    const allEvents: Array<AuditEvent & { taskId: string }> = [];
+    for (const [taskId, events] of eventStore.entries()) {
+        events.forEach(event => allEvents.push({ ...event, taskId }));
+    }
+
+    // Sort by timestamp and take most recent
+    allEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const recentEvents = allEvents.slice(0, 50);
+
     ws.send(JSON.stringify({
         type: 'welcome',
         message: 'Connected to Agneto Dashboard',
-        taskCounts
+        taskCounts,
+        recentEvents
     }));
 
     // Handle client disconnection
@@ -161,6 +270,9 @@ app.post('/events', (req, res) => {
 
         const taskEvents = eventStore.get(taskKey)!;
         taskEvents.push(event);
+
+        // Persist to disk
+        appendEventToFile(taskKey, event);
 
         // Prune if necessary
         pruneTaskEvents(taskKey);
@@ -275,6 +387,9 @@ process.on('SIGINT', () => {
     });
 });
 
+// Load existing events on startup
+loadAllTaskEvents();
+
 // Start the server
 server.listen(PORT, () => {
     console.log(`🚀 Agneto Dashboard Server started successfully!`);
@@ -282,6 +397,7 @@ server.listen(PORT, () => {
     console.log(`🔌 WebSocket Server: ws://localhost:${PORT}/ws`);
     console.log(`📊 Event endpoint: http://localhost:${PORT}/events`);
     console.log(`💾 Max events per task: ${MAX_EVENTS_PER_TASK}`);
+    console.log(`📁 Event storage: ${EVENTS_DIR}`);
     console.log('');
     console.log('Ready to receive events from DashboardEventEmitter...');
 });
