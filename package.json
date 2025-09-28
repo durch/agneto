@@ -1,6 +1,6 @@
 {
   "name": "agneto",
-  "version": "0.3.1",
+  "version": "0.3.0",
   "description": "AI-powered autonomous coding agent with human-in-the-loop planning",
   "type": "module",
   "bin": {
@@ -23,7 +23,8 @@
     "agile",
     "autonomous"
   ],
-  "author": "Drazen Urch",
+  "author": "Dražen Urch",
+  "license": "Source Available",
   "repository": {
     "type": "git",
     "url": "https://github.com/durch/agneto.git"
