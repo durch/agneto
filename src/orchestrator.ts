@@ -207,6 +207,12 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit());
                         taskStateMachine.setExecutionStateMachine(executionStateMachine);
                         executionStateMachine.transition(Event.START_CHUNKING);
+                    } else if (taskStateMachine.getContext().retryFeedback) {
+                        // We're retrying after SuperReviewer feedback - reset the state machine
+                        log.orchestrator("🔄 Resetting execution state machine for retry cycle");
+                        executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit());
+                        taskStateMachine.setExecutionStateMachine(executionStateMachine);
+                        executionStateMachine.transition(Event.START_CHUNKING);
                     }
 
                     // Run the execution state machine

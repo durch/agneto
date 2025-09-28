@@ -216,6 +216,10 @@ export class CoderReviewerStateMachine {
           this.context.codeFeedback = undefined;
           this.context.currentChunk = undefined;
           return true;
+        } else if (event === Event.ERROR_OCCURRED) {
+          this.state = State.TASK_FAILED;
+          this.context.lastError = data;
+          return true;
         }
         break;
 
@@ -228,6 +232,10 @@ export class CoderReviewerStateMachine {
           return true;
         } else if (event === Event.TASK_COMPLETED) {
           this.state = State.TASK_COMPLETE;
+          return true;
+        } else if (event === Event.ERROR_OCCURRED) {
+          this.state = State.TASK_FAILED;
+          this.context.lastError = data;
           return true;
         }
         break;
@@ -371,6 +379,13 @@ export class CoderReviewerStateMachine {
 
     // Determine recovery based on current state
     switch (this.state) {
+      case State.TASK_START:
+      case State.BEAN_COUNTING:
+        // No retry for these states - go to failed
+        this.state = State.TASK_FAILED;
+        log.orchestrator(`Error in ${this.state} - task failed`);
+        break;
+
       case State.PLANNING:
       case State.PLAN_REVIEW:
         // Note: attempts are incremented in orchestrator before each attempt
@@ -401,6 +416,7 @@ export class CoderReviewerStateMachine {
 
       default:
         this.state = State.TASK_FAILED;
+        log.orchestrator(`Unhandled error in state ${this.state} - task failed`);
     }
   }
 
