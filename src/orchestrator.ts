@@ -30,8 +30,9 @@ import {
   commitChanges
 } from "./orchestrator-helpers.js";
 import type { CoderPlanProposal } from "./types.js";
+import type { RecoveryDecision } from "./cli.js";
 
-export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean }) {
+export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }) {
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId);
 
