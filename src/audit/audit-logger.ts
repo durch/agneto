@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import { AuditEvent, TaskAuditMetadata, AuditConfig } from './types';
 import { SummaryGenerator } from './summary-generator.js';
 import { JSONExporter } from './json-exporter.js';
+import { DashboardEventEmitter } from '../dashboard/event-emitter.js';
 
 /**
  * AuditLogger class for capturing and storing agent interaction audit trails
@@ -18,6 +19,7 @@ export class AuditLogger {
   private taskStartTime: string;
   private eventsDir: string;
   private metadataFile: string;
+  private dashboardEmitter: DashboardEventEmitter;
 
   constructor(taskId: string, taskDescription: string = '') {
     // Check if audit is disabled via environment variable
@@ -33,6 +35,7 @@ export class AuditLogger {
     this.taskStartTime = new Date().toISOString();
     this.eventsDir = path.join(this.config.auditDir, 'events');
     this.metadataFile = path.join(this.config.auditDir, 'metadata.json');
+    this.dashboardEmitter = new DashboardEventEmitter();
 
     if (this.config.enabled) {
       this.initializeAuditDirectories(taskDescription);
@@ -116,6 +119,9 @@ This file will be updated with a summary of key events as the task progresses.
       // Write event to individual JSON file
       const eventFile = path.join(this.eventsDir, `${Date.now()}-${event.id}.json`);
       fs.writeFileSync(eventFile, JSON.stringify(event, null, 2));
+
+      // Forward event to dashboard if enabled
+      this.dashboardEmitter.forwardEvent(event, this.config.taskId);
 
       this.eventCount++;
       this.updateMetadata();
