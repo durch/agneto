@@ -50,9 +50,9 @@ export async function reviewPlan(
         }
     });
 
-    // Log the raw response for debugging
-    if (DEBUG) {
-        log.review(`Raw plan review response: ${rawResponse}`);
+    // Always display the full plan review response (will be pretty printed)
+    if (rawResponse && rawResponse.trim()) {
+        log.review(rawResponse);
     }
 
     // Interpret the natural language response
@@ -144,9 +144,9 @@ export async function reviewCode(
         }
     });
 
-    // Log the raw response for debugging
-    if (DEBUG) {
-        log.review(`Raw code review response: ${rawResponse}`);
+    // Always display the full code review response (will be pretty printed)
+    if (rawResponse && rawResponse.trim()) {
+        log.review(rawResponse);
     }
 
     // Interpret the natural language response

@@ -21,7 +21,36 @@ export class DashboardEventEmitter {
      */
     constructor(endpoint?: string) {
         this.endpoint = endpoint || process.env.AGNETO_DASHBOARD_ENDPOINT;
-        this.enabled = !!this.endpoint;
+        this.enabled = this.validateAndSetEnabled();
+    }
+
+    /**
+     * Validate the endpoint URL and determine if forwarding should be enabled
+     */
+    private validateAndSetEnabled(): boolean {
+        if (!this.endpoint) {
+            return false;
+        }
+
+        // Check for explicit disable values
+        if (this.endpoint.toLowerCase() === 'none' || this.endpoint.toLowerCase() === 'disabled') {
+            return false;
+        }
+
+        try {
+            const url = new URL(this.endpoint);
+
+            // Only support HTTP/HTTPS protocols
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+                console.warn(`[DashboardEventEmitter] Invalid protocol '${url.protocol}' in endpoint. Only http and https are supported. Dashboard forwarding disabled.`);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.warn(`[DashboardEventEmitter] Invalid dashboard endpoint URL '${this.endpoint}'. Dashboard forwarding disabled.`);
+            return false;
+        }
     }
 
     /**
@@ -91,12 +120,18 @@ export class DashboardEventEmitter {
 
             // Handle request errors
             req.on('error', (error) => {
-                console.warn(`[DashboardEventEmitter] Failed to forward event to ${this.endpoint}:`, error.message);
+                // Only log in debug mode to reduce noise in development
+                if (process.env.DEBUG) {
+                    console.warn(`[DashboardEventEmitter] Failed to forward event to ${this.endpoint}:`, error.message);
+                }
             });
 
             // Set a timeout to prevent hanging requests
             req.setTimeout(5000, () => {
-                console.warn(`[DashboardEventEmitter] Request timeout while forwarding to ${this.endpoint}`);
+                // Only log in debug mode to reduce noise in development
+                if (process.env.DEBUG) {
+                    console.warn(`[DashboardEventEmitter] Request timeout while forwarding to ${this.endpoint}`);
+                }
                 req.destroy();
             });
 
@@ -106,7 +141,10 @@ export class DashboardEventEmitter {
 
         } catch (error) {
             // Catch any synchronous errors (URL parsing, JSON stringify, etc.)
-            console.warn(`[DashboardEventEmitter] Error preparing request to ${this.endpoint}:`, error instanceof Error ? error.message : String(error));
+            // Only log in debug mode to reduce noise in development
+            if (process.env.DEBUG) {
+                console.warn(`[DashboardEventEmitter] Error preparing request to ${this.endpoint}:`, error instanceof Error ? error.message : String(error));
+            }
         }
     }
 }

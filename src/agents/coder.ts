@@ -52,9 +52,9 @@ export async function proposePlan(
         }
     });
 
-    // Log the raw response for debugging
-    if (DEBUG) {
-        log.coder(`Raw response: ${rawResponse}`);
+    // Always display the full plan proposal response (will be pretty printed)
+    if (rawResponse && rawResponse.trim()) {
+        log.coder(rawResponse);
     }
 
     // Return the raw response as a proposal - no interpretation needed
@@ -126,15 +126,11 @@ export async function implementPlan(
         }
     });
 
-    // Log the raw response for debugging
-    if (DEBUG) {
-        log.coder(`Raw implementation response: ${rawResponse}`);
-    }
-
-    // Return a simple description of what was done
-    // The orchestrator expects "CODE_APPLIED:" prefix to know changes were made
+    // Always display the full implementation response
     if (rawResponse && rawResponse.trim()) {
-        // Extract first line as summary of what was done
+        log.coder(rawResponse);
+
+        // Extract first line as summary for orchestrator tracking
         const firstLine = rawResponse.split('\n')[0] || 'Changes applied';
         return `CODE_APPLIED: ${firstLine}`;
     }

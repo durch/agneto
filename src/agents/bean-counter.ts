@@ -69,8 +69,9 @@ export async function getInitialChunk(
       },
     });
 
-    if (DEBUG) {
-        log.orchestrator(`Raw bean counter initial response: ${rawResponse}`);
+    // Always display the full Bean Counter response (will be pretty printed)
+    if (rawResponse && rawResponse.trim()) {
+        log.beanCounter(rawResponse);
     }
 
     // Use interpreter to avoid false positives from partial word matches
@@ -129,8 +130,9 @@ export async function getNextChunk(
       },
     });
 
-    if (DEBUG) {
-        log.orchestrator(`Raw bean counter progressive response: ${rawResponse}`);
+    // Always display the full Bean Counter response (will be pretty printed)
+    if (rawResponse && rawResponse.trim()) {
+        log.beanCounter(rawResponse);
     }
 
     // Use interpreter to avoid false positives from partial word matches

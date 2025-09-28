@@ -123,6 +123,10 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     try {
                         const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback);
                         if (!interactive) {
+                            // Display the full plan content in non-interactive mode
+                            if (planMd) {
+                                log.planner(planMd);
+                            }
                             log.planner(`Saved plan → ${planPath}`);
                         }
                         taskStateMachine.setPlan(planMd, planPath);
@@ -623,12 +627,8 @@ async function runExecutionStateMachine(
                         true  // Already initialized from planning phase
                     );
 
-                    // Check if Coder applied changes
-                    if (response.includes("CODE_APPLIED:")) {
-                        const changeMatch = response.match(/CODE_APPLIED:\s*(.+)/i);
-                        const changeDescription = changeMatch ? changeMatch[1] : "Changes made";
-                        log.coder(`Applied: ${changeDescription}`);
-                    } else {
+                    // Check if Coder applied changes (don't log here since Coder already displayed its response)
+                    if (!response.includes("CODE_APPLIED:")) {
                         log.info("No changes were needed - work already complete");
                     }
                     // Always transition to CODE_APPLIED - let reviewer validate the approach
