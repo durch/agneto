@@ -18,6 +18,7 @@ import { ensureWorktree } from "./git/worktrees.js";
 import { mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
 import { log as originalLog } from "./ui/log.js";
 import { enableAuditLogging } from "./audit/integration-example.js";
+import { CheckpointService } from "./audit/checkpoint-service.js";
 import { promptForSuperReviewerDecision } from "./ui/human-review.js";
 import { generateUUID } from "./utils/id-generator.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
@@ -36,6 +37,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
     // Initialize audit logging - wrap the log instance for comprehensive audit capture
     const { log, auditLogger } = enableAuditLogging(taskId, humanTask);
+
+    // Initialize checkpoint service for audit-driven recovery
+    const checkpointService = new CheckpointService(taskId, cwd);
 
     // Initialize parent state machine
     const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
@@ -222,7 +226,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         beanCounterInitialized,
                         coderInitialized,
                         reviewerInitialized,
-                        log
+                        log,
+                        checkpointService,
+                        taskStateMachine
                     );
 
                     beanCounterInitialized = executionResult.beanCounterInitialized;
@@ -367,7 +373,9 @@ async function runExecutionStateMachine(
     beanCounterInitialized: boolean,
     coderInitialized: boolean,
     reviewerInitialized: boolean,
-    log: any
+    log: any,
+    checkpointService: CheckpointService,
+    taskStateMachine: TaskStateMachine
 ): Promise<{ beanCounterInitialized: boolean, coderInitialized: boolean, reviewerInitialized: boolean }> {
 
     // Run the execution state machine loop
@@ -529,6 +537,21 @@ async function runExecutionStateMachine(
                             // Work is already done, mark chunk as complete and continue to next
                             log.orchestrator(`✅ Chunk already complete: ${verdict.feedback}`);
                             stateMachine.transition(Event.CODE_APPROVED, verdict.feedback);
+
+                            // Create checkpoint after code approval (work already complete)
+                            await createCheckpointAfterApproval(
+                                checkpointService,
+                                stateMachine,
+                                taskStateMachine,
+                                beanCounterSessionId,
+                                coderSessionId,
+                                reviewerSessionId,
+                                beanCounterInitialized,
+                                coderInitialized,
+                                reviewerInitialized,
+                                `Work already complete: ${verdict.feedback || 'Chunk requirements satisfied'}`,
+                                log
+                            );
                             break;
 
                         case 'revise-plan':
@@ -637,6 +660,21 @@ async function runExecutionStateMachine(
                             // Store approval feedback for Bean Counter to track progress
                             stateMachine.setCodeFeedback(verdict.feedback || `Approved: ${changeDescription}`);
                             stateMachine.transition(Event.CODE_APPROVED);
+
+                            // Create checkpoint after successful code approval
+                            await createCheckpointAfterApproval(
+                                checkpointService,
+                                stateMachine,
+                                taskStateMachine,
+                                beanCounterSessionId,
+                                coderSessionId,
+                                reviewerSessionId,
+                                beanCounterInitialized,
+                                coderInitialized,
+                                reviewerInitialized,
+                                `Code approved: ${changeDescription}`,
+                                log
+                            );
                             break;
 
                         case 'task-complete':
@@ -648,6 +686,21 @@ async function runExecutionStateMachine(
                             // Store completion feedback for Bean Counter to track progress
                             stateMachine.setCodeFeedback(verdict.feedback || `Completed: ${changeDescription}`);
                             stateMachine.transition(Event.CODE_APPROVED);
+
+                            // Create checkpoint after chunk completion
+                            await createCheckpointAfterApproval(
+                                checkpointService,
+                                stateMachine,
+                                taskStateMachine,
+                                beanCounterSessionId,
+                                coderSessionId,
+                                reviewerSessionId,
+                                beanCounterInitialized,
+                                coderInitialized,
+                                reviewerInitialized,
+                                `Chunk completed: ${changeDescription}`,
+                                log
+                            );
                             break;
 
                         case 'revise-code':
@@ -673,6 +726,21 @@ async function runExecutionStateMachine(
                                 // Store approval feedback for Bean Counter to track progress
                                 stateMachine.setCodeFeedback(codeDecision.feedback || `Human approved: ${changeDescription}`);
                                 stateMachine.transition(Event.CODE_APPROVED);
+
+                                // Create checkpoint after human approval
+                                await createCheckpointAfterApproval(
+                                    checkpointService,
+                                    stateMachine,
+                                    taskStateMachine,
+                                    beanCounterSessionId,
+                                    coderSessionId,
+                                    reviewerSessionId,
+                                    beanCounterInitialized,
+                                    coderInitialized,
+                                    reviewerInitialized,
+                                    `Human approved: ${changeDescription}`,
+                                    log
+                                );
                             } else if (codeDecision.decision === 'revise') {
                                 await revertLastCommit(cwd, stateMachine.getContext().baselineCommit);
                                 stateMachine.transition(Event.CODE_REVISION_REQUESTED, codeDecision.feedback);
@@ -721,4 +789,54 @@ function formatRefinedTaskForPlanner(refinedTask: import("./types.js").RefinedTa
     }
 
     return formattedTask;
+}
+
+/**
+ * Helper function to create checkpoints after CODE_APPROVED events
+ * Captures comprehensive state for audit-driven recovery
+ */
+async function createCheckpointAfterApproval(
+    checkpointService: CheckpointService,
+    executionStateMachine: CoderReviewerStateMachine,
+    taskStateMachine: TaskStateMachine,
+    beanCounterSessionId: string,
+    coderSessionId: string,
+    reviewerSessionId: string,
+    beanCounterInitialized: boolean,
+    coderInitialized: boolean,
+    reviewerInitialized: boolean,
+    description: string,
+    log: any
+): Promise<void> {
+    try {
+        // Only create checkpoints if service is enabled
+        if (!checkpointService.isEnabled()) {
+            return;
+        }
+
+        // Create comprehensive checkpoint with all necessary context
+        const success = await checkpointService.createCheckpoint(
+            'CODE_APPROVED',
+            description,
+            {
+                taskStateMachine,
+                executionStateMachine,
+                beanCounterSessionId,
+                coderSessionId,
+                reviewerSessionId,
+                beanCounterInitialized,
+                coderInitialized,
+                reviewerInitialized,
+                // Future: Could include audit events since last checkpoint
+                auditEventsSinceLastCheckpoint: []
+            }
+        );
+
+        if (success) {
+            log.orchestrator(`📍 Checkpoint ${checkpointService.getLatestCheckpointNumber()} created for recovery`);
+        }
+    } catch (error) {
+        // Log warning but don't disrupt execution flow
+        log.warn(`⚠️ Checkpoint creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
