@@ -75,7 +75,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         log.orchestrator("✅ Checkpoint restoration completed successfully!");
 
                         // Initialize parent state machine with restored context
-                        const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
+                        const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {}, auditLogger);
 
                         // Set TaskStateMachine reference in AuditLogger for phase tracking
                         auditLogger.setTaskStateMachine(taskStateMachine);
@@ -92,7 +92,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                             // Restore execution state machine if present
                             let restoredExecutionStateMachine: CoderReviewerStateMachine | undefined;
                             if (restorationResult.restoredState.executionState) {
-                                restoredExecutionStateMachine = new CoderReviewerStateMachine(7, 7, restorationResult.restoredState.fileSystemState.baseCommitHash);
+                                restoredExecutionStateMachine = new CoderReviewerStateMachine(7, 7, restorationResult.restoredState.fileSystemState.baseCommitHash, auditLogger);
                                 const execStateRestore = restorationService.restoreExecutionStateMachine(
                                     restoredExecutionStateMachine,
                                     restorationResult.restoredState.executionState
@@ -189,7 +189,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     }
 
     // Initialize parent state machine
-    const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {});
+    const taskStateMachine = new TaskStateMachine(taskId, humanTask, cwd, options || {}, auditLogger);
 
     // Set session IDs for task state machine
     taskStateMachine.setSessionIds(coderSessionId, reviewerSessionId);
@@ -255,7 +255,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         taskStateMachine.clearRetryFeedback();
 
                         // Reset the execution state machine for a fresh cycle
-                        taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit()));
+                        taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger));
                     }
 
                     const interactive = !options?.nonInteractive;
@@ -352,13 +352,13 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         }
 
                         // Initialize the execution state machine
-                        executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit());
+                        executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
                         taskStateMachine.setExecutionStateMachine(executionStateMachine);
                         executionStateMachine.transition(Event.START_CHUNKING);
                     } else if (taskStateMachine.getContext().retryFeedback) {
                         // We're retrying after SuperReviewer feedback - reset the state machine
                         log.orchestrator("🔄 Resetting execution state machine for retry cycle");
-                        executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit());
+                        executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
                         taskStateMachine.setExecutionStateMachine(executionStateMachine);
                         executionStateMachine.transition(Event.START_CHUNKING);
                     }
@@ -588,7 +588,7 @@ async function runRestoredTask(
                             taskStateMachine.clearRetryFeedback();
 
                             // Reset the execution state machine for a fresh cycle
-                            taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit()));
+                            taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger));
                         }
 
                         const interactive = !options?.nonInteractive;
@@ -681,13 +681,13 @@ async function runRestoredTask(
                             }
 
                             // Initialize the execution state machine
-                            executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit());
+                            executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
                             taskStateMachine.setExecutionStateMachine(executionStateMachine);
                             executionStateMachine.transition(Event.START_CHUNKING);
                         } else if (taskStateMachine.getContext().retryFeedback) {
                             // We're retrying after SuperReviewer feedback - reset the state machine
                             log.orchestrator("🔄 Resetting execution state machine for retry cycle");
-                            executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit());
+                            executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
                             taskStateMachine.setExecutionStateMachine(executionStateMachine);
                             executionStateMachine.transition(Event.START_CHUNKING);
                         }

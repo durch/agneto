@@ -1,6 +1,7 @@
 import { log } from "./ui/log.js";
 import type { CoderPlanProposal } from "./types.js";
 import type { ExecutionStateCheckpoint } from "./audit/types.js";
+import type { AuditLogger } from "./audit/audit-logger.js";
 
 // State definitions for the Bean Counter coordinated protocol
 // AIDEV-NOTE: Bean Counter acts as "Scrum Master" - maintains session-based progress ledger,
@@ -89,8 +90,9 @@ export interface StateMachineContext {
 export class CoderReviewerStateMachine {
   private state: State = State.TASK_START;
   private context: StateMachineContext;
+  private auditLogger?: AuditLogger;
 
-  constructor(maxPlanAttempts = 7, maxCodeAttempts = 7, baselineCommit?: string) {
+  constructor(maxPlanAttempts = 7, maxCodeAttempts = 7, baselineCommit?: string, auditLogger?: AuditLogger) {
     this.context = {
       planAttempts: 0,
       codeAttempts: 0,
@@ -98,6 +100,7 @@ export class CoderReviewerStateMachine {
       maxCodeAttempts,
       baselineCommit
     };
+    this.auditLogger = auditLogger;
     log.orchestrator(`State machine initialized: ${this.state}`);
   }
 
@@ -194,6 +197,17 @@ export class CoderReviewerStateMachine {
 
     if (oldState !== this.state) {
       log.orchestrator(`State transition: ${oldState} → ${this.state} (event: ${event})`);
+
+      // Emit audit event for state transition
+      if (this.auditLogger) {
+        this.auditLogger.captureEvent('system', 'phase_transition', `State transition: ${oldState} → ${this.state}`, {
+          metadata: {
+            oldState,
+            newState: this.state,
+            event
+          }
+        });
+      }
     }
 
     return this.state;

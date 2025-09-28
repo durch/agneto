@@ -191,6 +191,19 @@
             border-bottom: none;
         }
 
+        .event-item.phase-transition {
+            background: linear-gradient(90deg, #e3f2fd 0%, #f3e5f5 100%);
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+
+        .phase-transition-info {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 4px;
+        }
+
         .event-timestamp {
             color: #6c757d;
             font-size: 0.75rem;
@@ -752,8 +765,13 @@
             }
 
             handleNewEvent(data) {
-                // Add event to local storage
-                this.addEvent(data.event, data.taskId);
+                // Handle phase transition events specially
+                if (data.event.eventType === 'phase_transition') {
+                    this.handlePhaseTransitionEvent(data);
+                } else {
+                    // Regular event handling
+                    this.addEvent(data.event, data.taskId);
+                }
 
                 // Update task info
                 this.updateTaskInfo(data.taskId, {
@@ -764,6 +782,34 @@
                 // Update phase progress from event's phase field
                 if (data.event.phase) {
                     this.updatePhaseProgress(data.event.phase);
+                }
+            }
+
+            handlePhaseTransitionEvent(data) {
+                const event = data.event;
+                const metadata = event.metadata || {};
+
+                // Extract transition information
+                const oldState = metadata.oldState || 'Unknown';
+                const newState = metadata.newState || 'Unknown';
+
+                // Create enhanced phase transition event for display
+                const phaseTransitionEvent = {
+                    ...event,
+                    isPhaseTransition: true,
+                    transitionInfo: {
+                        oldState,
+                        newState,
+                        message: `Phase transition: ${oldState} → ${newState}`
+                    }
+                };
+
+                // Add to memory and update display
+                this.addEvent(phaseTransitionEvent, data.taskId);
+
+                // Update phase progress using the new state
+                if (newState && newState !== 'Unknown') {
+                    this.updatePhaseProgress(newState);
                 }
             }
 
@@ -828,20 +874,33 @@
                 }
 
                 eventLog.innerHTML = filteredEvents.slice(0, 50).map(event => {
-                    // Detect if message contains markdown (headers, bullets, code fences, bold/italic)
-                    const hasMarkdown = /(?:^#{1,6}\s+|^\s*[-*•]\s+|```|^\*{3,}|_{3,}|-{3,}|\*\*.*?\*\*|\*.*?\*|`.*?`)/m.test(event.message);
+                    // Handle phase transition events specially
+                    if (event.isPhaseTransition && event.transitionInfo) {
+                        return `
+                            <div class="event-item phase-transition">
+                                <div class="event-timestamp">${new Date(event.timestamp).toLocaleTimeString()}</div>
+                                <div class="phase-transition-info">${event.transitionInfo.message}</div>
+                                <div class="event-agent">System Phase Transition</div>
+                                <div class="event-message">${this.escapeHtml(event.message || '')}</div>
+                            </div>
+                        `;
+                    } else {
+                        // Regular event handling
+                        // Detect if message contains markdown (headers, bullets, code fences, bold/italic)
+                        const hasMarkdown = /(?:^#{1,6}\s+|^\s*[-*•]\s+|```|^\*{3,}|_{3,}|-{3,}|\*\*.*?\*\*|\*.*?\*|`.*?`)/m.test(event.message);
 
-                    const renderedMessage = hasMarkdown
-                        ? `<div class="markdown-content">${MarkdownRenderer.renderMarkdown(event.message)}</div>`
-                        : `<div class="event-message">${this.escapeHtml(event.message)}</div>`;
+                        const renderedMessage = hasMarkdown
+                            ? `<div class="markdown-content">${MarkdownRenderer.renderMarkdown(event.message)}</div>`
+                            : `<div class="event-message">${this.escapeHtml(event.message)}</div>`;
 
-                    return `
-                        <div class="event-item">
-                            <div class="event-timestamp">${new Date(event.timestamp).toLocaleTimeString()}</div>
-                            <div class="event-agent">${event.agent}</div>
-                            ${renderedMessage}
-                        </div>
-                    `;
+                        return `
+                            <div class="event-item">
+                                <div class="event-timestamp">${new Date(event.timestamp).toLocaleTimeString()}</div>
+                                <div class="event-agent">${event.agent}</div>
+                                ${renderedMessage}
+                            </div>
+                        `;
+                    }
                 }).join('');
             }
 

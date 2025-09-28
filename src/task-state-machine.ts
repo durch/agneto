@@ -2,6 +2,7 @@ import { log } from "./ui/log.js";
 import { CoderReviewerStateMachine } from "./state-machine.js";
 import type { RefinedTask, SuperReviewerResult } from "./types.js";
 import type { TaskStateCheckpoint } from "./audit/types.js";
+import type { AuditLogger } from "./audit/audit-logger.js";
 
 // Parent states representing the complete task lifecycle
 export enum TaskState {
@@ -112,12 +113,14 @@ export interface TaskContext {
 export class TaskStateMachine {
   private state: TaskState = TaskState.TASK_INIT;
   private context: TaskContext;
+  private auditLogger?: AuditLogger;
 
   constructor(
     taskId: string,
     humanTask: string,
     workingDirectory: string,
-    options: TaskContext["options"] = {}
+    options: TaskContext["options"] = {},
+    auditLogger?: AuditLogger
   ) {
     this.context = {
       taskId,
@@ -126,6 +129,7 @@ export class TaskStateMachine {
       options,
       simplificationCount: 0,
     };
+    this.auditLogger = auditLogger;
     log.orchestrator(`Task state machine initialized: ${this.state}`);
   }
 
@@ -260,6 +264,18 @@ export class TaskStateMachine {
       log.orchestrator(
         `Task state transition: ${oldState} → ${this.state} (event: ${event})`
       );
+
+      // Emit audit event for state transition
+      if (this.auditLogger) {
+        this.auditLogger.captureEvent('system', 'phase_transition', `State transition: ${oldState} → ${this.state}`, {
+          metadata: {
+            oldState,
+            newState: this.state,
+            event,
+            taskId: this.context.taskId
+          }
+        });
+      }
     }
 
     return this.state;
