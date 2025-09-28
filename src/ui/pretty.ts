@@ -120,7 +120,7 @@ export function prettyPrint(raw: string, opts: PrettyOpts = {}): string {
 
     // Handle horizontal rules
     if (p.length === 1 && isHorizontalRule(p[0])) {
-      out.push(indent + chalk.dim('─'.repeat(Math.min(width - indent.length, 50))), "");
+      out.push(indent + chalk.dim('─'.repeat(Math.min(width - indent.length, 120))), "");
       continue;
     }
 

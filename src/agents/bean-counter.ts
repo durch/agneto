@@ -3,6 +3,8 @@ import type { LLMProvider, Msg } from "../providers/index.js";
 import { log } from "../ui/log.js";
 import { interpretBeanCounterResponse, type BeanCounterInterpretation } from "../protocol/interpreter.js";
 
+const DEBUG = process.env.DEBUG === "true";
+
 // AIDEV-NOTE: Bean Counter agent handles all work chunking decisions - both initial and progressive.
 // It breaks down high-level plans into implementable chunks and tracks progress through completion.
 
@@ -67,7 +69,9 @@ export async function getInitialChunk(
       },
     });
 
-    log.orchestrator(`Raw bean counter initial response: ${rawResponse}`);
+    if (DEBUG) {
+        log.orchestrator(`Raw bean counter initial response: ${rawResponse}`);
+    }
 
     // Use interpreter to avoid false positives from partial word matches
     const interpretation = await interpretBeanCounterResponse(provider, rawResponse, cwd);
@@ -125,7 +129,9 @@ export async function getNextChunk(
       },
     });
 
-    log.orchestrator(`Raw bean counter progressive response: ${rawResponse}`);
+    if (DEBUG) {
+        log.orchestrator(`Raw bean counter progressive response: ${rawResponse}`);
+    }
 
     // Use interpreter to avoid false positives from partial word matches
     const interpretation = await interpretBeanCounterResponse(provider, rawResponse, cwd);

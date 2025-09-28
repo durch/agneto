@@ -4,6 +4,8 @@ import type { CoderPlanProposal, ReviewerPlanVerdict, ReviewerCodeVerdict } from
 import { interpretReviewerResponse, convertReviewerInterpretation } from "../protocol/interpreter.js";
 import { log } from "../ui/log.js";
 
+const DEBUG = process.env.DEBUG === "true";
+
 // Phase 1: Review implementation plan (no tools needed)
 export async function reviewPlan(
     provider: LLMProvider,
@@ -49,7 +51,9 @@ export async function reviewPlan(
     });
 
     // Log the raw response for debugging
-    log.review(`Raw plan review response: ${rawResponse}`);
+    if (DEBUG) {
+        log.review(`Raw plan review response: ${rawResponse}`);
+    }
 
     // Interpret the natural language response
     const interpretation = await interpretReviewerResponse(provider, rawResponse, cwd);
@@ -141,7 +145,9 @@ export async function reviewCode(
     });
 
     // Log the raw response for debugging
-    log.review(`Raw code review response: ${rawResponse}`);
+    if (DEBUG) {
+        log.review(`Raw code review response: ${rawResponse}`);
+    }
 
     // Interpret the natural language response
     const interpretation = await interpretReviewerResponse(provider, rawResponse, cwd);

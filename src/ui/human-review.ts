@@ -8,9 +8,9 @@ export async function promptHumanReview(
     reviewerFeedback?: string
 ): Promise<HumanInteractionResult> {
     // Display the context
-    console.log("\n" + chalk.yellow("=".repeat(60)));
+    console.log("\n" + chalk.yellow("=".repeat(120)));
     console.log(chalk.yellow.bold("🙋 HUMAN REVIEW REQUIRED"));
-    console.log(chalk.yellow("=".repeat(60)));
+    console.log(chalk.yellow("=".repeat(120)));
     
     console.log(chalk.cyan("\n📋 Current Step:"));
     console.log(stepDescription);
@@ -21,10 +21,10 @@ export async function promptHumanReview(
     }
     
     console.log(chalk.blue("\n🤖 Proposed Change:"));
-    console.log(chalk.dim("-".repeat(60)));
+    console.log(chalk.dim("-".repeat(120)));
     console.log(proposal);
-    console.log(chalk.dim("-".repeat(60)));
-    
+    console.log(chalk.dim("-".repeat(120)));
+
     // Get human decision
     const decision = await select({
         message: "How would you like to proceed?",
@@ -64,9 +64,9 @@ export async function promptForSuperReviewerDecision(
     issues?: string[]
 ): Promise<HumanInteractionResult> {
     // Display the context
-    console.log("\n" + chalk.yellow("=".repeat(60)));
+    console.log("\n" + chalk.yellow("=".repeat(120)));
     console.log(chalk.yellow.bold("🎯 FINAL QUALITY GATE"));
-    console.log(chalk.yellow("=".repeat(60)));
+    console.log(chalk.yellow("=".repeat(120)));
     
     console.log(chalk.cyan("\n📋 SuperReviewer Assessment:"));
     console.log(summary);
@@ -78,10 +78,10 @@ export async function promptForSuperReviewerDecision(
         });
     }
     
-    console.log(chalk.dim("\n" + "-".repeat(60)));
+    console.log(chalk.dim("\n" + "-".repeat(120)));
     console.log(chalk.gray("All execution steps have completed. Choose how to proceed:"));
-    console.log(chalk.dim("-".repeat(60)));
-    
+    console.log(chalk.dim("-".repeat(120)));
+
     // Get human decision with terminal-state-aware options
     const decision = await select({
         message: "Select final disposition for this completed work:",

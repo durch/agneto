@@ -3,6 +3,8 @@ import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderPlanProposal } from "../types.js";
 import { log } from "../ui/log.js";
 
+const DEBUG = process.env.DEBUG === "true";
+
 // Phase 1: Propose implementation plan (no tools)
 export async function proposePlan(
     provider: LLMProvider,
@@ -51,7 +53,9 @@ export async function proposePlan(
     });
 
     // Log the raw response for debugging
-    log.coder(`Raw response: ${rawResponse}`);
+    if (DEBUG) {
+        log.coder(`Raw response: ${rawResponse}`);
+    }
 
     // Return the raw response as a proposal - no interpretation needed
     // The reviewer will handle whatever the coder said
@@ -123,7 +127,9 @@ export async function implementPlan(
     });
 
     // Log the raw response for debugging
-    log.coder(`Raw implementation response: ${rawResponse}`);
+    if (DEBUG) {
+        log.coder(`Raw implementation response: ${rawResponse}`);
+    }
 
     // Return a simple description of what was done
     // The orchestrator expects "CODE_APPLIED:" prefix to know changes were made
