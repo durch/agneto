@@ -53,21 +53,46 @@ export async function getInitialChunk(
       log.startStreaming("Bean Counter");
     }
 
-    const rawResponse = await provider.query({
-      cwd,
-      mode: "default", // Use default mode for consistent streaming
-      allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
-      sessionId,
-      isInitialized,
-      messages,
-      callbacks: {
-        onProgress: log.streamProgress,
-        onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
-        onToolResult: (isError) => log.toolResult("Bean Counter", isError),
-        onComplete: (cost, duration) =>
-          log.complete("Bean Counter", cost, duration),
-      },
-    });
+    // Try with opus first for better reasoning
+    let rawResponse;
+    try {
+      rawResponse = await provider.query({
+        cwd,
+        mode: "default", // Use default mode for consistent streaming
+        allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
+        sessionId,
+        isInitialized,
+        messages,
+        model: "opus", // Use opus for better reasoning
+        callbacks: {
+          onProgress: log.streamProgress,
+          onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
+          onToolResult: (isError) => log.toolResult("Bean Counter", isError),
+          onComplete: (cost, duration) =>
+            log.complete("Bean Counter", cost, duration),
+        },
+      });
+    } catch (error) {
+      // Fallback without model specification if opus fails
+      if (DEBUG) {
+        console.error("Opus model failed, using default:", error);
+      }
+      rawResponse = await provider.query({
+        cwd,
+        mode: "default", // Use default mode for consistent streaming
+        allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
+        sessionId,
+        isInitialized,
+        messages,
+        callbacks: {
+          onProgress: log.streamProgress,
+          onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
+          onToolResult: (isError) => log.toolResult("Bean Counter", isError),
+          onComplete: (cost, duration) =>
+            log.complete("Bean Counter", cost, duration),
+        },
+      });
+    }
 
     // Always display the full Bean Counter response (will be pretty printed)
     if (rawResponse && rawResponse.trim()) {
@@ -114,21 +139,46 @@ export async function getNextChunk(
   });
 
   try {
-    const rawResponse = await provider.query({
-      cwd,
-      mode: "default", // Use default mode for consistent streaming
-      allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
-      sessionId,
-      isInitialized: true,
-      messages,
-      callbacks: {
-        onProgress: log.streamProgress,
-        onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
-        onToolResult: (isError) => log.toolResult("Bean Counter", isError),
-        onComplete: (cost, duration) =>
-          log.complete("Bean Counter", cost, duration),
-      },
-    });
+    // Try with opus first for better reasoning
+    let rawResponse;
+    try {
+      rawResponse = await provider.query({
+        cwd,
+        mode: "default", // Use default mode for consistent streaming
+        allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
+        sessionId,
+        isInitialized: true,
+        messages,
+        model: "opus", // Use opus for better reasoning
+        callbacks: {
+          onProgress: log.streamProgress,
+          onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
+          onToolResult: (isError) => log.toolResult("Bean Counter", isError),
+          onComplete: (cost, duration) =>
+            log.complete("Bean Counter", cost, duration),
+        },
+      });
+    } catch (error) {
+      // Fallback without model specification if opus fails
+      if (DEBUG) {
+        console.error("Opus model failed, using default:", error);
+      }
+      rawResponse = await provider.query({
+        cwd,
+        mode: "default", // Use default mode for consistent streaming
+        allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
+        sessionId,
+        isInitialized: true,
+        messages,
+        callbacks: {
+          onProgress: log.streamProgress,
+          onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
+          onToolResult: (isError) => log.toolResult("Bean Counter", isError),
+          onComplete: (cost, duration) =>
+            log.complete("Bean Counter", cost, duration),
+        },
+      });
+    }
 
     // Always display the full Bean Counter response (will be pretty printed)
     if (rawResponse && rawResponse.trim()) {
