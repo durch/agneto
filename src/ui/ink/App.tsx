@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, Box } from 'ink';
 import { TaskStateMachine, TaskState } from '../../task-state-machine.js';
+import { PlanningLayout } from './components/PlanningLayout.js';
 
 // TypeScript interface for component props
 interface AppProps {
@@ -143,11 +144,20 @@ export const App: React.FC<AppProps> = ({ taskStateMachine }) => {
           <Text dimColor>Status:</Text>
           <Text>{taskInfo.status}</Text>
 
-          {/* Placeholder for future phase-specific content */}
+          {/* Phase-specific content */}
           <Box marginTop={1}>
-            <Text dimColor italic>
-              Phase-specific content will be displayed here...
-            </Text>
+            {(phase.state === TaskState.TASK_REFINING ||
+              phase.state === TaskState.TASK_PLANNING ||
+              phase.state === TaskState.TASK_CURMUDGEONING) ? (
+              <PlanningLayout
+                currentState={phase.state}
+                taskStateMachine={taskStateMachine}
+              />
+            ) : (
+              <Text dimColor italic>
+                Phase-specific content will be displayed here...
+              </Text>
+            )}
           </Box>
         </Box>
       </Box>

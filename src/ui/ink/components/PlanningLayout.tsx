@@ -7,12 +7,14 @@ import { getPlanFeedback, type PlanFeedback } from '../../planning-interface.js'
 interface PlanningLayoutProps {
   currentState: TaskState;
   taskStateMachine: TaskStateMachine;
+  onPlanFeedback?: (feedback: PlanFeedback) => void;
 }
 
 // Planning Layout Component - handles TASK_PLANNING, TASK_REFINING, TASK_CURMUDGEONING
 export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   currentState,
-  taskStateMachine
+  taskStateMachine,
+  onPlanFeedback
 }) => {
   const { stdout } = useStdout();
 
@@ -41,8 +43,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
     try {
       const feedback: PlanFeedback = { type: 'approve' };
-      // In a real implementation, this would be passed back to the orchestrator
-      // For now, we'll just track the action locally
+      onPlanFeedback?.(feedback);
     } catch (error) {
       setLastAction('Error processing approval');
     } finally {
@@ -56,9 +57,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     setLastAction('Rejected - feedback requested');
 
     try {
-      // This would trigger the getPlanFeedback flow for rejection details
-      const feedback = await getPlanFeedback();
-      setLastAction(`Feedback: ${feedback.type}`);
+      const feedback: PlanFeedback = { type: 'wrong-approach' };
+      onPlanFeedback?.(feedback);
+      setLastAction('Rejection feedback sent');
     } catch (error) {
       setLastAction('Error processing rejection');
     } finally {
@@ -127,7 +128,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Text dimColor>Creating strategic plan...</Text>
             ) : planMd ? (
               <Box flexDirection="column">
-                <Text wrap="wrap">{planMd.substring(0, 200)}...</Text>
+                <Text wrap="wrap">{planMd}</Text>
                 {planPath && (
                   <Text dimColor color="gray">Saved to: {planPath}</Text>
                 )}
