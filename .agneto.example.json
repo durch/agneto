@@ -1,0 +1,10 @@
+{
+  "filesToCopy": [
+    ".env.local",
+    ".vscode/",
+    "local-config/",
+    ".env.production",
+    "missing-directory/",
+    "non-existent-file.txt"
+  ]
+}

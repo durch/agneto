@@ -8,7 +8,7 @@ import * as path from "node:path";
 /**
  * Recursively copy a directory and its contents
  */
-function copyDirectoryRecursive(src: string, dest: string): void {
+export function copyDirectoryRecursive(src: string, dest: string): void {
     if (!fs.existsSync(src)) {
         return;
     }
@@ -28,6 +28,79 @@ function copyDirectoryRecursive(src: string, dest: string): void {
         } else {
             fs.copyFileSync(srcPath, destPath);
         }
+    }
+}
+
+/**
+ * Copy configured files to a worktree based on .agneto.json configuration
+ */
+export function copyConfiguredFilesToWorktree(taskId: string, worktreeDir: string): void {
+    const configPath = '.agneto.json';
+
+    try {
+        // Check if configuration file exists
+        if (!fs.existsSync(configPath)) {
+            // No configuration file - silently skip
+            return;
+        }
+
+        // Read and parse configuration
+        const configContent = fs.readFileSync(configPath, 'utf8');
+        let config;
+
+        try {
+            config = JSON.parse(configContent);
+        } catch (parseError) {
+            console.warn(`⚠️ Failed to parse .agneto.json: ${parseError}`);
+            return;
+        }
+
+        // Check if filesToCopy is configured
+        if (!config.filesToCopy || !Array.isArray(config.filesToCopy) || config.filesToCopy.length === 0) {
+            // No files configured to copy - silently skip
+            return;
+        }
+
+        console.log(`📋 Copying configured files to worktree ${taskId}...`);
+
+        // Copy each configured file/directory
+        for (const item of config.filesToCopy) {
+            if (typeof item !== 'string') {
+                console.warn(`⚠️ Skipping invalid file entry: ${item}`);
+                continue;
+            }
+
+            const srcPath = item;
+            const destPath = path.join(worktreeDir, item);
+
+            try {
+                if (fs.existsSync(srcPath)) {
+                    const stats = fs.statSync(srcPath);
+
+                    if (stats.isDirectory()) {
+                        copyDirectoryRecursive(srcPath, destPath);
+                        console.log(`✅ Copied directory: ${srcPath} → ${destPath}`);
+                    } else {
+                        // Ensure destination directory exists
+                        const destDir = path.dirname(destPath);
+                        fs.mkdirSync(destDir, { recursive: true });
+
+                        fs.copyFileSync(srcPath, destPath);
+                        console.log(`✅ Copied file: ${srcPath} → ${destPath}`);
+                    }
+                } else {
+                    console.warn(`⚠️ Source not found: ${srcPath}`);
+                }
+            } catch (copyError) {
+                console.warn(`⚠️ Failed to copy ${srcPath}: ${copyError}`);
+            }
+        }
+
+        console.log(`✅ File copying complete for worktree ${taskId}`);
+
+    } catch (error) {
+        console.warn(`⚠️ Failed to copy configured files to worktree: ${error}`);
+        // Don't throw - this should not prevent worktree creation
     }
 }
 

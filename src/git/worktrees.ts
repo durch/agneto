@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { copyConfiguredFilesToWorktree } from "./sandbox";
 
 export function pathFor(taskId: string) { return `.worktrees/${taskId}`; }
 export function branchFor(taskId: string) { return `sandbox/${taskId}`; }
@@ -79,6 +80,9 @@ export function ensureWorktree(taskId: string, base?: string) {
     // Add the worktree at the desired path (idempotent-ish: will fail only if path exists)
     execSync(`mkdir -p .worktrees`, { stdio: "ignore" });
     execSync(`git worktree add "${dir}" "${branch}"`, { stdio: "inherit" });
+
+    // Copy configured files to the new worktree
+    copyConfiguredFilesToWorktree(taskId, resolve(dir));
 
     return { dir: resolve(dir), branch };
 }
