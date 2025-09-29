@@ -16,6 +16,7 @@ An AI-powered development system that actually writes code for you - with human 
 - [How It Works](#how-it-works)
 - [Monitoring & Debugging](#monitoring--debugging)
 - [Configuration](#configuration)
+- [Release Process](#release-process)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -277,6 +278,85 @@ LOG_LEVEL=warn MAX_CHECKPOINTS=5 npx agneto "production task" --non-interactive
 - **Learns your codebase** - Understands your patterns and conventions
 - **Comprehensive monitoring** - Full audit trail and real-time dashboard
 - **Checkpoint recovery** - Resume from any point if something goes wrong
+
+## Release Process
+
+### For Maintainers
+
+Agneto uses an automated CI/CD pipeline for publishing releases to NPM and creating GitHub releases. The process is triggered by semantic version tags.
+
+#### Quick Release Commands
+
+Use these NPM scripts to bump versions and trigger automated publishing:
+
+```bash
+# Patch release (bug fixes): 0.1.0 → 0.1.1
+npm run version:patch
+
+# Minor release (new features): 0.1.0 → 0.2.0
+npm run version:minor
+
+# Major release (breaking changes): 0.1.0 → 1.0.0
+npm run version:major
+```
+
+Each command will:
+1. Bump the version in `package.json`
+2. Create a git tag (e.g., `v0.1.1`)
+3. Push the tag to GitHub
+4. Trigger the automated release workflow
+
+#### Automated Release Workflow
+
+When a version tag is pushed, GitHub Actions automatically:
+
+1. **Validates Environment** - Checks for required secrets
+2. **Runs Tests** - Ensures code quality before publishing
+3. **Builds Project** - Compiles TypeScript and prepares distribution
+4. **Generates Changelog** - Creates release notes from git commits
+5. **Publishes to NPM** - Uploads package to npmjs.org (with retry logic)
+6. **Creates GitHub Release** - Publishes release with changelog
+
+#### Repository Setup Requirements
+
+Before using the automated release system, ensure these GitHub repository secrets are configured:
+
+```bash
+# Required secrets in GitHub repository settings:
+NPM_TOKEN=npm_xxxxxxxxxxxxxxxxxxxxxxxxxxxx    # NPM automation token
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx # GitHub PAT (usually auto-provided)
+```
+
+**Setting up NPM_TOKEN:**
+1. Log into [npmjs.com](https://www.npmjs.com/)
+2. Go to **Account Settings** → **Access Tokens**
+3. Create new token with **Automation** permissions
+4. Copy token to GitHub repository **Settings** → **Secrets and variables** → **Actions**
+5. Add as `NPM_TOKEN` secret
+
+#### Troubleshooting Common Issues
+
+**Empty changelog generated:**
+- Ensure commits follow conventional format: `feat:`, `fix:`, `docs:`, etc.
+- Check that there are commits between the previous tag and current tag
+
+**NPM publish fails:**
+- Verify `NPM_TOKEN` secret is correctly configured
+- Check that the version doesn't already exist on NPM
+- Ensure package name is available (if first publish)
+
+**GitHub release creation fails:**
+- Verify `GITHUB_TOKEN` has sufficient permissions
+- Check that the tag was pushed successfully
+- Ensure repository settings allow release creation
+
+**Tests fail during workflow:**
+- All tests must pass before publishing
+- Fix failing tests and re-run version command
+
+**Tag format rejected:**
+- Tags must follow semantic versioning: `v1.2.3`
+- Avoid additional suffixes like `v1.2.3-beta`
 
 ## Contributing
 

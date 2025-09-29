@@ -1,0 +1,92 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+    branches:
+      - master
+      - main
+  push:
+    branches:
+      - master
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  test:
+    name: Test (Node.js ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18, 20]
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: 'https://registry.npmjs.org/'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies with Node.js ${{ matrix.node-version }}..."
+          npm ci
+          echo "✅ Dependencies installed successfully"
+
+      - name: Run tests
+        run: |
+          echo "🧪 Running test suite with Node.js ${{ matrix.node-version }}..."
+          npm test
+          echo "✅ All tests passed"
+
+      - name: Build project
+        run: |
+          echo "🔨 Building project with Node.js ${{ matrix.node-version }}..."
+          npm run build
+          echo "✅ Build completed successfully"
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "📊 Test Summary for Node.js ${{ matrix.node-version }}"
+          echo "================================================="
+          echo "Status: ${{ job.status }}"
+          echo "Node.js Version: ${{ matrix.node-version }}"
+          echo ""
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ All quality gates passed!"
+          else
+            echo "❌ Quality gates failed - check logs above"
+          fi
+
+  quality-gate:
+    name: Quality Gate Summary
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()
+
+    steps:
+      - name: Check test results
+        run: |
+          echo "📊 Overall Quality Gate Summary"
+          echo "==============================="
+          echo "Node.js 18 Result: ${{ needs.test.result }}"
+          echo "Node.js 20 Result: ${{ needs.test.result }}"
+          echo ""
+
+          if [ "${{ needs.test.result }}" = "success" ]; then
+            echo "🎉 All quality gates passed across all Node.js versions!"
+            echo "✅ Pull request is ready for review and merge"
+          else
+            echo "❌ Quality gates failed on one or more Node.js versions"
+            echo "🔧 Please fix the issues before merging"
+            exit 1
+          fi

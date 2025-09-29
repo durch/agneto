@@ -1,0 +1,205 @@
+name: Publish to NPM and Create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+      previous-tag: ${{ steps.get-previous-tag.outputs.previous-tag }}
+      changelog: ${{ steps.generate-changelog.outputs.changelog }}
+      npm-published: ${{ steps.npm-publish.outputs.published }}
+      release-created: ${{ steps.create-release.outputs.created }}
+
+    steps:
+      - name: Validate environment
+        run: |
+          echo "🔍 Validating required environment variables..."
+          if [ -z "${{ secrets.NPM_TOKEN }}" ]; then
+            echo "❌ Error: NPM_TOKEN secret is not configured"
+            exit 1
+          fi
+          if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then
+            echo "❌ Error: GITHUB_TOKEN secret is not configured"
+            exit 1
+          fi
+          echo "✅ Environment validation successful"
+
+      - name: Checkout code with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          echo "🔧 Configuring Git for tag operations..."
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --force
+          echo "✅ Git configuration complete"
+
+      - name: Extract version from tag
+        id: extract-version
+        run: |
+          echo "📋 Extracting version from tag: ${{ github.ref_name }}"
+          VERSION="${{ github.ref_name }}"
+          # Remove 'v' prefix if present
+          VERSION=${VERSION#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "✅ Extracted version: $VERSION"
+
+      - name: Validate tag format
+        run: |
+          echo "🔍 Validating tag format: ${{ github.ref_name }}"
+          if [[ ! "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Error: Tag must follow semantic versioning format (v1.2.3)"
+            echo "   Current tag: ${{ github.ref_name }}"
+            exit 1
+          fi
+          echo "✅ Tag format validation successful"
+
+      - name: Get previous tag for changelog
+        id: get-previous-tag
+        run: |
+          echo "🔍 Finding previous tag for changelog generation..."
+          CURRENT_TAG="${{ github.ref_name }}"
+          PREVIOUS_TAG=$(git tag --list --sort=-version:refname | grep -A1 "^$CURRENT_TAG$" | tail -1)
+
+          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" = "$CURRENT_TAG" ]; then
+            echo "⚠️  No previous tag found, using initial commit"
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+
+          echo "previous-tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          echo "✅ Previous reference: $PREVIOUS_TAG"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org/'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci
+          echo "✅ Dependencies installed successfully"
+
+      - name: Run tests
+        run: |
+          echo "🧪 Running test suite..."
+          npm test
+          echo "✅ All tests passed"
+
+      - name: Build project
+        run: |
+          echo "🔨 Building project..."
+          npm run build
+          echo "✅ Build completed successfully"
+
+      - name: Generate changelog
+        id: generate-changelog
+        run: |
+          echo "📝 Generating changelog..."
+          chmod +x scripts/generate-changelog.sh
+
+          CURRENT_TAG="${{ github.ref_name }}"
+          PREVIOUS_TAG="${{ steps.get-previous-tag.outputs.previous-tag }}"
+
+          # Generate changelog and capture output
+          CHANGELOG_CONTENT=$(./scripts/generate-changelog.sh "$PREVIOUS_TAG" "$CURRENT_TAG" 2>&1)
+
+          # Save changelog to file for GitHub release
+          echo "$CHANGELOG_CONTENT" > CHANGELOG_RELEASE.md
+
+          # Set output for later steps (escape newlines for GitHub Actions)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "✅ Changelog generated successfully"
+          echo "📋 Changelog preview:"
+          echo "$CHANGELOG_CONTENT" | head -10
+
+      - name: Publish to NPM (with retry)
+        id: npm-publish
+        run: |
+          echo "📤 Publishing to NPM..."
+
+          # Retry logic for NPM publish
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "🔄 Attempt $ATTEMPT of $MAX_ATTEMPTS"
+
+            if npm publish --verbose; then
+              echo "✅ NPM publish successful on attempt $ATTEMPT"
+              echo "published=true" >> $GITHUB_OUTPUT
+              break
+            else
+              echo "❌ NPM publish failed on attempt $ATTEMPT"
+
+              if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+                echo "💥 All NPM publish attempts failed"
+                echo "published=false" >> $GITHUB_OUTPUT
+                exit 1
+              fi
+
+              echo "⏳ Waiting 30 seconds before retry..."
+              sleep 30
+              ATTEMPT=$((ATTEMPT + 1))
+            fi
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        id: create-release
+        run: |
+          echo "🚀 Creating GitHub release..."
+
+          RELEASE_NAME="${{ github.ref_name }}"
+          TAG_NAME="${{ github.ref_name }}"
+
+          # Create release using GitHub CLI
+          if gh release create "$TAG_NAME" \
+            --title "$RELEASE_NAME" \
+            --notes-file CHANGELOG_RELEASE.md \
+            --latest; then
+            echo "✅ GitHub release created successfully"
+            echo "created=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed to create GitHub release"
+            echo "created=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Workflow Summary
+        if: always()
+        run: |
+          echo "📊 Workflow Summary"
+          echo "=================="
+          echo "Version: ${{ steps.extract-version.outputs.version }}"
+          echo "Previous Tag: ${{ steps.get-previous-tag.outputs.previous-tag }}"
+          echo "NPM Published: ${{ steps.npm-publish.outputs.published }}"
+          echo "Release Created: ${{ steps.create-release.outputs.created }}"
+          echo ""
+          echo "🔗 Links:"
+          echo "- NPM Package: https://www.npmjs.com/package/agneto"
+          echo "- GitHub Release: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          echo ""
+          if [ "${{ steps.npm-publish.outputs.published }}" = "true" ] && [ "${{ steps.create-release.outputs.created }}" = "true" ]; then
+            echo "🎉 Release pipeline completed successfully!"
+          else
+            echo "⚠️  Release pipeline completed with issues - check logs above"
+          fi
