@@ -1,8 +1,0 @@
-{
-  "id": "b4941aa8-8798-4854-a39b-e7a43023ea53",
-  "timestamp": "2025-09-27T19:26:18.707Z",
-  "agent": "orchestrator",
-  "eventType": "message",
-  "message": "✅ Curmudgeon approved the plan",
-  "phase": "ORCHESTRATION"
-}

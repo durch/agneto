@@ -1,9 +1,0 @@
-{
-  "taskId": "integration-test",
-  "description": "test the complete flow",
-  "startTime": "2025-09-27T19:44:46.313Z",
-  "status": "completed",
-  "eventCount": 1,
-  "auditVersion": "1.0.0",
-  "endTime": "2025-09-27T19:44:46.314Z"
-}

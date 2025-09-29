@@ -1,8 +1,0 @@
-{
-  "id": "a6967151-0f78-4b9a-8603-fef357542b16",
-  "timestamp": "2025-09-27T19:26:11.806Z",
-  "agent": "planner",
-  "eventType": "message",
-  "message": "Saved plan → /Users/drazen/playground/agneto/.worktrees/task-0r4rwwpq/.worktrees/test-audit-integration/.plans/test-audit-integration/plan.md",
-  "phase": "PLANNING"
-}

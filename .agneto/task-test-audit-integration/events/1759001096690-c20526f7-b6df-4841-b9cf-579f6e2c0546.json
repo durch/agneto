@@ -1,8 +1,0 @@
-{
-  "id": "c20526f7-b6df-4841-b9cf-579f6e2c0546",
-  "timestamp": "2025-09-27T19:24:56.690Z",
-  "agent": "planner",
-  "eventType": "message",
-  "message": "Planning \"verify audit logging works\"…",
-  "phase": "PLANNING"
-}

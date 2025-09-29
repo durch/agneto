@@ -1,8 +1,0 @@
-{
-  "id": "7e2b5b95-30c4-4f64-bd2a-961fdfa95db3",
-  "timestamp": "2025-09-27T19:26:11.807Z",
-  "agent": "orchestrator",
-  "eventType": "message",
-  "message": "🧐 Curmudgeon reviewing plan for over-engineering...",
-  "phase": "ORCHESTRATION"
-}
