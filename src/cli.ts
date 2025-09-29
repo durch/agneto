@@ -121,19 +121,23 @@ program
     .argument("[task-description]", "task description if ID was provided")
     .option("--auto-merge", "automatically merge to master when complete")
     .option("--non-interactive", "skip interactive planning (for CI/automation)")
+    .option("--ui <mode>", "UI mode (classic or ink)", "classic")
     .addHelpText('after', `
 Examples:
   # Simple usage - auto-generated ID
   $ npm start -- "fix authentication bug"
-  
+
   # With custom ID
   $ npm start -- auth-fix-1 "fix authentication bug"
-  
+
   # Non-interactive mode
   $ npm start -- "update dependencies" --non-interactive
-  
+
   # Auto-merge when complete
-  $ npm start -- "add logging" --auto-merge`)
+  $ npm start -- "add logging" --auto-merge
+
+  # Using Ink UI mode
+  $ npm start -- "implement feature" --ui ink`)
     .action(async (taskOrId, task, options) => {
         try {
             // Determine if user provided ID + description or just description
@@ -175,6 +179,7 @@ Examples:
             const { cwd } = await runTask(taskId, taskDescription, {
                 autoMerge: options.autoMerge,
                 nonInteractive: options.nonInteractive,
+                uiMode: options.ui,
                 recoveryDecision
             });
 
