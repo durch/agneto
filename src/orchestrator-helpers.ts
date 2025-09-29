@@ -22,9 +22,20 @@ export async function handlePlanHumanReview(
     return { decision: 'approve' };
   } else if (humanResult.decision === 'retry') {
     log.orchestrator("Human requested plan revision");
+
+    // Combine reviewer feedback with human feedback for complete context
+    let combinedFeedback = "";
+    if (reviewerFeedback) {
+      combinedFeedback += `Reviewer feedback: ${reviewerFeedback}`;
+    }
+    if (humanResult.feedback) {
+      if (combinedFeedback) combinedFeedback += "\n\n";
+      combinedFeedback += `Human feedback: ${humanResult.feedback}`;
+    }
+
     return {
       decision: 'revise',
-      feedback: humanResult.feedback || "Human requested changes to the approach"
+      feedback: combinedFeedback || "Human requested changes to the approach"
     };
   } else {
     log.orchestrator("Human rejected the plan");
@@ -50,9 +61,20 @@ export async function handleCodeHumanReview(
     return { decision: 'approve' };
   } else if (humanResult.decision === 'retry') {
     log.orchestrator("Human requested code revision");
+
+    // Combine reviewer feedback with human feedback for complete context
+    let combinedFeedback = "";
+    if (reviewerFeedback) {
+      combinedFeedback += `Reviewer feedback: ${reviewerFeedback}`;
+    }
+    if (humanResult.feedback) {
+      if (combinedFeedback) combinedFeedback += "\n\n";
+      combinedFeedback += `Human feedback: ${humanResult.feedback}`;
+    }
+
     return {
       decision: 'revise',
-      feedback: humanResult.feedback || "Human requested changes to the implementation"
+      feedback: combinedFeedback || "Human requested changes to the implementation"
     };
   } else {
     log.orchestrator("Human rejected the code changes");

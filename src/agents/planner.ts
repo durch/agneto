@@ -1,5 +1,6 @@
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import type { LLMProvider } from "../providers/index.js";
+import type { SuperReviewerResult } from "../types.js";
 import {
   displayPlan,
   getPlanFeedback,
@@ -16,7 +17,8 @@ export async function runPlanner(
   task: string,
   taskId: string,
   interactive: boolean = false,
-  curmudgeonFeedback?: string
+  curmudgeonFeedback?: string,
+  superReviewerFeedback?: SuperReviewerResult
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   const sys = readFileSync(
     new URL("../prompts/planner.md", import.meta.url),
@@ -30,6 +32,17 @@ export async function runPlanner(
     let userMessage = `Task: ${task}`;
     if (curmudgeonFeedback) {
       userMessage += `\n\nThe Curmudgeon has reviewed your previous plan and requests simplification:\n${curmudgeonFeedback}\n\nPlease revise the plan to be simpler and more straightforward.`;
+    }
+    if (superReviewerFeedback) {
+      userMessage += `\n\nPrevious implementation was reviewed by SuperReviewer with the following feedback:\n`;
+      userMessage += `Summary: ${superReviewerFeedback.summary}\n`;
+      if (superReviewerFeedback.issues && superReviewerFeedback.issues.length > 0) {
+        userMessage += `\nSpecific issues to address:\n`;
+        superReviewerFeedback.issues.forEach((issue, index) => {
+          userMessage += `${index + 1}. ${issue}\n`;
+        });
+      }
+      userMessage += `\nCreate a new plan that specifically addresses these concerns.`;
     }
     userMessage += "\n\nProduce ONLY the Markdown plan.";
 
@@ -63,7 +76,7 @@ export async function runPlanner(
   }
 
   // Interactive planning with iterative refinement
-  return await interactivePlanning(provider, cwd, task, taskId, sys, curmudgeonFeedback);
+  return await interactivePlanning(provider, cwd, task, taskId, sys, curmudgeonFeedback, superReviewerFeedback);
 }
 
 async function interactivePlanning(
@@ -72,7 +85,8 @@ async function interactivePlanning(
   task: string,
   taskId: string,
   systemPrompt: string,
-  curmudgeonFeedback?: string
+  curmudgeonFeedback?: string,
+  superReviewerFeedback?: SuperReviewerResult
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   let planMd = undefined;
   let approved = false;
@@ -85,7 +99,22 @@ async function interactivePlanning(
   if (curmudgeonFeedback) {
     feedbackHistory.push(`Curmudgeon simplification request: ${curmudgeonFeedback}`);
     log.planner("Starting interactive planning with Curmudgeon feedback...");
-  } else {
+  }
+
+  // If we have SuperReviewer feedback, add it to the feedback history
+  if (superReviewerFeedback) {
+    let superReviewerNote = `SuperReviewer feedback - ${superReviewerFeedback.summary}`;
+    if (superReviewerFeedback.issues && superReviewerFeedback.issues.length > 0) {
+      superReviewerNote += `\nSpecific issues to address:\n`;
+      superReviewerFeedback.issues.forEach((issue, index) => {
+        superReviewerNote += `${index + 1}. ${issue}\n`;
+      });
+    }
+    feedbackHistory.push(superReviewerNote);
+    log.planner("Starting interactive planning with SuperReviewer feedback...");
+  }
+
+  if (feedbackHistory.length === 0) {
     log.planner("Starting interactive planning session...");
   }
 

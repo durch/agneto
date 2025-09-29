@@ -264,7 +264,10 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     }
 
                     try {
-                        const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback);
+                        // Get SuperReviewer feedback if this is a retry cycle
+                        const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
+
+                        const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback);
                         if (!interactive) {
                             // Display the full plan content in non-interactive mode
                             if (planMd) {
@@ -597,7 +600,10 @@ async function runRestoredTask(
                         }
 
                         try {
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback);
+                            // Get SuperReviewer feedback if this is a retry cycle
+                            const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
+
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback);
                             if (!interactive) {
                                 log.planner(`Saved plan → ${planPath}`);
                             }

@@ -52,6 +52,13 @@ When receiving feedback:
 - "edit-steps" means adjust specific numbered steps as requested
 - "add-constraints" means incorporate new requirements or limitations
 
+When receiving SuperReviewer feedback:
+- Previous implementation was completed but failed final quality review
+- Specific issues and concerns are provided that must be addressed
+- Create a targeted plan that directly fixes the identified problems
+- Focus on the root causes, not just symptoms
+- Ensure acceptance criteria explicitly test for the raised issues
+
 When revising based on feedback:
 - Keep what's working from the previous plan
 - Clearly address the specific feedback given
