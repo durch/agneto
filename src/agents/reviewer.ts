@@ -62,8 +62,8 @@ export async function reviewPlan(
         return { type: "PLAN_VERDICT", verdict: "needs-human", feedback: "Failed to interpret response" };
     }
 
-    // Log the interpreted decision
-    log.review(`Interpreted plan review as: ${interpretation.verdict} - ${interpretation.feedback}`);
+    // Log the review decision
+    log.review(`Plan review: ${interpretation.verdict} - ${interpretation.feedback}`);
 
     // Convert to legacy format for orchestrator compatibility
     return convertToLegacyPlanVerdict(interpretation);
@@ -156,8 +156,8 @@ export async function reviewCode(
         return { type: "CODE_VERDICT", verdict: "needs-human", feedback: "Failed to interpret response" };
     }
 
-    // Log the interpreted decision
-    log.review(`Interpreted code review as: ${interpretation.verdict} - ${interpretation.feedback}`);
+    // Log the review decision
+    log.review(`Code review: ${interpretation.verdict} - ${interpretation.feedback}`);
 
     // Convert to legacy format for orchestrator compatibility
     return convertToLegacyCodeVerdict(interpretation);

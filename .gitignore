@@ -6,3 +6,4 @@
 dist
 bin
 *.tgz
+dashboard/events

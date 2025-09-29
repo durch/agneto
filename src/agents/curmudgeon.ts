@@ -47,8 +47,8 @@ export async function runCurmudgeon(
     },
   });
 
-  // Log the full curmudgeon response for visibility
-  log.curmudgeon(`Raw Curmudgeon response: ${res?.trim() || "No response received"}`, 'CURMUDGEONING');
+  // Log the curmudgeon response for visibility
+  log.curmudgeon(res?.trim() || "No response received", 'CURMUDGEONING');
 
   // Use interpreter to extract verdict from natural language response
   const interpretation = await interpretCurmudgeonResponse(provider, res, cwd);

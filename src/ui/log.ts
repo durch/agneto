@@ -18,11 +18,6 @@ class LogUI {
   private logLevel: LogLevel;
   private logLevelValue: number;
 
-  // Message consolidation state
-  private rawResponseBuffer: string | null = null;
-  private bufferTimer: NodeJS.Timeout | null = null;
-  private bufferAgentType: string | null = null;
-  private readonly BUFFER_TIMEOUT = 100; // 100ms window for interpretation to arrive
 
   // Phase tracking for automatic dividers
   private currentPhase: string | null = null;
@@ -167,122 +162,6 @@ class LogUI {
     return level in LOG_LEVELS;
   }
 
-  /**
-   * Buffer a raw response message and start a flush timer
-   */
-  private bufferRawMessage(message: string, agentType: string): void {
-    // Clear any existing timer
-    if (this.bufferTimer) {
-      clearTimeout(this.bufferTimer);
-    }
-
-    // Store the message and agent type
-    this.rawResponseBuffer = message;
-    this.bufferAgentType = agentType;
-
-    // Start a timer to flush if no interpretation arrives
-    this.bufferTimer = setTimeout(() => {
-      this.flushBuffer();
-    }, this.BUFFER_TIMEOUT);
-  }
-
-  /**
-   * Flush any buffered raw message
-   */
-  private flushBuffer(): void {
-    if (this.rawResponseBuffer && this.bufferAgentType) {
-      // Output the buffered message normally based on agent type
-      const agentFormatters: Record<string, (s: string) => void> = {
-        'coder': (s) => console.log(chalk.magenta("🤖 Coder:"), "\n" + prettyPrint(s, { indent: 2 })),
-        'curmudgeon': (s) => console.log(chalk.red("🎭 Curmudgeon:"), "\n" + prettyPrint(s, { indent: 2 })),
-        'review': (s) => console.log(chalk.yellow("👀 Reviewer:"), "\n" + prettyPrint(s, { indent: 2 })),
-        'beanCounter': (s) => console.log(chalk.blue("🧮 Bean Counter:"), "\n" + prettyPrint(s, { indent: 2 })),
-        'orchestrator': (s) => console.log(chalk.green("🙋 Orchestrator:"), "\n" + prettyPrint(s, { indent: 2 }))
-      };
-
-      const formatter = agentFormatters[this.bufferAgentType];
-      if (formatter) {
-        if (this.indentLevel === 0) {
-          // No indentation needed for buffered messages - they'll be handled in consolidation
-          formatter(this.rawResponseBuffer);
-        } else {
-          // Apply indentation to buffered message
-          const prefix = this.getIndentPrefix();
-          const indentedMessage = this.applyIndentToMultiline(this.rawResponseBuffer);
-          const agentPrefix = this.bufferAgentType === 'coder' ? chalk.magenta("🤖 Coder:") :
-                             this.bufferAgentType === 'curmudgeon' ? chalk.red("🎭 Curmudgeon:") :
-                             this.bufferAgentType === 'review' ? chalk.yellow("👀 Reviewer:") :
-                             this.bufferAgentType === 'beanCounter' ? chalk.blue("🧮 Bean Counter:") :
-                             chalk.green("🙋 Orchestrator:");
-          console.log(prefix + agentPrefix, indentedMessage);
-        }
-      }
-    }
-
-    // Clear the buffer state
-    this.rawResponseBuffer = null;
-    this.bufferAgentType = null;
-    if (this.bufferTimer) {
-      clearTimeout(this.bufferTimer);
-      this.bufferTimer = null;
-    }
-  }
-
-  /**
-   * Consolidate buffered raw message with interpretation
-   */
-  private consolidateWithInterpretation(interpretation: string, agentType: string): boolean {
-    // Check if we have a buffered raw message for the same agent
-    if (this.rawResponseBuffer && this.bufferAgentType === agentType) {
-      // Clear the timer
-      if (this.bufferTimer) {
-        clearTimeout(this.bufferTimer);
-        this.bufferTimer = null;
-      }
-
-      // Extract the essential parts from the messages
-      const rawPart = this.rawResponseBuffer.replace(/^Raw .* response:\s*/, '');
-      const interpretedPart = interpretation.replace(/^Interpreted .* as:\s*/, '');
-
-      // Create consolidated message with concise format
-      const consolidated = `Raw response → interpreted as: ${interpretedPart}`;
-
-      // Output with appropriate agent formatting
-      const agentFormatters: Record<string, (s: string) => void> = {
-        'coder': (s) => console.log(chalk.magenta("🤖 Coder:"), "\n" + prettyPrint(s, { indent: 2 })),
-        'curmudgeon': (s) => console.log(chalk.red("🎭 Curmudgeon:"), "\n" + prettyPrint(s, { indent: 2 })),
-        'review': (s) => console.log(chalk.yellow("👀 Reviewer:"), "\n" + prettyPrint(s, { indent: 2 })),
-        'beanCounter': (s) => console.log(chalk.blue("🧮 Bean Counter:"), "\n" + prettyPrint(s, { indent: 2 })),
-        'orchestrator': (s) => console.log(chalk.green("🙋 Orchestrator:"), "\n" + prettyPrint(s, { indent: 2 }))
-      };
-
-      const formatter = agentFormatters[agentType];
-      if (formatter) {
-        if (this.indentLevel === 0) {
-          // No indentation for consolidated messages at root level
-          formatter(consolidated);
-        } else {
-          // Apply indentation to consolidated message
-          const prefix = this.getIndentPrefix();
-          const indentedMessage = this.applyIndentToMultiline(consolidated);
-          const agentPrefix = agentType === 'coder' ? chalk.magenta("🤖 Coder:") :
-                             agentType === 'curmudgeon' ? chalk.red("🎭 Curmudgeon:") :
-                             agentType === 'review' ? chalk.yellow("👀 Reviewer:") :
-                             agentType === 'beanCounter' ? chalk.blue("🧮 Bean Counter:") :
-                             chalk.green("🙋 Orchestrator:");
-          console.log(prefix + agentPrefix, indentedMessage);
-        }
-      }
-
-      // Clear the buffer
-      this.rawResponseBuffer = null;
-      this.bufferAgentType = null;
-
-      return true; // Consolidation successful
-    }
-
-    return false; // No buffered message to consolidate
-  }
 
   // Agent start messages (info level - always shown in normal operation)
   planner(s: string): void {
@@ -303,24 +182,7 @@ class LogUI {
   curmudgeon(s: string, phase?: string): void {
     if (this.shouldLog('info')) {
       this.checkPhaseTransition('CURMUDGEONING');
-
-      // Check for raw response pattern
-      if (s.startsWith('Raw ') && s.includes(' response:')) {
-        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
-        this.bufferRawMessage(s, 'curmudgeon');
-        return;
-      }
-
-      // Check for interpretation pattern
-      if (s.startsWith('Interpreted ') && s.includes(' as:')) {
-        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
-        if (this.consolidateWithInterpretation(s, 'curmudgeon')) {
-          return; // Successfully consolidated
-        }
-      }
-
-      // Normal message output with badge and indentation - clear status for meaningful content
-      this.clearToolStatus(); // Substantive content - clear status
+      this.clearToolStatus();
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const prettyMessage = prettyPrint(s, { indent: 2 });
@@ -335,24 +197,7 @@ class LogUI {
   coder(s: string): void {
     if (this.shouldLog('info')) {
       this.checkPhaseTransition('CODING');
-
-      // Check for raw response pattern
-      if (s.startsWith('Raw ') && s.includes(' response:')) {
-        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
-        this.bufferRawMessage(s, 'coder');
-        return;
-      }
-
-      // Check for interpretation pattern
-      if (s.startsWith('Interpreted ') && s.includes(' as:')) {
-        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
-        if (this.consolidateWithInterpretation(s, 'coder')) {
-          return; // Successfully consolidated
-        }
-      }
-
-      // Normal message output with badge and indentation - clear status for meaningful content
-      this.clearToolStatus(); // Substantive content - clear status
+      this.clearToolStatus();
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const prettyMessage = prettyPrint(s, { indent: 2 });
@@ -367,24 +212,7 @@ class LogUI {
   review(s: string): void {
     if (this.shouldLog('info')) {
       this.checkPhaseTransition('REVIEW');
-
-      // Check for raw response pattern
-      if (s.startsWith('Raw ') && s.includes(' response:')) {
-        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
-        this.bufferRawMessage(s, 'review');
-        return;
-      }
-
-      // Check for interpretation pattern
-      if (s.startsWith('Interpreted ') && s.includes(' as:')) {
-        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
-        if (this.consolidateWithInterpretation(s, 'review')) {
-          return; // Successfully consolidated
-        }
-      }
-
-      // Normal message output with badge and indentation - clear status for meaningful content
-      this.clearToolStatus(); // Substantive content - clear status
+      this.clearToolStatus();
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const prettyMessage = prettyPrint(s, { indent: 2 });
@@ -399,27 +227,8 @@ class LogUI {
   beanCounter(s: string): void {
     if (this.shouldLog('info')) {
       this.checkPhaseTransition('CHUNKING');
-
-      // Extract chunk/sprint info from Bean Counter messages
       this.extractChunkInfo(s);
-
-      // Check for raw response pattern
-      if (s.startsWith('Raw ') && s.includes(' response:')) {
-        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
-        this.bufferRawMessage(s, 'beanCounter');
-        return;
-      }
-
-      // Check for interpretation pattern
-      if (s.startsWith('Interpreted ') && s.includes(' as:')) {
-        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
-        if (this.consolidateWithInterpretation(s, 'beanCounter')) {
-          return; // Successfully consolidated
-        }
-      }
-
-      // Normal message output with badge and indentation - clear status for meaningful content
-      this.clearToolStatus(); // Substantive content - clear status
+      this.clearToolStatus();
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const prettyMessage = prettyPrint(s, { indent: 2 });
@@ -441,23 +250,7 @@ class LogUI {
         this.currentPhase = 'COMPLETE';
       }
 
-      // Check for raw response pattern
-      if (s.startsWith('Raw ') && s.includes(' response:')) {
-        this.clearToolStatus(false); // Raw buffering - no meaningful content yet
-        this.bufferRawMessage(s, 'orchestrator');
-        return;
-      }
-
-      // Check for interpretation pattern
-      if (s.startsWith('Interpreted ') && s.includes(' as:')) {
-        this.clearToolStatus(false); // Interpretation consolidation - no direct user content
-        if (this.consolidateWithInterpretation(s, 'orchestrator')) {
-          return; // Successfully consolidated
-        }
-      }
-
-      // Normal message output with badge and indentation - clear status for meaningful content
-      this.clearToolStatus(); // Substantive content - clear status
+      this.clearToolStatus();
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const indentedMessage = this.applyIndentToMultiline(s);
