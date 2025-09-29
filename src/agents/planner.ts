@@ -18,7 +18,8 @@ export async function runPlanner(
   taskId: string,
   interactive: boolean = false,
   curmudgeonFeedback?: string,
-  superReviewerFeedback?: SuperReviewerResult
+  superReviewerFeedback?: SuperReviewerResult,
+  uiCallback?: (feedback: Promise<PlanFeedback>) => void
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   const sys = readFileSync(
     new URL("../prompts/planner.md", import.meta.url),
@@ -76,7 +77,7 @@ export async function runPlanner(
   }
 
   // Interactive planning with iterative refinement
-  return await interactivePlanning(provider, cwd, task, taskId, sys, curmudgeonFeedback, superReviewerFeedback);
+  return await interactivePlanning(provider, cwd, task, taskId, sys, curmudgeonFeedback, superReviewerFeedback, uiCallback);
 }
 
 async function interactivePlanning(
@@ -86,7 +87,8 @@ async function interactivePlanning(
   taskId: string,
   systemPrompt: string,
   curmudgeonFeedback?: string,
-  superReviewerFeedback?: SuperReviewerResult
+  superReviewerFeedback?: SuperReviewerResult,
+  uiCallback?: (feedback: Promise<PlanFeedback>) => void
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   let planMd = undefined;
   let approved = false;
@@ -180,8 +182,22 @@ async function interactivePlanning(
     // Display the plan
     await displayPlan(planMd, iteration + 1);
 
-    // Get human feedback
-    const feedback = await getPlanFeedback();
+    // Get human feedback - use uiCallback if provided (Ink UI mode), otherwise use terminal interface
+    let feedback: PlanFeedback;
+    if (uiCallback) {
+      // Create a promise that will be resolved by the Ink UI keyboard handler
+      const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+        // Store the resolver so the UI can call it
+        (feedbackPromise as any).resolve = resolve;
+      });
+      // Invoke the callback with the promise (orchestrator will wire it to Ink UI)
+      uiCallback(feedbackPromise);
+      // Wait for the UI to resolve the promise
+      feedback = await feedbackPromise;
+    } else {
+      // Fall back to terminal-based getPlanFeedback
+      feedback = await getPlanFeedback();
+    }
 
     if (feedback.type === "approve") {
       approved = await confirmPlanApproval(iteration);

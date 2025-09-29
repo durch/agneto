@@ -3,11 +3,15 @@
 // Bean Counter acts as "Scrum Master" maintaining session-based progress ledger and coordinating sprint cycles
 // Coder becomes pure implementation executor, no longer handles chunking decisions
 
+import React from 'react';
+import { render } from 'ink';
 import { execSync } from "node:child_process";
 import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
 import { RefinerAgent } from "./agents/refiner.js";
 import { interactiveRefinement } from "./ui/refinement-interface.js";
+import { App } from './ui/ink/App.js';
+import { getPlanFeedback, type PlanFeedback } from './ui/planning-interface.js';
 import { proposePlan, implementPlan } from "./agents/coder.js";
 import { reviewPlan, reviewCode } from "./agents/reviewer.js";
 import { getInitialChunk, getNextChunk } from "./agents/bean-counter.js";
@@ -51,6 +55,20 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     let beanCounterInitialized = false;
     let coderInitialized = false;
     let reviewerInitialized = false;
+
+    // Setup UI callback mechanism for Ink mode (available for both fresh and restored tasks)
+    let uiCallback: ((feedbackPromise: Promise<PlanFeedback>) => void) | undefined = undefined;
+    let inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void } | null = null;
+
+    if (options?.uiMode === 'ink') {
+        log.orchestrator("🖥️ Ink UI mode enabled - UI callback mechanism will be available for plan feedback");
+        // The actual callback will be created when needed for plan feedback
+        uiCallback = (feedbackPromise: Promise<PlanFeedback>) => {
+            // This callback will be called by the planner when it needs UI feedback
+            // The planner will pass a Promise that resolves when UI provides feedback
+            // For now, this is a placeholder that will be enhanced by future chunks
+        };
+    }
 
     // Check for checkpoint restoration request
     if (options?.recoveryDecision?.action === "resume") {
@@ -175,6 +193,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 beanCounterInitialized,
                                 coderInitialized,
                                 reviewerInitialized,
+                                uiCallback,
                                 options
                             );
                         }
@@ -196,6 +215,46 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
     // Set TaskStateMachine reference in AuditLogger for phase tracking
     auditLogger.setTaskStateMachine(taskStateMachine);
+
+    // Conditional Ink UI rendering for main task path
+    if (options?.uiMode === 'ink') {
+        try {
+            // Create Promise-based callback mechanism for plan feedback
+            let planFeedbackResolver: ((feedback: PlanFeedback) => void) | null = null;
+            const createPlanFeedbackPromise = () => new Promise<PlanFeedback>((resolve) => {
+                planFeedbackResolver = resolve;
+            });
+
+            // Create callback function that resolves the Promise when user provides feedback
+            const handlePlanFeedback = (feedback: PlanFeedback) => {
+                if (planFeedbackResolver) {
+                    planFeedbackResolver(feedback);
+                    planFeedbackResolver = null; // Clean up resolver
+                }
+            };
+
+            // Update uiCallback to create and return the promise when called
+            uiCallback = (feedbackPromise: Promise<PlanFeedback>) => {
+                // This integrates with the planner's expectation of receiving a Promise
+                // The planner will provide its own Promise, but we'll use our UI-driven one
+                return createPlanFeedbackPromise();
+            };
+
+            // Render Ink UI with taskStateMachine, currentState, and onPlanFeedback callback
+            const currentState = taskStateMachine.getCurrentState();
+            inkInstance = render(React.createElement(App, {
+                taskStateMachine,
+                currentState,
+                onPlanFeedback: handlePlanFeedback
+            }));
+
+            log.orchestrator("🖥️ Ink UI rendering enabled - plan feedback will be handled through terminal interface");
+        } catch (error) {
+            log.warn(`⚠️ Failed to render Ink UI: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            log.warn("Falling back to standard interactive planning interface");
+            uiCallback = undefined; // Ensure fallback to existing behavior
+        }
+    }
 
     // Start the task
     taskStateMachine.transition(TaskEvent.START_TASK);
@@ -267,7 +326,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // Get SuperReviewer feedback if this is a retry cycle
                         const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
 
-                        const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback);
+                        const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback);
                         if (!interactive) {
                             // Display the full plan content in non-interactive mode
                             if (planMd) {
@@ -339,6 +398,23 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 }
 
                 case TaskState.TASK_EXECUTING: {
+                    // Cleanup Ink UI when entering execution phase
+                    if (inkInstance) {
+                        try {
+                            log.orchestrator("🧹 Cleaning up Ink UI after planning phase...");
+                            inkInstance.unmount();  // Unmount first to trigger exit
+                            await inkInstance.waitUntilExit();  // Then wait for cleanup to complete
+                            inkInstance = null;
+                            uiCallback = undefined;
+                            log.orchestrator("✅ Ink UI cleanup complete");
+                        } catch (error) {
+                            log.warn(`⚠️ Ink UI cleanup error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                            // Don't block execution on cleanup failure
+                            inkInstance = null;
+                            uiCallback = undefined;
+                        }
+                    }
+
                     // Execution phase - delegate to CoderReviewerStateMachine
                     let executionStateMachine = taskStateMachine.getExecutionStateMachine();
 
@@ -534,6 +610,7 @@ async function runRestoredTask(
     beanCounterInitialized: boolean,
     coderInitialized: boolean,
     reviewerInitialized: boolean,
+    uiCallback: ((feedbackPromise: Promise<PlanFeedback>) => void) | undefined,
     options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }
 ): Promise<{ cwd: string }> {
     // Main task state machine loop with audit lifecycle management
@@ -603,7 +680,7 @@ async function runRestoredTask(
                             // Get SuperReviewer feedback if this is a retry cycle
                             const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
 
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback);
                             if (!interactive) {
                                 log.planner(`Saved plan → ${planPath}`);
                             }
@@ -671,6 +748,19 @@ async function runRestoredTask(
                     }
 
                     case TaskState.TASK_EXECUTING: {
+                        // Cleanup Ink UI when entering execution phase (restored tasks)
+                        // Note: Restored tasks don't have inkInstance reference since UI wasn't rendered in this session
+                        if (uiCallback) {
+                            try {
+                                log.orchestrator("🧹 Cleaning up Ink UI state after planning phase...");
+                                uiCallback = undefined;  // Reset callback to prevent stale references
+                                log.orchestrator("✅ Ink UI state cleanup complete");
+                            } catch (error) {
+                                log.warn(`⚠️ Ink UI cleanup error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                                uiCallback = undefined;
+                            }
+                        }
+
                         // Execution phase - delegate to CoderReviewerStateMachine
                         let executionStateMachine = taskStateMachine.getExecutionStateMachine();
 

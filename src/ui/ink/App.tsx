@@ -2,10 +2,13 @@ import React from 'react';
 import { Text, Box } from 'ink';
 import { TaskStateMachine, TaskState } from '../../task-state-machine.js';
 import { PlanningLayout } from './components/PlanningLayout.js';
+import type { PlanFeedback } from '../planning-interface.js';
 
 // TypeScript interface for component props
 interface AppProps {
   taskStateMachine: TaskStateMachine;
+  currentState: TaskState;
+  onPlanFeedback?: (feedback: PlanFeedback) => void;
 }
 
 // Helper function to convert TaskState enum to human-readable format
@@ -56,27 +59,14 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine }) => {
-  // Phase detection with error handling
-  const getCurrentPhase = (): { state: TaskState; displayName: string; color: string } => {
-    try {
-      if (!taskStateMachine) {
-        throw new Error('TaskStateMachine is not available');
-      }
-
-      const currentState = taskStateMachine.getCurrentState();
-      return {
-        state: currentState,
-        displayName: getPhaseDisplayName(currentState),
-        color: getPhaseColor(currentState)
-      };
-    } catch (error) {
-      return {
-        state: TaskState.TASK_INIT,
-        displayName: 'Error',
-        color: 'red'
-      };
-    }
+export const App: React.FC<AppProps> = ({ taskStateMachine, currentState, onPlanFeedback }) => {
+  // Use provided currentState instead of detecting internally
+  const getPhaseInfo = (): { state: TaskState; displayName: string; color: string } => {
+    return {
+      state: currentState,
+      displayName: getPhaseDisplayName(currentState),
+      color: getPhaseColor(currentState)
+    };
   };
 
   // Get basic task information with error handling
@@ -107,7 +97,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine }) => {
     }
   };
 
-  const phase = getCurrentPhase();
+  const phase = getPhaseInfo();
   const taskInfo = getTaskInfo();
 
   return (
@@ -152,6 +142,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine }) => {
               <PlanningLayout
                 currentState={phase.state}
                 taskStateMachine={taskStateMachine}
+                onPlanFeedback={onPlanFeedback}
               />
             ) : (
               <Text dimColor italic>
