@@ -2,6 +2,7 @@ import { select, input } from "@inquirer/prompts";
 import chalk from "chalk";
 import { HumanDecision, HumanInteractionResult } from "../types.js";
 import { bell } from '../utils/terminal-bell.js';
+import { sendNotification } from '../utils/ntfy-notifier.js';
 
 export async function promptHumanReview(
     proposal: string,
@@ -26,7 +27,11 @@ export async function promptHumanReview(
     console.log(proposal);
     console.log(chalk.dim("-".repeat(120)));
 
-    // Get human decision
+    // Send notification and audio alert
+    const notificationMessage = reviewerFeedback
+        ? `Human review required: ${stepDescription}. Reviewer feedback: ${reviewerFeedback}`
+        : `Human review required: ${stepDescription}`;
+    sendNotification(notificationMessage, "Agneto");
     bell();
     const decision = await select({
         message: "How would you like to proceed?",
@@ -83,6 +88,12 @@ export async function promptForSuperReviewerDecision(
     console.log(chalk.dim("\n" + "-".repeat(120)));
     console.log(chalk.gray("All execution steps have completed. Choose how to proceed:"));
     console.log(chalk.dim("-".repeat(120)));
+
+    // Send notification and audio alert
+    const notificationMessage = issues && issues.length > 0
+        ? `Final quality gate reached: ${summary}. Issues identified: ${issues.join(', ')}`
+        : `Final quality gate reached: ${summary}`;
+    sendNotification(notificationMessage, "Agneto SuperReviewer");
 
     // Get human decision with terminal-state-aware options
     bell();

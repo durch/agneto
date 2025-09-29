@@ -402,6 +402,13 @@ Agneto supports various environment variables to control execution, debugging, a
 | `AGNETO_DASHBOARD_ENDPOINT` | `http://localhost:3000` | Dashboard server endpoint for event streaming | `AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start` |
 | `PORT` | `3000` | Dashboard server port (when running dashboard) | `PORT=8080 npm run dashboard` |
 
+### Push Notification Variables
+
+| Variable | Default | Description | Example |
+|----------|---------|-------------|---------|
+| `NTFY_TOPIC` | (required) | The ntfy topic to send push notifications to when tasks complete or require human input | `NTFY_TOPIC=agneto-alerts npm start` |
+| `NTFY_SERVER` | `https://ntfy.sh` | Custom ntfy server URL for sending notifications | `NTFY_SERVER=https://my-ntfy.com npm start` |
+
 ### Usage Examples
 
 **Full debugging setup:**
@@ -435,6 +442,15 @@ MAX_CHECKPOINTS=3 CHECKPOINT_COMPRESSION=true npm start -- "large task"
 ```bash
 # Production-ready configuration
 LOG_LEVEL=warn MAX_CHECKPOINTS=5 CHECKPOINT_COMPRESSION=true npm start -- "production task" --non-interactive
+```
+
+**Push notifications setup:**
+```bash
+# Enable ntfy notifications for task completion and human review prompts
+NTFY_TOPIC=my-agneto-alerts npm start -- "important task"
+
+# With custom ntfy server
+NTFY_TOPIC=agneto-team NTFY_SERVER=https://ntfy.company.com npm start -- "team task"
 ```
 
 ### Variable Precedence
