@@ -30,6 +30,7 @@ import { generateUUID } from "./utils/id-generator.js";
 import { bell } from "./utils/terminal-bell.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
 import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
+import type { SuperReviewerDecision } from './types.js';
 import {
   handlePlanHumanReview,
   handleCodeHumanReview,
@@ -698,15 +699,40 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
 
-                        const humanDecision = await promptForSuperReviewerDecision(
-                            superReviewResult.summary,
-                            superReviewResult.issues
-                        );
+                        // Create promise for UI-based decision (following refinement pattern)
+                        let superReviewerResolverFunc: ((value: SuperReviewerDecision) => void) | null = null;
+                        const superReviewerDecisionPromise = new Promise<SuperReviewerDecision>((resolve) => {
+                            superReviewerResolverFunc = resolve;
+                        });
+                        // Attach the resolver to the promise object for the UI to access
+                        (superReviewerDecisionPromise as any).resolve = superReviewerResolverFunc;
 
-                        if (humanDecision.decision === "approve") {
+                        // Create callback for UI to wire up
+                        const superReviewerCallback = (decision: Promise<SuperReviewerDecision>) => {
+                            // Wire up the promise resolver to the UI handler
+                            (decision as any).resolve = superReviewerResolverFunc;
+                        };
+
+                        // Update UI to show SuperReviewer results with decision callback
+                        if (inkInstance) {
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined,
+                                onSuperReviewerDecision: superReviewerCallback
+                            }));
+
+                            // Invoke callback with promise
+                            superReviewerCallback(superReviewerDecisionPromise);
+                        }
+
+                        // Wait for UI decision
+                        const humanDecision = await superReviewerDecisionPromise;
+
+                        if (humanDecision.action === "approve") {
                             log.orchestrator("Human accepted work despite identified issues.");
                             taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
-                        } else if (humanDecision.decision === "retry") {
+                        } else if (humanDecision.action === "retry") {
                             log.orchestrator("Human requested a new development cycle to address issues.");
                             taskStateMachine.setRetryFeedback(humanDecision.feedback ||
                                 `Address SuperReviewer feedback: ${superReviewResult.summary}`);
@@ -1066,15 +1092,40 @@ async function runRestoredTask(
                             log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
                             taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
 
-                            const humanDecision = await promptForSuperReviewerDecision(
-                                superReviewResult.summary,
-                                superReviewResult.issues
-                            );
+                            // Create promise for UI-based decision (following refinement pattern)
+                            let superReviewerResolverFunc: ((value: SuperReviewerDecision) => void) | null = null;
+                            const superReviewerDecisionPromise = new Promise<SuperReviewerDecision>((resolve) => {
+                                superReviewerResolverFunc = resolve;
+                            });
+                            // Attach the resolver to the promise object for the UI to access
+                            (superReviewerDecisionPromise as any).resolve = superReviewerResolverFunc;
 
-                            if (humanDecision.decision === "approve") {
+                            // Create callback for UI to wire up
+                            const superReviewerCallback = (decision: Promise<SuperReviewerDecision>) => {
+                                // Wire up the promise resolver to the UI handler
+                                (decision as any).resolve = superReviewerResolverFunc;
+                            };
+
+                            // Update UI to show SuperReviewer results with decision callback
+                            if (inkInstance) {
+                                inkInstance.rerender(React.createElement(App, {
+                                    taskStateMachine,
+                                    onPlanFeedback: undefined,
+                                    onRefinementFeedback: undefined,
+                                    onSuperReviewerDecision: superReviewerCallback
+                                }));
+
+                                // Invoke callback with promise
+                                superReviewerCallback(superReviewerDecisionPromise);
+                            }
+
+                            // Wait for UI decision
+                            const humanDecision = await superReviewerDecisionPromise;
+
+                            if (humanDecision.action === "approve") {
                                 log.orchestrator("Human accepted work despite identified issues.");
                                 taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
-                            } else if (humanDecision.decision === "retry") {
+                            } else if (humanDecision.action === "retry") {
                                 log.orchestrator("Human requested a new development cycle to address issues.");
                                 taskStateMachine.setRetryFeedback(humanDecision.feedback ||
                                     `Address SuperReviewer feedback: ${superReviewResult.summary}`);

@@ -6,12 +6,14 @@ import { ExecutionLayout } from './components/ExecutionLayout.js';
 import { FullscreenModal } from './components/FullscreenModal.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
+import type { SuperReviewerDecision } from '../../types.js';
 
 // TypeScript interface for component props
 interface AppProps {
   taskStateMachine: TaskStateMachine;
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
+  onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
 }
 
 // Helper function to convert TaskState enum to human-readable format
@@ -62,7 +64,7 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onSuperReviewerDecision }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
@@ -246,12 +248,14 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
           <Box marginTop={1}>
             {(phase.state === TaskState.TASK_REFINING ||
               phase.state === TaskState.TASK_PLANNING ||
-              phase.state === TaskState.TASK_CURMUDGEONING) ? (
+              phase.state === TaskState.TASK_CURMUDGEONING ||
+              phase.state === TaskState.TASK_SUPER_REVIEWING) ? (
               <PlanningLayout
                 currentState={phase.state}
                 taskStateMachine={taskStateMachine}
                 onPlanFeedback={onPlanFeedback}
                 onRefinementFeedback={onRefinementFeedback}
+                onSuperReviewerDecision={onSuperReviewerDecision}
                 terminalHeight={terminalHeight}
                 terminalWidth={terminalWidth}
                 availableContentHeight={availableContentHeight}
@@ -274,6 +278,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
           {(phase.state === TaskState.TASK_REFINING ||
             phase.state === TaskState.TASK_PLANNING ||
             phase.state === TaskState.TASK_CURMUDGEONING ||
+            phase.state === TaskState.TASK_SUPER_REVIEWING ||
             phase.state === TaskState.TASK_EXECUTING) && (
             <>  [←/→] Navigate  [Tab] Cycle  [Enter] Expand  [Esc] Close</>
           )}
@@ -281,6 +286,9 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
             phase.state === TaskState.TASK_PLANNING ||
             phase.state === TaskState.TASK_CURMUDGEONING) && (
             <>  [A]pprove  [R]eject</>
+          )}
+          {phase.state === TaskState.TASK_SUPER_REVIEWING && (
+            <>  [A]pprove  [R]etry  [X]abandon</>
           )}
           {phase.state === TaskState.TASK_EXECUTING && (
             <>  [C]oder Output  [R]eviewer Feedback</>

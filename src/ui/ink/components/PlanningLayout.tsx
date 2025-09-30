@@ -4,7 +4,9 @@ import { TaskStateMachine, TaskState } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
 import { getPlanFeedback, type PlanFeedback } from '../../planning-interface.js';
 import type { RefinementFeedback } from '../../refinement-interface.js';
+import type { SuperReviewerDecision } from '../../../types.js';
 import { FullscreenModal } from './FullscreenModal.js';
+import { TextInputModal } from './TextInputModal.js';
 
 // TypeScript interface for PlanningLayout props
 interface PlanningLayoutProps {
@@ -12,6 +14,7 @@ interface PlanningLayoutProps {
   taskStateMachine: TaskStateMachine;
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
+  onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
   terminalHeight: number;
   terminalWidth: number;
   availableContentHeight: number;
@@ -39,6 +42,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   taskStateMachine,
   onPlanFeedback,
   onRefinementFeedback,
+  onSuperReviewerDecision,
   terminalHeight,
   terminalWidth,
   availableContentHeight
@@ -49,6 +53,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const [isProcessingFeedback, setIsProcessingFeedback] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [refinementResolver, setRefinementResolver] = useState<((value: RefinementFeedback) => void) | null>(null);
+  const [superReviewerResolver, setSuperReviewerResolver] = useState<((value: SuperReviewerDecision) => void) | null>(null);
+  const [isTextInputModalOpen, setIsTextInputModalOpen] = useState(false);
 
   // Track previous curmudgeon feedback to enable swap pattern when replanning
   const [previousCurmudgeonFeedback, setPreviousCurmudgeonFeedback] = useState<string | null>(null);
@@ -90,6 +96,25 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       }
     }
   }, [onRefinementFeedback, currentState]);
+
+  // Wire up SuperReviewer decision when callback is provided
+  React.useEffect(() => {
+    if (onSuperReviewerDecision && currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult()) {
+      // Create a dummy promise to get the resolver attached by orchestrator
+      const dummyPromise = new Promise<SuperReviewerDecision>((resolve) => {
+        // This resolve will be replaced by the orchestrator
+      });
+
+      // Call the callback which will attach the real resolver
+      onSuperReviewerDecision(dummyPromise);
+
+      // Extract the resolver that was attached by orchestrator
+      const resolver = (dummyPromise as any).resolve;
+      if (resolver) {
+        setSuperReviewerResolver(() => resolver);
+      }
+    }
+  }, [onSuperReviewerDecision, currentState, taskStateMachine]);
 
   // Handle keyboard input for navigation, modal, and approve/reject actions
   useInput((input, key) => {
@@ -142,6 +167,23 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         handleApprove();
       } else if (input === 'r' || input === 'R') {
         handleReject();
+      }
+    }
+
+    // Handle SuperReviewer decisions during TASK_SUPER_REVIEWING state
+    if (currentState === TaskState.TASK_SUPER_REVIEWING && superReviewerResolver) {
+      if (input === 'a' || input === 'A') {
+        superReviewerResolver({ action: 'approve' });
+        setSuperReviewerResolver(null);
+        return;
+      } else if (input === 'r' || input === 'R') {
+        // Open modal to collect retry feedback
+        setIsTextInputModalOpen(true);
+        return;
+      } else if (input === 'x' || input === 'X') {
+        superReviewerResolver({ action: 'abandon' });
+        setSuperReviewerResolver(null);
+        return;
       }
     }
   });
@@ -213,6 +255,21 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   };
 
+  // Handle retry submit from TextInputModal
+  const handleRetrySubmit = (feedbackText: string) => {
+    if (!superReviewerResolver) return;
+
+    superReviewerResolver({ action: 'retry', feedback: feedbackText });
+    setSuperReviewerResolver(null);
+    setIsTextInputModalOpen(false);
+    setLastAction('Retry requested with feedback');
+  };
+
+  // Handle retry cancel from TextInputModal
+  const handleRetryCancel = () => {
+    setIsTextInputModalOpen(false);
+  };
+
   // Handle opening fullscreen modal for focused pane
   const handleOpenFullscreen = () => {
     // Get content based on focused pane and current state
@@ -239,6 +296,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       } else if (currentState === TaskState.TASK_REFINING && pendingRefinement) {
         title = '📝 Refined Task';
         content = pendingRefinement.raw || pendingRefinement.goal;
+      } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+        title = '📋 Original Plan';
+        content = planMd || 'No plan available';
       } else {
         title = '📝 Task Description';
         content = taskToUse || 'No task description';
@@ -251,6 +311,23 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       } else if (currentState === TaskState.TASK_CURMUDGEONING) {
         title = '🧐 Curmudgeon Feedback';
         content = curmudgeonFeedback || 'Reviewing plan for over-engineering...';
+      } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+        title = '🔍 Quality Check Results';
+        const superReviewResult = taskStateMachine.getSuperReviewResult();
+        if (superReviewResult) {
+          // Format the result for fullscreen display
+          let formattedContent = superReviewResult.summary;
+          if (superReviewResult.issues && superReviewResult.issues.length > 0) {
+            formattedContent += '\n\nIssues Found:\n';
+            superReviewResult.issues.forEach(issue => {
+              formattedContent += `• ${issue}\n`;
+            });
+          }
+          formattedContent += `\nVerdict: ${superReviewResult.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review'}`;
+          content = formattedContent;
+        } else {
+          content = 'Performing final quality check...';
+        }
       } else if (currentState === TaskState.TASK_PLANNING && previousCurmudgeonFeedback) {
         title = '📋 New Plan';
         content = planMd || 'Creating simplified plan...';
@@ -307,8 +384,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Determine phase title and color
   const isExecuting = currentState === TaskState.TASK_EXECUTING;
-  const phaseTitle = isExecuting ? '⚡ Execution Phase' : '📋 Planning Phase';
-  const phaseColor = isExecuting ? 'yellow' : 'blue';
+  const isSuperReviewing = currentState === TaskState.TASK_SUPER_REVIEWING;
+  const phaseTitle = isSuperReviewing ? '🔍 Final Quality Check' : (isExecuting ? '⚡ Execution Phase' : '📋 Planning Phase');
+  const phaseColor = isSuperReviewing ? 'green' : (isExecuting ? 'yellow' : 'blue');
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={phaseColor} padding={1} flexGrow={1}>
@@ -350,6 +428,26 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                     paneContentHeight
                   ).display}
                 </Text>
+              </Box>
+            </>
+          ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
+            // SuperReviewer: Show original plan on left
+            <>
+              <Box justifyContent="space-between">
+                <Text color="cyan" bold>📋 Original Plan</Text>
+                {focusedPane === 'left' && <Text dimColor>[Enter ⤢]</Text>}
+              </Box>
+              <Box marginTop={1}>
+                {planMd ? (
+                  <Box flexDirection="column">
+                    <Text wrap="wrap">{truncateContent(planMd, paneContentHeight).display}</Text>
+                    {planPath && (
+                      <Text dimColor color="gray">Saved to: {planPath}</Text>
+                    )}
+                  </Box>
+                ) : (
+                  <Text dimColor>No plan available</Text>
+                )}
               </Box>
             </>
           ) : currentState === TaskState.TASK_CURMUDGEONING ? (
@@ -437,6 +535,38 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                     paneContentHeight
                   ).display}
                 </Text>
+              </Box>
+            </>
+          ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
+            // SuperReviewer: Show results on right
+            <>
+              <Box justifyContent="space-between">
+                <Text color="green" bold>🔍 Quality Check Results</Text>
+                {focusedPane === 'right' && <Text dimColor>[Enter ⤢]</Text>}
+              </Box>
+              <Box marginTop={1}>
+                {(() => {
+                  const superReviewResult = taskStateMachine.getSuperReviewResult();
+                  if (superReviewResult) {
+                    return (
+                      <Box flexDirection="column">
+                        <Text wrap="wrap">{truncateContent(superReviewResult.summary, paneContentHeight - 5).display}</Text>
+                        {superReviewResult.issues && superReviewResult.issues.length > 0 && (
+                          <Box marginTop={1} flexDirection="column">
+                            <Text color="yellow" bold>Issues Found:</Text>
+                            {superReviewResult.issues.map((issue, idx) => (
+                              <Text key={idx} color="yellow">• {issue}</Text>
+                            ))}
+                          </Box>
+                        )}
+                        <Box marginTop={1}>
+                          <Text dimColor>Verdict: {superReviewResult.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review'}</Text>
+                        </Box>
+                      </Box>
+                    );
+                  }
+                  return <Text dimColor>Performing final quality check...</Text>;
+                })()}
               </Box>
             </>
           ) : currentState === TaskState.TASK_CURMUDGEONING ? (
@@ -533,6 +663,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             {currentState === TaskState.TASK_REFINING && 'Refining task description...'}
             {currentState === TaskState.TASK_PLANNING && 'Creating strategic plan...'}
             {currentState === TaskState.TASK_CURMUDGEONING && 'Reviewing plan complexity...'}
+            {currentState === TaskState.TASK_SUPER_REVIEWING && 'SuperReviewer performing final quality check...'}
             {currentState === TaskState.TASK_EXECUTING && (
               executionState === State.BEAN_COUNTING ? 'Bean Counter determining work chunk...' :
               executionState === State.PLANNING ? 'Coder proposing implementation...' :
@@ -599,8 +730,49 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               )}
             </Box>
           )}
+
+          {currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult() && (
+            <Box marginTop={1} flexDirection="column">
+              <Text color="green" bold>🔍 Quality Check Complete</Text>
+              <Box marginTop={1}>
+                <Text>
+                  Press <Text color="green" bold>[A]</Text> to approve and complete task
+                </Text>
+                <Text>
+                  Press <Text color="yellow" bold>[R]</Text> to retry and fix issues
+                </Text>
+                <Text>
+                  Press <Text color="red" bold>[X]</Text> to abandon task
+                </Text>
+              </Box>
+
+              {/* Show feedback processing state */}
+              {isProcessingFeedback && (
+                <Box marginTop={1}>
+                  <Text color="blue">⏳ Processing your decision...</Text>
+                </Box>
+              )}
+
+              {/* Show last action taken */}
+              {lastAction && !isProcessingFeedback && (
+                <Box marginTop={1}>
+                  <Text color="cyan">✓ {lastAction}</Text>
+                </Box>
+              )}
+            </Box>
+          )}
         </Box>
       </Box>
+
+      {/* TextInputModal for retry feedback */}
+      {isTextInputModalOpen && currentState === TaskState.TASK_SUPER_REVIEWING && (
+        <TextInputModal
+          title="Provide Retry Feedback"
+          placeholder="Describe what needs to be fixed or improved..."
+          onSubmit={handleRetrySubmit}
+          onCancel={handleRetryCancel}
+        />
+      )}
     </Box>
   );
 };
