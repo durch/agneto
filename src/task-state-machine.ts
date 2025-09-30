@@ -77,6 +77,7 @@ export interface TaskContext {
   // Refined task (if refinement occurred)
   refinedTask?: RefinedTask;
   taskToUse?: string; // The actual task description to use (refined or original)
+  pendingRefinement?: RefinedTask; // Refinement awaiting approval
 
   // Planning outputs
   planMd?: string;
@@ -142,8 +143,8 @@ export class TaskStateMachine {
     return this.context;
   }
 
-  getExecutionStateMachine(): CoderReviewerStateMachine | null {
-    return this.context.executionStateMachine ?? null;
+  getExecutionStateMachine(): CoderReviewerStateMachine | undefined {
+    return this.context.executionStateMachine;
   }
 
   getRefinedTask(): RefinedTask | undefined {
@@ -167,9 +168,19 @@ export class TaskStateMachine {
   }
 
   // Setters for context updates
+  setPendingRefinement(refinement: RefinedTask) {
+    this.context.pendingRefinement = refinement;
+  }
+
+  getPendingRefinement(): RefinedTask | undefined {
+    return this.context.pendingRefinement;
+  }
+
   setRefinedTask(refinedTask: RefinedTask, taskToUse: string) {
     this.context.refinedTask = refinedTask;
     this.context.taskToUse = taskToUse;
+    // Clear pending once approved
+    this.context.pendingRefinement = undefined;
   }
 
   setPlan(planMd: string | undefined, planPath: string) {

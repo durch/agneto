@@ -82,6 +82,11 @@ export interface StateMachineContext {
   // Task baseline tracking (prevents reverting pre-task commits)
   baselineCommit?: string;
 
+  // Agent outputs for UI display
+  lastBeanCounterOutput?: string;
+  lastCoderOutput?: string;
+  lastReviewerOutput?: string;
+
   // Configuration
   maxPlanAttempts: number;
   maxCodeAttempts: number;
@@ -139,6 +144,28 @@ export class CoderReviewerStateMachine {
 
   getLastError(): Error | undefined {
     return this.context.lastError;
+  }
+
+  // Agent output accessors for UI display
+  setAgentOutput(agent: 'bean' | 'coder' | 'reviewer', output: string) {
+    if (agent === 'bean') {
+      this.context.lastBeanCounterOutput = output;
+    } else if (agent === 'coder') {
+      this.context.lastCoderOutput = output;
+    } else if (agent === 'reviewer') {
+      this.context.lastReviewerOutput = output;
+    }
+  }
+
+  getAgentOutput(agent: 'bean' | 'coder' | 'reviewer'): string | undefined {
+    if (agent === 'bean') {
+      return this.context.lastBeanCounterOutput;
+    } else if (agent === 'coder') {
+      return this.context.lastCoderOutput;
+    } else if (agent === 'reviewer') {
+      return this.context.lastReviewerOutput;
+    }
+    return undefined;
   }
 
   // Setters for testing and external manipulation

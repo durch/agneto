@@ -138,10 +138,16 @@ export const PhaseLayout: React.FC<PhaseLayoutProps> = ({ taskStateMachine }) =>
   const { state: currentState, group: phaseGroup } = getCurrentPhaseData();
 
   // Conditional rendering based on phase group
-  const renderPhaseContent = (): JSX.Element => {
+  const renderPhaseContent = (): React.ReactElement => {
     switch (phaseGroup) {
       case PhaseGroup.PLANNING:
-        return <PlanningLayout currentState={currentState} taskStateMachine={taskStateMachine} />;
+        return <PlanningLayout
+          currentState={currentState}
+          taskStateMachine={taskStateMachine}
+          terminalHeight={40}
+          terminalWidth={120}
+          availableContentHeight={30}
+        />;
 
       case PhaseGroup.EXECUTION:
         return <ExecutionLayout taskStateMachine={taskStateMachine} />;

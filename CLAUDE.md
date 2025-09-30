@@ -823,8 +823,175 @@ Set `DEBUG=true` to see:
 - **Enhanced Makefile** - More commands for easier operations
 - **State Machine Architecture** - Clear separation of task and execution states
 
+## 🖥️ Ink UI Integration (Terminal UI)
+
+Agneto includes an Ink-based Terminal User Interface that provides real-time visualization of task execution phases. This section documents the architecture, patterns, and critical implementation details learned during development.
+
+### Core Architecture Principles
+
+**UI-First Approach:** The Ink UI is created immediately after task initialization and observes state changes throughout the entire lifecycle. The UI is not a helper - it IS the application interface.
+
+```typescript
+// CORRECT: Create UI once, early in the flow
+const inkInstance = render(<App taskStateMachine={taskStateMachine} />);
+inkInstance.waitUntilExit(); // Keep alive for entire session
+
+// WRONG: Creating UI only during specific phases
+if (state === TASK_PLANNING) {
+  const inkInstance = render(...); // Don't do this!
+}
+```
+
+### Promise-Based Approval Pattern
+
+Both refinement and planning approvals use the same promise-based pattern for user interaction:
+
+```typescript
+// 1. Orchestrator creates a promise and its resolver
+let resolverFunc: ((value: Feedback) => void) | null = null;
+const feedbackPromise = new Promise<Feedback>((resolve) => {
+  resolverFunc = resolve;
+});
+(feedbackPromise as any).resolve = resolverFunc; // Attach for UI access
+
+// 2. Pass callback to UI that will wire up the resolver
+const callback = (feedback: Promise<Feedback>) => {
+  (feedback as any).resolve = resolverFunc; // Critical: Use orchestrator's resolver!
+};
+
+// 3. UI extracts and uses the resolver
+React.useEffect(() => {
+  if (onFeedbackCallback && shouldShowApproval) {
+    const dummyPromise = new Promise((resolve) => {});
+    onFeedbackCallback(dummyPromise); // Callback attaches real resolver
+    const resolver = (dummyPromise as any).resolve; // Extract it
+    setLocalResolver(() => resolver); // Store for keyboard handler
+  }
+}, [dependencies]);
+
+// 4. Orchestrator waits for approval
+const feedback = await feedbackPromise;
+```
+
+**Critical Pattern:** The UI must use the resolver from the orchestrator's promise, not create its own promise. This was a major source of bugs.
+
+### Re-rendering Requirements
+
+The UI must be explicitly re-rendered at key points:
+
+1. **After state transitions:**
+```typescript
+taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
+inkInstance.rerender(<App taskStateMachine={taskStateMachine} />);
+```
+
+2. **After storing data but before approval:**
+```typescript
+taskStateMachine.setPlan(planMd, planPath);
+inkInstance.rerender(<App {...}/>); // Show the plan
+// Then set up approval mechanism
+```
+
+3. **When entering new states:**
+```typescript
+case TaskState.TASK_PLANNING: {
+  if (inkInstance) {
+    inkInstance.rerender(<App {...}/>); // Update UI before long operation
+  }
+  // Then do planning work
+}
+```
+
+### State and Data Management
+
+**Key Concepts:**
+- `pendingRefinement`: Temporary storage for refinement awaiting approval
+- `plan`: Directly stored (no "pending" state)
+- State transitions only occur AFTER user approval
+- `setRefinedTask()` automatically clears `pendingRefinement`
+
+**UI Display Logic:**
+```typescript
+// Check BOTH state AND data existence
+{currentState === TaskState.TASK_PLANNING && !planMd ? (
+  <Text>Creating strategic plan...</Text>  // Still generating
+) : planMd ? (
+  <Text>{planMd}</Text>  // Show the plan
+) : (
+  <Text>No plan available</Text>
+)}
+```
+
+### Common Pitfalls and Solutions
+
+**Problem 1: UI Hangs After Approval**
+- **Cause:** Promise resolver not properly wired between orchestrator and UI
+- **Solution:** Ensure UI extracts resolver from orchestrator's promise, not creating its own
+
+**Problem 2: Plan Not Showing Before Approval**
+- **Cause:** No re-render after storing plan
+- **Solution:** Add explicit re-render after `setPlan()` before setting up approval
+
+**Problem 3: "Awaiting Approval" Stuck After Approval**
+- **Cause:** `pendingRefinement` not cleared
+- **Solution:** `setRefinedTask()` clears it automatically, or manually clear
+
+**Problem 4: UI Shows Wrong Phase**
+- **Cause:** Component reading stale props instead of live state
+- **Solution:** Always read from `taskStateMachine.getCurrentState()` dynamically
+
+### Implementation Checklist
+
+When adding UI interaction for a new phase:
+
+- [ ] Store any pending data in state machine
+- [ ] Re-render UI after storing data
+- [ ] Create promise with resolver in orchestrator
+- [ ] Pass callback to UI that attaches resolver
+- [ ] UI extracts resolver in useEffect
+- [ ] Keyboard handler calls resolver with feedback
+- [ ] Orchestrator waits on promise
+- [ ] Clear pending data after approval
+- [ ] Re-render UI after state transition
+
+### File Organization
+
+- `src/ui/ink/App.tsx` - Main Ink app component
+- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI
+- `src/ui/ink/components/PhaseLayout.tsx` - Execution phase UI (future)
+- Approval callbacks passed as props through component hierarchy
+- State read dynamically from `taskStateMachine`, not props
+
+### Testing the UI
+
+```bash
+# Test with simple task to see all phases
+npm start -- "add a comment to the code"
+
+# Key interactions:
+# - Press A to approve refinement
+# - Press A to approve plan
+# - Watch state transitions in header
+```
+
+### Future Enhancements
+
+**Curmudgeon Review Visualization:**
+- During TASK_CURMUDGEONING: Show plan (left), feedback (right)
+- During replanning: Show feedback (left), new plan (right)
+
+**Execution Phase:**
+- Bean Counter chunks in left panel
+- Coder implementation in middle
+- Reviewer feedback in right panel
+
+**Live Activity Stream:**
+- Buffer log messages during operations
+- Display in scrollable panel
+- Clear between phases
+
 ### Long-term: Enhanced UX
-- TUI Interface with three-pane view
+- Full three-pane view for all phases
 - Real-time execution monitoring
 - Parallel task execution
 - Memory between retries (context passing)

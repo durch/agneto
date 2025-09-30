@@ -19,7 +19,7 @@ export async function runPlanner(
   interactive: boolean = false,
   curmudgeonFeedback?: string,
   superReviewerFeedback?: SuperReviewerResult,
-  uiCallback?: (feedback: Promise<PlanFeedback>) => void
+  uiCallback?: (feedback: Promise<PlanFeedback>, rerenderCallback?: () => void) => void
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   const sys = readFileSync(
     new URL("../prompts/planner.md", import.meta.url),
@@ -88,7 +88,7 @@ async function interactivePlanning(
   systemPrompt: string,
   curmudgeonFeedback?: string,
   superReviewerFeedback?: SuperReviewerResult,
-  uiCallback?: (feedback: Promise<PlanFeedback>) => void
+  uiCallback?: (feedback: Promise<PlanFeedback>, rerenderCallback?: () => void) => void
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   let planMd = undefined;
   let approved = false;
@@ -179,17 +179,21 @@ async function interactivePlanning(
       )?.trim();
     }
 
-    // Display the plan
-    await displayPlan(planMd, iteration + 1);
+    // Display the plan (skip if using Ink UI as it will handle display)
+    if (!uiCallback) {
+      await displayPlan(planMd, iteration + 1);
+    }
 
     // Get human feedback - use uiCallback if provided (Ink UI mode), otherwise use terminal interface
     let feedback: PlanFeedback;
     if (uiCallback) {
       // Create a promise that will be resolved by the Ink UI keyboard handler
+      let resolverFunc: ((value: PlanFeedback) => void) | null = null;
       const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-        // Store the resolver so the UI can call it
-        (feedbackPromise as any).resolve = resolve;
+        resolverFunc = resolve;
       });
+      // Attach the resolver to the promise object for the UI to access
+      (feedbackPromise as any).resolve = resolverFunc;
       // Invoke the callback with the promise (orchestrator will wire it to Ink UI)
       uiCallback(feedbackPromise);
       // Wait for the UI to resolve the promise
@@ -249,6 +253,10 @@ async function interactivePlanning(
     );
   }
 
-  await showPlanningComplete(planPath);
+  // Skip console output in Ink mode
+  if (!uiCallback) {
+    await showPlanningComplete(planPath);
+  }
+
   return { planMd, planPath };
 }

@@ -9,7 +9,7 @@ import { execSync } from "node:child_process";
 import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
 import { RefinerAgent } from "./agents/refiner.js";
-import { interactiveRefinement } from "./ui/refinement-interface.js";
+import { interactiveRefinement, type RefinementFeedback } from "./ui/refinement-interface.js";
 import { App } from './ui/ink/App.js';
 import { getPlanFeedback, type PlanFeedback } from './ui/planning-interface.js';
 import { proposePlan, implementPlan } from "./agents/coder.js";
@@ -57,17 +57,13 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     let reviewerInitialized = false;
 
     // Setup UI callback mechanism for Ink mode (available for both fresh and restored tasks)
-    let uiCallback: ((feedbackPromise: Promise<PlanFeedback>) => void) | undefined = undefined;
-    let inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void } | null = null;
+    let uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined = undefined;
+    let inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null = null;
 
     if (options?.uiMode === 'ink') {
         log.orchestrator("🖥️ Ink UI mode enabled - UI callback mechanism will be available for plan feedback");
-        // The actual callback will be created when needed for plan feedback
-        uiCallback = (feedbackPromise: Promise<PlanFeedback>) => {
-            // This callback will be called by the planner when it needs UI feedback
-            // The planner will pass a Promise that resolves when UI provides feedback
-            // For now, this is a placeholder that will be enhanced by future chunks
-        };
+        // The actual callback will be set up when the Ink UI is rendered
+        // to properly wire up the promise resolver mechanism
     }
 
     // Check for checkpoint restoration request
@@ -216,6 +212,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     // Set TaskStateMachine reference in AuditLogger for phase tracking
     auditLogger.setTaskStateMachine(taskStateMachine);
 
+    // Setup Ink UI first if enabled - UI is the app!
     // Conditional Ink UI rendering for main task path
     if (options?.uiMode === 'ink') {
         try {
@@ -233,22 +230,41 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 }
             };
 
-            // Update uiCallback to create and return the promise when called
-            uiCallback = (feedbackPromise: Promise<PlanFeedback>) => {
-                // This integrates with the planner's expectation of receiving a Promise
-                // The planner will provide its own Promise, but we'll use our UI-driven one
-                return createPlanFeedbackPromise();
+            // Update uiCallback to wire up the resolver from the planner's promise and provide rerender
+            uiCallback = (feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => {
+                // Extract and store the resolver from the planner's promise
+                // The planner attaches the resolver to the promise object
+                planFeedbackResolver = (feedbackPromise as any).resolve;
+
+                // If rerender is requested, update the Ink UI
+                if (rerenderCallback && inkInstance) {
+                    // Re-render the Ink UI (App will read current state dynamically)
+                    inkInstance.rerender(React.createElement(App, {
+                        taskStateMachine,
+                        onPlanFeedback: handlePlanFeedback
+                    }));
+                    rerenderCallback();
+                }
             };
 
-            // Render Ink UI with taskStateMachine, currentState, and onPlanFeedback callback
-            const currentState = taskStateMachine.getCurrentState();
-            inkInstance = render(React.createElement(App, {
+            // Render Ink UI immediately - it will observe state changes
+            // Don't pass currentState as prop - let App read it dynamically
+            const { unmount, waitUntilExit, rerender } = render(React.createElement(App, {
                 taskStateMachine,
-                currentState,
                 onPlanFeedback: handlePlanFeedback
             }));
 
-            log.orchestrator("🖥️ Ink UI rendering enabled - plan feedback will be handled through terminal interface");
+            // Store the Ink instance with all necessary methods
+            inkInstance = { unmount, waitUntilExit, rerender };
+
+            // Keep the Ink app alive by waiting on it
+            inkInstance.waitUntilExit().then(() => {
+                log.orchestrator("Ink UI exited");
+            }).catch(error => {
+                log.orchestrator(`Ink UI exit error: ${error}`);
+            });
+
+            log.orchestrator("🖥️ Ink UI started - will display all task phases");
         } catch (error) {
             log.warn(`⚠️ Failed to render Ink UI: ${error instanceof Error ? error.message : 'Unknown error'}`);
             log.warn("Falling back to standard interactive planning interface");
@@ -258,6 +274,14 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
     // Start the task
     taskStateMachine.transition(TaskEvent.START_TASK);
+
+    // Update Ink UI to reflect initial state change
+    if (inkInstance) {
+        inkInstance.rerender(React.createElement(App, {
+            taskStateMachine,
+            onPlanFeedback: undefined  // Will be set when needed
+        }));
+    }
 
     // Main task state machine loop with audit lifecycle management
     const maxIterations = 200; // Safety limit for parent + child iterations
@@ -273,25 +297,98 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
             switch (currentState) {
                 case TaskState.TASK_REFINING: {
-                    // Task refinement (interactive only)
-                    log.info("🔍 Refining task description...");
-                    const refinerAgent = new RefinerAgent(provider);
-                    const refinedTask = await interactiveRefinement(refinerAgent, cwd, humanTask, taskId);
+                    // Task refinement through UI
+                    if (inkInstance) {
+                        // Use UI-based refinement
+                        log.info("🔍 Refining task description...");
+                        const refinerAgent = new RefinerAgent(provider);
 
-                    if (refinedTask) {
-                        const taskToUse = formatRefinedTaskForPlanner(refinedTask);
-                        taskStateMachine.setRefinedTask(refinedTask, taskToUse);
-                        log.orchestrator("Using refined task specification for planning.");
-                        taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
+                        // Generate refinement
+                        const refinedTask = await refinerAgent.refine(cwd, humanTask, taskId);
+
+                        // Store as pending for UI approval
+                        taskStateMachine.setPendingRefinement(refinedTask);
+
+                        // Create promise for UI feedback
+                        let resolverFunc: ((value: RefinementFeedback) => void) | null = null;
+                        const feedbackPromise = new Promise<RefinementFeedback>((resolve) => {
+                            resolverFunc = resolve;
+                        });
+                        // Attach the resolver to the promise object for the UI to access
+                        (feedbackPromise as any).resolve = resolverFunc;
+
+                        // Create callback for UI to wire up
+                        const refinementCallback = (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => {
+                            // Wire up the promise resolver to the UI handler
+                            (feedback as any).resolve = resolverFunc;
+                        };
+
+                        // Update UI to show pending refinement with approval callback
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: refinementCallback
+                        }));
+
+                        // Invoke callback with promise
+                        refinementCallback(feedbackPromise);
+
+                        // Wait for UI feedback
+                        const feedback = await feedbackPromise;
+
+                        if (feedback.type === "approve") {
+                            const taskToUse = formatRefinedTaskForPlanner(refinedTask);
+                            taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                            log.orchestrator("Using refined task specification for planning.");
+                            taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
+
+                            // Update UI after approval
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined
+                            }));
+                        } else {
+                            log.warn("Task refinement rejected. Using original description.");
+                            taskStateMachine.transition(TaskEvent.REFINEMENT_CANCELLED);
+
+                            // Update UI after rejection
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined
+                            }));
+                        }
                     } else {
-                        log.warn("Task refinement cancelled. Using original description.");
-                        taskStateMachine.transition(TaskEvent.REFINEMENT_CANCELLED);
+                        // Fallback to interactive refinement if no UI
+                        const refinerAgent = new RefinerAgent(provider);
+                        const refinedTask = await interactiveRefinement(refinerAgent, cwd, humanTask, taskId);
+
+                        if (refinedTask) {
+                            const taskToUse = formatRefinedTaskForPlanner(refinedTask);
+                            taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                            log.orchestrator("Using refined task specification for planning.");
+                            taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
+                        } else {
+                            log.warn("Task refinement cancelled. Using original description.");
+                            taskStateMachine.transition(TaskEvent.REFINEMENT_CANCELLED);
+                        }
                     }
                     break;
                 }
 
                 case TaskState.TASK_PLANNING: {
                     // Planning phase
+
+                    // Re-render UI to show planning state before generating plan
+                    if (inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+                    }
+
                     let taskToUse = taskStateMachine.getContext().taskToUse || humanTask;
                     let curmudgeonFeedback: string | undefined = undefined;
 
@@ -326,16 +423,73 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // Get SuperReviewer feedback if this is a retry cycle
                         const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
 
-                        const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback);
-                        if (!interactive) {
-                            // Display the full plan content in non-interactive mode
-                            if (planMd) {
-                                log.planner(planMd);
+                        // For Ink UI mode, handle plan approval like refiner
+                        if (inkInstance && interactive) {
+                            // Generate the plan without UI callback
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback);
+
+                            // Store the plan in state machine
+                            taskStateMachine.setPlan(planMd, planPath);
+
+                            // Re-render UI to show the plan
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined
+                            }));
+
+                            // Create promise for UI feedback
+                            let resolverFunc: ((value: PlanFeedback) => void) | null = null;
+                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                resolverFunc = resolve;
+                            });
+                            // Attach the resolver to the promise object for the UI to access
+                            (feedbackPromise as any).resolve = resolverFunc;
+
+                            // Create callback for UI to wire up
+                            const planCallback = (feedback: PlanFeedback) => {
+                                resolverFunc?.(feedback);
+                            };
+
+                            // Update UI to show plan with approval callback
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: planCallback,
+                                onRefinementFeedback: undefined
+                            }));
+
+                            // Wait for UI feedback
+                            const feedback = await feedbackPromise;
+
+                            if (feedback.type === "approve") {
+                                log.orchestrator("Plan approved by user.");
+                                taskStateMachine.transition(TaskEvent.PLAN_CREATED);
+                            } else {
+                                // Handle plan rejection - could loop back or abort
+                                log.warn("Plan rejected by user. Aborting task.");
+                                taskStateMachine.transition(TaskEvent.PLAN_FAILED, new Error("User rejected plan"));
                             }
-                            log.planner(`Saved plan → ${planPath}`);
+
+                            // Clean up the callback after use
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined
+                            }));
+
+                        } else {
+                            // Non-interactive mode - original behavior
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback);
+                            if (!interactive) {
+                                // Display the full plan content in non-interactive mode
+                                if (planMd) {
+                                    log.planner(planMd);
+                                }
+                                log.planner(`Saved plan → ${planPath}`);
+                            }
+                            taskStateMachine.setPlan(planMd, planPath);
+                            taskStateMachine.transition(TaskEvent.PLAN_CREATED);
                         }
-                        taskStateMachine.setPlan(planMd, planPath);
-                        taskStateMachine.transition(TaskEvent.PLAN_CREATED);
                     } catch (error) {
                         log.warn(`Planning failed: ${error}`);
                         taskStateMachine.transition(TaskEvent.PLAN_FAILED, error);
@@ -348,6 +502,15 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     const planMd = taskStateMachine.getPlanMd();
                     const simplificationCount = taskStateMachine.getSimplificationCount();
                     const maxSimplifications = 2;
+
+                    // Update UI to show we're entering curmudgeon phase
+                    if (inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+                    }
 
                     // Check if we've exceeded the simplification limit
                     if (simplificationCount >= maxSimplifications) {
@@ -378,11 +541,31 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 log.orchestrator(`🔄 Curmudgeon requests simplification: ${result.reasoning}`);
                                 // Store the feedback for the planner
                                 taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
+
+                                // Update UI to show feedback before transitioning
+                                if (inkInstance) {
+                                    inkInstance.rerender(React.createElement(App, {
+                                        taskStateMachine,
+                                        onPlanFeedback: undefined,
+                                        onRefinementFeedback: undefined
+                                    }));
+                                }
+
                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                             } else {
                                 // This is the last allowed simplification
                                 log.orchestrator(`⚠️ Curmudgeon requests simplification but this is the final attempt (${simplificationCount + 1}/${maxSimplifications})`);
                                 taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
+
+                                // Update UI to show feedback before transitioning
+                                if (inkInstance) {
+                                    inkInstance.rerender(React.createElement(App, {
+                                        taskStateMachine,
+                                        onPlanFeedback: undefined,
+                                        onRefinementFeedback: undefined
+                                    }));
+                                }
+
                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                             }
                         } else if (result.verdict === "reject") {
@@ -398,21 +581,15 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 }
 
                 case TaskState.TASK_EXECUTING: {
-                    // Cleanup Ink UI when entering execution phase
+                    // Keep Ink UI alive during execution phase for real-time updates
                     if (inkInstance) {
-                        try {
-                            log.orchestrator("🧹 Cleaning up Ink UI after planning phase...");
-                            inkInstance.unmount();  // Unmount first to trigger exit
-                            await inkInstance.waitUntilExit();  // Then wait for cleanup to complete
-                            inkInstance = null;
-                            uiCallback = undefined;
-                            log.orchestrator("✅ Ink UI cleanup complete");
-                        } catch (error) {
-                            log.warn(`⚠️ Ink UI cleanup error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                            // Don't block execution on cleanup failure
-                            inkInstance = null;
-                            uiCallback = undefined;
-                        }
+                        log.orchestrator("🖥️ Ink UI will continue displaying execution phase...");
+                        // Re-render to show execution phase
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
                     }
 
                     // Execution phase - delegate to CoderReviewerStateMachine
@@ -461,7 +638,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         reviewerInitialized,
                         log,
                         checkpointService,
-                        taskStateMachine
+                        taskStateMachine,
+                        inkInstance
                     );
 
                     beanCounterInitialized = executionResult.beanCounterInitialized;
@@ -591,6 +769,18 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         auditLogger.failTask(errorMessage);
         log.warn(`Task execution failed: ${errorMessage}`);
         throw error; // Re-throw to maintain existing error handling behavior
+    } finally {
+        // Ensure Ink UI is cleaned up if it's still running
+        if (inkInstance) {
+            try {
+                log.orchestrator("🧹 Cleaning up Ink UI...");
+                inkInstance.unmount();
+                await inkInstance.waitUntilExit();
+                inkInstance = null;
+            } catch (cleanupError) {
+                log.warn(`⚠️ Ink UI cleanup error: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`);
+            }
+        }
     }
 
     return { cwd };
@@ -610,7 +800,7 @@ async function runRestoredTask(
     beanCounterInitialized: boolean,
     coderInitialized: boolean,
     reviewerInitialized: boolean,
-    uiCallback: ((feedbackPromise: Promise<PlanFeedback>) => void) | undefined,
+    uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined,
     options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }
 ): Promise<{ cwd: string }> {
     // Main task state machine loop with audit lifecycle management
@@ -807,7 +997,8 @@ async function runRestoredTask(
                             reviewerInitialized,
                             log,
                             checkpointService,
-                            taskStateMachine
+                            taskStateMachine,
+                            null  // No UI for restored tasks
                         );
 
                         // Check execution result
@@ -950,7 +1141,8 @@ async function runExecutionStateMachine(
     reviewerInitialized: boolean,
     log: any,
     checkpointService: CheckpointService,
-    taskStateMachine: TaskStateMachine
+    taskStateMachine: TaskStateMachine,
+    inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null
 ): Promise<{ beanCounterInitialized: boolean, coderInitialized: boolean, reviewerInitialized: boolean }> {
 
     // Run the execution state machine loop
@@ -1000,6 +1192,20 @@ async function runExecutionStateMachine(
                         stateMachine.transition(Event.TASK_COMPLETED);
                     } else {
                         log.orchestrator(`📋 Bean Counter: Next chunk - ${chunk.description}`);
+
+                        // Capture Bean Counter output for UI
+                        const chunkOutput = `${chunk.description}\n\nRequirements:\n${chunk.requirements.map((r: string) => `- ${r}`).join('\n')}\n\nContext: ${chunk.context}`;
+                        stateMachine.setAgentOutput('bean', chunkOutput);
+
+                        // Trigger UI update if Ink is active
+                        if (taskStateMachine && inkInstance) {
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined
+                            }));
+                        }
+
                         // Generate fresh session IDs for new chunk - no pollution from previous chunks
                         coderSessionId = generateUUID();
                         reviewerSessionId = generateUUID();
@@ -1069,6 +1275,20 @@ async function runExecutionStateMachine(
 
                     // Always transition to PLAN_PROPOSED - let the review cycle continue
                     log.coder(`📢 Planning to: ${proposal.description}`);
+
+                    // Capture Coder output for UI
+                    const coderOutput = `${proposal.description}\n\nFiles: ${proposal.affectedFiles?.join(", ") || "N/A"}\n\nSteps:\n${proposal.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
+                    stateMachine.setAgentOutput('coder', coderOutput);
+
+                    // Trigger UI update if Ink is active
+                    if (taskStateMachine && inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+                    }
+
                     stateMachine.transition(Event.PLAN_PROPOSED, proposal);
                     break;
                 }
@@ -1219,6 +1439,19 @@ async function runExecutionStateMachine(
                     );
 
                     log.review(`Code verdict: ${verdict.verdict}${verdict.feedback ? ` - ${verdict.feedback}` : ''}`);
+
+                    // Capture Reviewer output for UI
+                    const reviewerOutput = `Verdict: ${verdict.verdict}\n\n${verdict.feedback || "No additional feedback"}`;
+                    stateMachine.setAgentOutput('reviewer', reviewerOutput);
+
+                    // Trigger UI update if Ink is active
+                    if (taskStateMachine && inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+                    }
 
                     // Handle verdict
                     switch (verdict.verdict) {

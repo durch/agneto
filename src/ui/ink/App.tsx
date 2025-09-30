@@ -1,14 +1,16 @@
-import React from 'react';
-import { Text, Box } from 'ink';
+import React, { useState } from 'react';
+import { Text, Box, useStdout, useInput } from 'ink';
 import { TaskStateMachine, TaskState } from '../../task-state-machine.js';
 import { PlanningLayout } from './components/PlanningLayout.js';
+import { FullscreenModal } from './components/FullscreenModal.js';
 import type { PlanFeedback } from '../planning-interface.js';
+import type { RefinementFeedback } from '../refinement-interface.js';
 
 // TypeScript interface for component props
 interface AppProps {
   taskStateMachine: TaskStateMachine;
-  currentState: TaskState;
   onPlanFeedback?: (feedback: PlanFeedback) => void;
+  onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
 }
 
 // Helper function to convert TaskState enum to human-readable format
@@ -59,9 +61,30 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, currentState, onPlanFeedback }) => {
-  // Use provided currentState instead of detecting internally
+export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback }) => {
+  // Get terminal dimensions for responsive layout
+  const { stdout } = useStdout();
+  const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
+  const terminalWidth = stdout?.columns || 120; // Default to 120 if unavailable
+
+  // Global modal state for plan viewer
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+
+  // Global keyboard handler for plan modal
+  useInput((input, key) => {
+    // Handle 'p' or 'P' to toggle plan modal
+    if (input === 'p' || input === 'P') {
+      const planMd = taskStateMachine.getPlanMd();
+      if (planMd) {
+        setIsPlanModalOpen(true);
+      }
+      // Silently ignore if no plan exists yet
+    }
+  });
+
+  // Read current state dynamically from taskStateMachine
   const getPhaseInfo = (): { state: TaskState; displayName: string; color: string } => {
+    const currentState = taskStateMachine.getCurrentState();
     return {
       state: currentState,
       displayName: getPhaseDisplayName(currentState),
@@ -100,8 +123,32 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, currentState, onPlan
   const phase = getPhaseInfo();
   const taskInfo = getTaskInfo();
 
+  // Calculate available height for content
+  // Header: 4 rows, Footer: 3 rows, Status border/padding: 4 rows, margins: 2 rows
+  const headerHeight = 4;
+  const footerHeight = 3;
+  const statusOverhead = 4;
+  const margins = 2;
+  const availableContentHeight = Math.max(10, terminalHeight - headerHeight - footerHeight - statusOverhead - margins);
+
+  // Render plan modal if open
+  if (isPlanModalOpen) {
+    const planMd = taskStateMachine.getPlanMd();
+    const planPath = taskStateMachine.getPlanPath();
+
+    return (
+      <FullscreenModal
+        title="📋 Strategic Plan"
+        content={planMd || 'No plan available'}
+        terminalHeight={terminalHeight}
+        terminalWidth={terminalWidth}
+        onClose={() => setIsPlanModalOpen(false)}
+      />
+    );
+  }
+
   return (
-    <Box flexDirection="column" padding={1}>
+    <Box flexDirection="column" padding={1} minHeight={terminalHeight}>
       {/* Header Section */}
       <Box marginBottom={1}>
         <Text bold>🤖 Agneto Task Monitor</Text>
@@ -138,11 +185,16 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, currentState, onPlan
           <Box marginTop={1}>
             {(phase.state === TaskState.TASK_REFINING ||
               phase.state === TaskState.TASK_PLANNING ||
-              phase.state === TaskState.TASK_CURMUDGEONING) ? (
+              phase.state === TaskState.TASK_CURMUDGEONING ||
+              phase.state === TaskState.TASK_EXECUTING) ? (
               <PlanningLayout
                 currentState={phase.state}
                 taskStateMachine={taskStateMachine}
                 onPlanFeedback={onPlanFeedback}
+                onRefinementFeedback={onRefinementFeedback}
+                terminalHeight={terminalHeight}
+                terminalWidth={terminalWidth}
+                availableContentHeight={availableContentHeight}
               />
             ) : (
               <Text dimColor italic>
@@ -151,6 +203,24 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, currentState, onPlan
             )}
           </Box>
         </Box>
+      </Box>
+
+      {/* Keyboard Shortcuts Footer */}
+      <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
+        <Text dimColor>
+          [P]lan View
+          {(phase.state === TaskState.TASK_REFINING ||
+            phase.state === TaskState.TASK_PLANNING ||
+            phase.state === TaskState.TASK_CURMUDGEONING ||
+            phase.state === TaskState.TASK_EXECUTING) && (
+            <>  [←/→] Navigate  [Tab] Cycle  [Enter] Expand  [Esc] Close</>
+          )}
+          {(phase.state === TaskState.TASK_REFINING ||
+            phase.state === TaskState.TASK_PLANNING ||
+            phase.state === TaskState.TASK_CURMUDGEONING) && (
+            <>  [A]pprove  [R]eject</>
+          )}
+        </Text>
       </Box>
     </Box>
   );
