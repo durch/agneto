@@ -70,8 +70,21 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
   // Global modal state for plan viewer
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
 
-  // Global keyboard handler for plan modal
+  // Modal state for execution phase agent outputs
+  const [viewMode, setViewMode] = useState<'split' | 'fullscreen'>('split');
+  const [fullscreenContent, setFullscreenContent] = useState<{title: string, text: string} | null>(null);
+
+  // Global keyboard handler for plan modal and execution phase modals
   useInput((input, key) => {
+    // If in fullscreen mode, only allow Esc to close
+    if (viewMode === 'fullscreen') {
+      if (key.escape) {
+        setViewMode('split');
+        setFullscreenContent(null);
+      }
+      return;
+    }
+
     // Handle 'p' or 'P' to toggle plan modal
     if (input === 'p' || input === 'P') {
       const planMd = taskStateMachine.getPlanMd();
@@ -79,6 +92,37 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         setIsPlanModalOpen(true);
       }
       // Silently ignore if no plan exists yet
+      return;
+    }
+
+    // Handle execution phase keyboard shortcuts (C/R for Coder/Reviewer)
+    const currentState = taskStateMachine.getCurrentState();
+    if (currentState === TaskState.TASK_EXECUTING) {
+      const executionStateMachine = taskStateMachine.getExecutionStateMachine();
+
+      if (input === 'c' || input === 'C') {
+        const coderOutput = executionStateMachine?.getAgentOutput('coder');
+        if (coderOutput) {
+          setFullscreenContent({
+            title: '🤖 Coder Implementation',
+            text: coderOutput
+          });
+          setViewMode('fullscreen');
+        }
+        return;
+      }
+
+      if (input === 'r' || input === 'R') {
+        const reviewerOutput = executionStateMachine?.getAgentOutput('reviewer');
+        if (reviewerOutput) {
+          setFullscreenContent({
+            title: '👀 Reviewer Feedback',
+            text: reviewerOutput
+          });
+          setViewMode('fullscreen');
+        }
+        return;
+      }
     }
   });
 
@@ -143,6 +187,22 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         terminalHeight={terminalHeight}
         terminalWidth={terminalWidth}
         onClose={() => setIsPlanModalOpen(false)}
+      />
+    );
+  }
+
+  // Render execution phase modal if in fullscreen mode
+  if (viewMode === 'fullscreen' && fullscreenContent) {
+    return (
+      <FullscreenModal
+        title={fullscreenContent.title}
+        content={fullscreenContent.text}
+        terminalHeight={terminalHeight}
+        terminalWidth={terminalWidth}
+        onClose={() => {
+          setViewMode('split');
+          setFullscreenContent(null);
+        }}
       />
     );
   }
@@ -219,6 +279,9 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
             phase.state === TaskState.TASK_PLANNING ||
             phase.state === TaskState.TASK_CURMUDGEONING) && (
             <>  [A]pprove  [R]eject</>
+          )}
+          {phase.state === TaskState.TASK_EXECUTING && (
+            <>  [C]oder Output  [R]eviewer Feedback</>
           )}
         </Text>
       </Box>

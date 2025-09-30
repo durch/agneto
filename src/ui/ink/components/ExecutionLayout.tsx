@@ -24,6 +24,45 @@ function truncateContent(content: string, maxLines: number): { display: string; 
   };
 }
 
+// Helper function to determine which agent is currently active
+function getActiveAgent(currentState: State): 'coder' | 'reviewer' | null {
+  switch (currentState) {
+    case State.PLANNING:
+    case State.IMPLEMENTING:
+      return 'coder';
+    case State.PLAN_REVIEW:
+    case State.CODE_REVIEW:
+      return 'reviewer';
+    default:
+      return null;
+  }
+}
+
+// Helper function to get contextual status text for each agent
+function getAgentStatusText(agent: 'coder' | 'reviewer', currentState: State): string {
+  const activeAgent = getActiveAgent(currentState);
+
+  if (agent === 'coder') {
+    if (activeAgent === 'coder') {
+      if (currentState === State.PLANNING) {
+        return 'Active - Planning implementation';
+      } else if (currentState === State.IMPLEMENTING) {
+        return 'Active - Implementing changes';
+      }
+    }
+    return 'Waiting for review';
+  } else { // reviewer
+    if (activeAgent === 'reviewer') {
+      if (currentState === State.PLAN_REVIEW) {
+        return 'Active - Reviewing plan';
+      } else if (currentState === State.CODE_REVIEW) {
+        return 'Active - Reviewing code';
+      }
+    }
+    return 'Waiting for implementation';
+  }
+}
+
 // Execution Layout Component - handles TASK_EXECUTING with dynamic two-pane view
 export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine }) => {
   const { stdout } = useStdout();
@@ -161,17 +200,58 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
           </Box>
         </Box>
 
-        {/* Right Panel */}
+        {/* Right Panel - Split into Coder (top) and Reviewer (bottom) */}
         <Box
           flexDirection="column"
-          borderStyle="single"
-          borderColor={rightColor}
-          padding={1}
           width={isWideTerminal ? panelWidth : undefined}
         >
-          <Text color={rightColor} bold>{rightTitle}</Text>
-          <Box marginTop={1}>
-            <Text wrap="wrap">{truncateContent(rightContent, paneContentHeight).display}</Text>
+          {/* Coder Section (Top 50%) */}
+          <Box
+            flexDirection="column"
+            borderStyle="single"
+            borderColor={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'}
+            padding={1}
+            height="50%"
+            marginBottom={1}
+          >
+            <Box marginBottom={1}>
+              <Text color={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'}>
+                {getActiveAgent(currentState) === 'coder' ? '● ' : '○ '}
+              </Text>
+              <Text color={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'} bold>
+                🤖 Coder
+              </Text>
+            </Box>
+            <Box marginBottom={1}>
+              <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
+            </Box>
+            <Box>
+              <Text wrap="wrap">{truncateContent(coderOutput || 'No output yet', Math.floor(paneContentHeight / 2)).display}</Text>
+            </Box>
+          </Box>
+
+          {/* Reviewer Section (Bottom 50%) */}
+          <Box
+            flexDirection="column"
+            borderStyle="single"
+            borderColor={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'}
+            padding={1}
+            height="50%"
+          >
+            <Box marginBottom={1}>
+              <Text color={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'}>
+                {getActiveAgent(currentState) === 'reviewer' ? '● ' : '○ '}
+              </Text>
+              <Text color={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'} bold>
+                👀 Reviewer
+              </Text>
+            </Box>
+            <Box marginBottom={1}>
+              <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
+            </Box>
+            <Box>
+              <Text wrap="wrap">{truncateContent(reviewerOutput || 'No output yet', Math.floor(paneContentHeight / 2)).display}</Text>
+            </Box>
           </Box>
         </Box>
       </Box>
