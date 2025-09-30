@@ -3,6 +3,8 @@ import { promptHumanReview } from "./ui/human-review.js";
 import type { HumanInteractionResult } from "./types.js";
 import type { CoderPlanProposal } from "./types.js";
 import { execSync } from "child_process";
+import { runReflector, type ReflectorParams } from "./agents/reflector.js";
+import type { LLMProvider } from "./providers/index.js";
 
 /**
  * Handle human review for plan proposals
@@ -186,5 +188,31 @@ export function getChangesSummary(cwd: string): string {
     return diff.trim() || "No changes";
   } catch (error) {
     return "Could not get changes summary";
+  }
+}
+
+/**
+ * Document task completion by updating CLAUDE.md with reflections
+ * This is a non-blocking operation that never throws errors
+ */
+export async function documentTaskCompletion(
+  provider: LLMProvider,
+  workingDir: string,
+  taskId: string,
+  description: string,
+  planContent: string
+): Promise<void> {
+  try {
+    const params: ReflectorParams = {
+      taskId,
+      taskDescription: description,
+      planSummary: planContent,
+      workingDirectory: workingDir
+    };
+
+    await runReflector(provider, params);
+  } catch (error) {
+    // Log errors but never throw - documentation updates should never block task completion
+    log.warn(`Failed to update documentation: ${error}`);
   }
 }

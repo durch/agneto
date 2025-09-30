@@ -33,7 +33,8 @@ import {
   handlePlanHumanReview,
   handleCodeHumanReview,
   revertLastCommit,
-  commitChanges
+  commitChanges,
+  documentTaskCompletion
 } from "./orchestrator-helpers.js";
 import type { CoderPlanProposal } from "./types.js";
 import type { RecoveryDecision } from "./cli.js";
@@ -703,6 +704,18 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         }
                     } else {
                         log.orchestrator("✅ SuperReviewer approved - implementation ready for merge!");
+
+                        // Update CLAUDE.md documentation with task completion
+                        log.orchestrator("📝 Updating CLAUDE.md with task documentation...");
+                        const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
+                        await documentTaskCompletion(
+                            provider,
+                            cwd,
+                            taskStateMachine.getContext().taskId,
+                            taskDescription,
+                            planMd
+                        );
+
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
                     }
                     break;
@@ -1058,6 +1071,18 @@ async function runRestoredTask(
                             }
                         } else {
                             log.orchestrator("✅ SuperReviewer approved - implementation ready for merge!");
+
+                            // Update CLAUDE.md documentation with task completion
+                            log.orchestrator("📝 Updating CLAUDE.md with task documentation...");
+                            const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
+                            await documentTaskCompletion(
+                                provider,
+                                cwd,
+                                taskStateMachine.getContext().taskId,
+                                taskDescription,
+                                planMd
+                            );
+
                             taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
                         }
                         break;
