@@ -72,6 +72,17 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   // Get execution state machine
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
 
+  // Blinking animation state for status indicators
+  const [blinkOn, setBlinkOn] = React.useState(true);
+
+  React.useEffect(() => {
+    const intervalId = setInterval(() => {
+      setBlinkOn((prev) => !prev);
+    }, 750);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   if (!executionStateMachine) {
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1}>
@@ -87,6 +98,25 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   const beanCounterOutput = executionStateMachine.getAgentOutput('bean');
   const coderOutput = executionStateMachine.getAgentOutput('coder');
   const reviewerOutput = executionStateMachine.getAgentOutput('reviewer');
+
+  // Helper function to get status indicator with animation and color
+  const getStatusIndicator = (agent: 'coder' | 'reviewer'): React.ReactElement => {
+    const activeAgent = getActiveAgent(currentState);
+    const isActive = activeAgent === agent;
+
+    // Determine color based on agent type and active state
+    let color: string;
+    if (isActive) {
+      color = agent === 'coder' ? 'green' : 'yellow';
+    } else {
+      color = 'gray';
+    }
+
+    // Blink between filled and empty circle when active
+    const symbol = isActive && blinkOn ? '● ' : '○ ';
+
+    return <Text color={color}>{symbol}</Text>;
+  };
 
   // Calculate pane dimensions
   const isWideTerminal = terminalWidth > 120;
@@ -215,9 +245,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             marginBottom={1}
           >
             <Box marginBottom={1}>
-              <Text color={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'}>
-                {getActiveAgent(currentState) === 'coder' ? '● ' : '○ '}
-              </Text>
+              {getStatusIndicator('coder')}
               <Text color={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'} bold>
                 🤖 Coder
               </Text>
@@ -226,7 +254,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
             </Box>
             <Box>
-              <Text wrap="wrap">{truncateContent(coderOutput || 'No output yet', Math.floor(paneContentHeight / 2)).display}</Text>
+              <Text wrap="wrap">{executionStateMachine.getSummary('coder') || 'Generating summary...'}</Text>
             </Box>
           </Box>
 
@@ -239,9 +267,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             height="50%"
           >
             <Box marginBottom={1}>
-              <Text color={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'}>
-                {getActiveAgent(currentState) === 'reviewer' ? '● ' : '○ '}
-              </Text>
+              {getStatusIndicator('reviewer')}
               <Text color={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'} bold>
                 👀 Reviewer
               </Text>
@@ -250,7 +276,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
             </Box>
             <Box>
-              <Text wrap="wrap">{truncateContent(reviewerOutput || 'No output yet', Math.floor(paneContentHeight / 2)).display}</Text>
+              <Text wrap="wrap">{executionStateMachine.getSummary('reviewer') || 'Generating summary...'}</Text>
             </Box>
           </Box>
         </Box>
