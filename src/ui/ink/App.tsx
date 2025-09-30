@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Text, Box, useStdout, useInput } from 'ink';
 import { TaskStateMachine, TaskState } from '../../task-state-machine.js';
 import { PlanningLayout } from './components/PlanningLayout.js';
+import { ExecutionLayout } from './components/ExecutionLayout.js';
 import { FullscreenModal } from './components/FullscreenModal.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
@@ -245,8 +246,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
           <Box marginTop={1}>
             {(phase.state === TaskState.TASK_REFINING ||
               phase.state === TaskState.TASK_PLANNING ||
-              phase.state === TaskState.TASK_CURMUDGEONING ||
-              phase.state === TaskState.TASK_EXECUTING) ? (
+              phase.state === TaskState.TASK_CURMUDGEONING) ? (
               <PlanningLayout
                 currentState={phase.state}
                 taskStateMachine={taskStateMachine}
@@ -256,6 +256,8 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
                 terminalWidth={terminalWidth}
                 availableContentHeight={availableContentHeight}
               />
+            ) : phase.state === TaskState.TASK_EXECUTING ? (
+              <ExecutionLayout taskStateMachine={taskStateMachine} />
             ) : (
               <Text dimColor italic>
                 Phase-specific content will be displayed here...

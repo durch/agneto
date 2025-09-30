@@ -60,18 +60,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const [viewMode, setViewMode] = useState<'split' | 'fullscreen'>('split');
   const [fullscreenContent, setFullscreenContent] = useState<{title: string, text: string} | null>(null);
 
-  // Animation state for live activity indicator
-  const [activityIndicatorIndex, setActivityIndicatorIndex] = useState(0);
-  const activityChars = ['-', '+'];
-
-  // Animate the activity indicator
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      setActivityIndicatorIndex((prev) => (prev + 1) % activityChars.length);
-    }, 500); // Rotate every 500ms
-
-    return () => clearInterval(interval);
-  }, [activityChars.length]);
+  // Static activity indicator (no animation to prevent flickering)
+  const activityIndicator = '⚡';
 
   // Store curmudgeon feedback when it becomes available
   React.useEffect(() => {
@@ -530,7 +520,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               return (
                 <Box marginBottom={1}>
                   <Text color="cyan">
-                    {activityChars[activityIndicatorIndex]} {liveActivity.agent}: {liveActivity.message}
+                    {activityIndicator} {liveActivity.agent}: {liveActivity.message}
                   </Text>
                 </Box>
               );

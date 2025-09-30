@@ -695,16 +695,37 @@ The system uses Claude CLI in headless mode with natural language interpretation
 3. Test with `DEBUG=true` to see actual prompts/responses
 
 ### Testing Changes
+
+**⚠️ CRITICAL: NEVER test by running tasks (npm start)!**
+
+Running `npm start` to test changes is **NOT ACCEPTABLE** because:
+- Full task execution is complex and unreliable for testing
+- Creates worktrees and git state that needs cleanup
+- Wastes time and LLM API calls
+- Cannot isolate what you're testing
+
+**ONLY use these testing approaches:**
+
 ```bash
-# Build first
+# 1. Build verification (ALWAYS do this first)
 npm run build
 
-# Test with debug output
-DEBUG=true npm start -- test-change "test description" --non-interactive
+# 2. Test specific components directly
+npx tsx src/agents/planner.ts          # Test individual agent
+npx tsx test-provider.ts               # Test provider wrapper
+npx tsx src/protocol/interpreter.ts    # Test interpreter logic
 
-# Test provider directly
-DEBUG=true npx tsx test-provider.ts
+# 3. Use existing test suite
+npm test                               # Run unit tests
+npm test -- --grep "specific test"     # Run specific test
+
+# 4. Read and verify code manually
+# - Review the changes you made
+# - Check TypeScript compiles
+# - Verify logic matches requirements
 ```
+
+**There is NO exception to this rule. Do not run end-to-end tasks for testing.**
 
 ### Debug Mode
 Set `DEBUG=true` to see:

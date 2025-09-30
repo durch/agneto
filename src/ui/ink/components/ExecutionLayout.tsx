@@ -132,74 +132,32 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   let rightColor = 'gray';
   let statusMessage = '';
 
+  // Left pane: Always show latest Bean Counter chunk
+  leftTitle = '🧮 Bean Counter Chunk';
+  leftContent = beanCounterOutput || 'Determining work chunk...';
+  leftColor = 'cyan';
+
+  // Status message based on execution state
   switch (currentState) {
     case State.BEAN_COUNTING:
-      leftTitle = '📋 Previous Review';
-      leftContent = reviewerOutput || 'No previous review yet';
-      leftColor = 'magenta';
-      rightTitle = '🧮 Bean Counter';
-      rightContent = beanCounterOutput || 'Determining work chunk...';
-      rightColor = 'cyan';
       statusMessage = 'Bean Counter is breaking down work into implementable chunks';
       break;
-
     case State.PLANNING:
-      leftTitle = '🧮 Bean Counter Chunk';
-      leftContent = beanCounterOutput || 'Work chunk defined';
-      leftColor = 'cyan';
-      rightTitle = '🤖 Coder Proposal';
-      rightContent = coderOutput || 'Planning implementation...';
-      rightColor = 'green';
       statusMessage = 'Coder is proposing implementation approach';
       break;
-
     case State.PLAN_REVIEW:
-      leftTitle = '🤖 Coder Proposal';
-      leftContent = coderOutput || 'Implementation proposed';
-      leftColor = 'green';
-      rightTitle = '👀 Reviewer Feedback';
-      rightContent = 'Reviewing proposed approach...';
-      rightColor = 'yellow';
       statusMessage = 'Reviewer is evaluating the proposed approach';
       break;
-
     case State.IMPLEMENTING:
-      leftTitle = '🤖 Coder Proposal';
-      leftContent = coderOutput || 'Implementation plan';
-      leftColor = 'green';
-      rightTitle = '⚙️ Implementation';
-      rightContent = 'Applying changes to codebase...';
-      rightColor = 'blue';
       statusMessage = 'Coder is implementing the approved plan';
       break;
-
     case State.CODE_REVIEW:
-      leftTitle = '🤖 Coder Changes';
-      leftContent = coderOutput || 'Changes implemented';
-      leftColor = 'green';
-      rightTitle = '👀 Reviewer Verdict';
-      rightContent = reviewerOutput || 'Reviewing code changes...';
-      rightColor = 'yellow';
       statusMessage = 'Reviewer is validating the implementation';
       break;
-
     case State.TASK_COMPLETE:
-      leftTitle = '✅ Final Review';
-      leftContent = reviewerOutput || 'All work approved';
-      leftColor = 'green';
-      rightTitle = '🎉 Complete';
-      rightContent = 'Task execution completed successfully!';
-      rightColor = 'green';
       statusMessage = 'All chunks implemented and approved';
       break;
-
     default:
-      leftTitle = 'Status';
-      leftContent = 'Execution in progress...';
-      leftColor = 'gray';
-      rightTitle = 'Progress';
-      rightContent = `Current state: ${currentState}`;
-      rightColor = 'gray';
       statusMessage = 'Processing...';
   }
 
