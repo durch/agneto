@@ -3,7 +3,7 @@ import { promptHumanReview } from "./ui/human-review.js";
 import type { HumanInteractionResult } from "./types.js";
 import type { CoderPlanProposal } from "./types.js";
 import { execSync } from "child_process";
-import { runReflector, type ReflectorParams } from "./agents/reflector.js";
+import { runGardener, type GardenerParams } from "./agents/gardener.js";
 import type { LLMProvider } from "./providers/index.js";
 
 /**
@@ -203,14 +203,14 @@ export async function documentTaskCompletion(
   planContent: string
 ): Promise<void> {
   try {
-    const params: ReflectorParams = {
+    const params: GardenerParams = {
       taskId,
       taskDescription: description,
       planSummary: planContent,
       workingDirectory: workingDir
     };
 
-    await runReflector(provider, params);
+    await runGardener(provider, params);
   } catch (error) {
     // Log errors but never throw - documentation updates should never block task completion
     log.warn(`Failed to update documentation: ${error}`);

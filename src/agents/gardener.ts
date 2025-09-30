@@ -1,12 +1,12 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LLMProvider } from "../providers/index.js";
 import { log } from "../ui/log.js";
 
 /**
- * Parameters for Reflector agent invocation
+ * Parameters for Gardener agent invocation
  */
-export interface ReflectorParams {
+export interface GardenerParams {
   taskId: string;
   taskDescription: string;
   planSummary: string;
@@ -14,9 +14,9 @@ export interface ReflectorParams {
 }
 
 /**
- * Result from Reflector agent execution
+ * Result from Gardener agent execution
  */
-export interface ReflectorResult {
+export interface GardenerResult {
   success: boolean;
   message: string;
   sectionsUpdated: string[];
@@ -24,7 +24,7 @@ export interface ReflectorResult {
 }
 
 /**
- * Reflector agent - Updates CLAUDE.md with task completion insights
+ * Gardener agent - Updates CLAUDE.md with task completion insights
  *
  * This agent analyzes completed tasks and updates the project documentation
  * with relevant learnings, patterns, and insights. It reads the current
@@ -35,14 +35,14 @@ export interface ReflectorResult {
  * @param params - Task context and metadata
  * @returns Result indicating success/failure and which sections were updated
  */
-export async function runReflector(
+export async function runGardener(
   provider: LLMProvider,
-  params: ReflectorParams
-): Promise<ReflectorResult> {
+  params: GardenerParams
+): Promise<GardenerResult> {
   // Parameter validation
   if (!params.taskId || !params.taskDescription || !params.workingDirectory) {
     const error = `Invalid parameters: taskId=${!!params.taskId}, taskDescription=${!!params.taskDescription}, workingDirectory=${!!params.workingDirectory}`;
-    log.warn(`Reflector parameter validation failed: ${error}`);
+    log.warn(`Gardener parameter validation failed: ${error}`);
 
     return {
       success: false,
@@ -55,12 +55,28 @@ export async function runReflector(
   // Derive CLAUDE.md path from working directory
   const claudeMdPath = join(params.workingDirectory, 'CLAUDE.md');
 
-  log.info(`🔍 Reflector: Analyzing task completion for ${params.taskId}`);
+  // Check file size and prune if needed (before provider call)
+  try {
+    const claudeMdContent = readFileSync(claudeMdPath, 'utf-8');
+    const currentSize = claudeMdContent.length;
+
+    log.info(`📏 CLAUDE.md size: ${currentSize} characters`);
+
+    if (currentSize > 35000) {
+      log.info(`⚠️  CLAUDE.md exceeds 35,000 chars, pruning before update...`);
+      pruneClaudeMd(claudeMdPath, claudeMdContent);
+    }
+  } catch (error) {
+    // File might not exist or be readable - continue anyway
+    log.warn(`Could not check CLAUDE.md size: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  log.info(`🌱 Gardener: Analyzing task completion for ${params.taskId}`);
   log.info(`📖 Reading CLAUDE.md from: ${claudeMdPath}`);
 
   // Load system prompt from external file
   const systemPrompt = readFileSync(
-    new URL("../prompts/reflector.md", import.meta.url),
+    new URL("../prompts/gardener.md", import.meta.url),
     "utf8"
   );
 
@@ -79,7 +95,7 @@ Please analyze this completed task and update CLAUDE.md with relevant insights. 
 
   // Execute provider query with error handling
   try {
-    log.startStreaming("Reflector");
+    log.startStreaming("Gardener");
 
     const response = await provider.query({
       cwd: params.workingDirectory,
@@ -91,16 +107,16 @@ Please analyze this completed task and update CLAUDE.md with relevant insights. 
       ],
       callbacks: {
         onProgress: log.streamProgress,
-        onToolUse: (tool, input) => log.toolUse("Reflector", tool, input),
-        onToolResult: (isError) => log.toolResult("Reflector", isError),
-        onComplete: (cost, duration) => log.complete("Reflector", cost, duration)
+        onToolUse: (tool, input) => log.toolUse("Gardener", tool, input),
+        onToolResult: (isError) => log.toolResult("Gardener", isError),
+        onComplete: (cost, duration) => log.complete("Gardener", cost, duration)
       }
     });
 
     // Handle provider communication failure
     if (!response) {
       const error = 'Provider query returned no response';
-      log.warn(`❌ Reflector failed: ${error}`);
+      log.warn(`❌ Gardener failed: ${error}`);
 
       return {
         success: false,
@@ -125,7 +141,7 @@ Please analyze this completed task and update CLAUDE.md with relevant insights. 
   } catch (error) {
     // Handle provider communication errors (timeouts, rate limits, network)
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.warn(`❌ Reflector provider error: ${errorMessage}`);
+    log.warn(`❌ Gardener provider error: ${errorMessage}`);
 
     if (process.env.DEBUG === 'true') {
       console.error('Full error context:', JSON.stringify(error, null, 2));
@@ -169,4 +185,51 @@ function extractSectionsFromResponse(response: string): string[] {
   }
 
   return sections;
+}
+
+/**
+ * Prune outdated content from CLAUDE.md to keep it under 35,000 characters
+ * Currently targets duplicate "Recently Completed" sections in the Roadmap
+ */
+function pruneClaudeMd(claudeMdPath: string, content: string): void {
+  const lines = content.split('\n');
+
+  // Find the older "Completed (Recently!)" section (around line 791)
+  // and remove it along with its content until the next section
+  let startIdx = -1;
+  let endIdx = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Find the start of "### ✅ Completed (Recently!)"
+    if (line.includes('### ✅ Completed (Recently!)')) {
+      startIdx = i;
+    }
+
+    // Find the end - next "###" heading after we found the start
+    if (startIdx !== -1 && endIdx === -1 && i > startIdx && line.startsWith('###')) {
+      endIdx = i;
+      break;
+    }
+  }
+
+  if (startIdx !== -1 && endIdx !== -1) {
+    // Remove the section (from start to end, excluding the next section's header)
+    const prunedLines = [
+      ...lines.slice(0, startIdx),
+      ...lines.slice(endIdx)
+    ];
+
+    const prunedContent = prunedLines.join('\n');
+    const charsRemoved = content.length - prunedContent.length;
+
+    // Write the pruned content back
+    writeFileSync(claudeMdPath, prunedContent, 'utf-8');
+
+    log.info(`✂️  Pruned ${charsRemoved} characters from CLAUDE.md (removed old "Completed (Recently!)" section)`);
+    log.info(`📏 New size: ${prunedContent.length} characters`);
+  } else {
+    log.warn('⚠️  Could not locate section to prune - manual intervention may be needed');
+  }
 }
