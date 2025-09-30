@@ -15,6 +15,11 @@ export interface SuperReviewerResult {
   issues?: string[];
 }
 
+export interface SuperReviewerDecision {
+  action: 'approve' | 'retry' | 'abandon';
+  feedback?: string;
+}
+
 // Curmudgeon types
 export type CurmudgeonVerdict = "approve" | "simplify" | "reject";
 
