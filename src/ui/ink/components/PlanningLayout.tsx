@@ -265,7 +265,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Calculate responsive layout based on terminal width
   const isWideTerminal = terminalWidth > 120;
-  const panelWidth = Math.floor(terminalWidth * 0.4);
+  const panelWidth = Math.floor(terminalWidth * 0.48);
 
   // Get data from TaskStateMachine
   const context = taskStateMachine.getContext();

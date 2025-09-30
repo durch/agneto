@@ -91,6 +91,9 @@ export interface TaskContext {
   // Super review results
   superReviewResult?: SuperReviewerResult;
 
+  // Live activity tracking
+  liveActivity: { agent: string; message: string } | null;
+
   // Configuration options
   options: {
     autoMerge?: boolean;
@@ -129,6 +132,7 @@ export class TaskStateMachine {
       workingDirectory,
       options,
       simplificationCount: 0,
+      liveActivity: null,
     };
     this.auditLogger = auditLogger;
     log.orchestrator(`Task state machine initialized: ${this.state}`);
@@ -231,6 +235,18 @@ export class TaskStateMachine {
 
   clearCurmudgeonFeedback() {
     this.context.curmudgeonFeedback = undefined;
+  }
+
+  setLiveActivityMessage(agent: string, message: string): void {
+    this.context.liveActivity = { agent, message };
+  }
+
+  getLiveActivity(): { agent: string; message: string } | null {
+    return this.context.liveActivity;
+  }
+
+  clearLiveActivity(): void {
+    this.context.liveActivity = null;
   }
 
   // Task baseline commit management (prevents reverting pre-task commits)
