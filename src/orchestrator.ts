@@ -1245,11 +1245,12 @@ async function runExecutionStateMachine(
                             }));
                         }
 
-                        // Generate fresh session IDs for new chunk - no pollution from previous chunks
-                        coderSessionId = generateUUID();
+                        // Session strategy per agent:
+                        // - Coder: Global session persists across ALL chunks for full task context
+                        // - Reviewer: Fresh session per chunk for unbiased review
                         reviewerSessionId = generateUUID();
-                        coderInitialized = false;
                         reviewerInitialized = false;
+                        // Note: coderSessionId and coderInitialized remain unchanged to maintain continuity
                         stateMachine.transition(Event.CHUNK_READY, {
                             description: chunk.description,
                             requirements: chunk.requirements,
