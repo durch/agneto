@@ -257,10 +257,6 @@ export class TaskStateMachine {
     this.context.curmudgeonFeedback = undefined;
   }
 
-  setLiveActivityMessage(agent: string, message: string): void {
-    this.context.liveActivity = { agent, message };
-  }
-
   getLiveActivity(): { agent: string; message: string } | null {
     return this.context.liveActivity;
   }
