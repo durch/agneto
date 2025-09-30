@@ -23,13 +23,13 @@ export async function proposePlan(
         // First call: establish context with system prompt and chunk
         messages.push(
             { role: "system", content: template },
-            { role: "user", content: `[PLANNING MODE]\n\nPropose your implementation approach for: ${stepDescription}` }
+            { role: "user", content: `Current Work Chunk:\n\n${stepDescription}\n\n[PLANNING MODE]\n\nPropose your implementation approach for this chunk.` }
         );
     } else {
         // Subsequent calls: feedback on previous plan proposal
         const userContent = feedback
-            ? `[PLANNING MODE]\n\n${feedback}\n\nPlease revise your plan proposal.`
-            : `[PLANNING MODE]\n\nPropose your implementation approach for the next step.`;
+            ? `[PLANNING MODE]\n\n${feedback}\n\nPlease revise your plan proposal based on this feedback.`
+            : `[PLANNING MODE]\n\nThe chunk requirements remain the same. Propose your implementation approach.`;
         messages.push({ role: "user", content: userContent });
     }
 
@@ -101,8 +101,8 @@ export async function implementPlan(
 
     // Implementation instruction
     const implementInstruction = feedback
-        ? `[IMPLEMENTATION MODE]\n\n${feedback}\n\nPlease revise your implementation.`
-        : `[IMPLEMENTATION MODE]\n\nYour plan has been approved:\n${approvedPlan.description}\n\nSteps to implement:\n${approvedPlan.steps.map((s: string) => `- ${s}`).join('\n')}\n\nProceed with implementation using file tools.`;
+        ? `[IMPLEMENTATION MODE]\n\nReviewer feedback:\n${feedback}\n\nPlease revise your implementation to address this feedback.`
+        : `[IMPLEMENTATION MODE]\n\nYour implementation plan has been approved. Proceed with implementing the current work chunk using file tools.`;
 
     messages.push({ role: "user", content: implementInstruction });
 
