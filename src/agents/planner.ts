@@ -10,6 +10,8 @@ import {
   type PlanFeedback,
 } from "../ui/planning-interface.js";
 import { log } from "../ui/log.js";
+import React from "react";
+import { App } from "../ui/ink/App.js";
 
 export async function runPlanner(
   provider: LLMProvider,
@@ -19,7 +21,9 @@ export async function runPlanner(
   interactive: boolean = false,
   curmudgeonFeedback?: string,
   superReviewerFeedback?: SuperReviewerResult,
-  uiCallback?: (feedback: Promise<PlanFeedback>, rerenderCallback?: () => void) => void
+  uiCallback?: (feedback: Promise<PlanFeedback>, rerenderCallback?: () => void) => void,
+  taskStateMachine?: any,
+  inkInstance?: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   const sys = readFileSync(
     new URL("../prompts/planner.md", import.meta.url),
@@ -60,7 +64,13 @@ export async function runPlanner(
           },
         ],
         callbacks: {
-          onProgress: log.streamProgress,
+          onProgress: (update: string) => {
+            log.streamProgress(update);
+            if (taskStateMachine && inkInstance) {
+              taskStateMachine.setLiveActivityMessage("Planner", update);
+              inkInstance.rerender(React.createElement(App, { taskStateMachine }));
+            }
+          },
           onToolUse: (tool, input) => log.toolUse("Planner", tool, input),
           onToolResult: (isError) => log.toolResult("Planner", isError),
           onComplete: (cost, duration) =>
@@ -77,7 +87,7 @@ export async function runPlanner(
   }
 
   // Interactive planning with iterative refinement
-  return await interactivePlanning(provider, cwd, task, taskId, sys, curmudgeonFeedback, superReviewerFeedback, uiCallback);
+  return await interactivePlanning(provider, cwd, task, taskId, sys, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
 }
 
 async function interactivePlanning(
@@ -88,7 +98,9 @@ async function interactivePlanning(
   systemPrompt: string,
   curmudgeonFeedback?: string,
   superReviewerFeedback?: SuperReviewerResult,
-  uiCallback?: (feedback: Promise<PlanFeedback>, rerenderCallback?: () => void) => void
+  uiCallback?: (feedback: Promise<PlanFeedback>, rerenderCallback?: () => void) => void,
+  taskStateMachine?: any,
+  inkInstance?: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   let planMd = undefined;
   let approved = false;
@@ -138,7 +150,13 @@ async function interactivePlanning(
             },
           ],
           callbacks: {
-            onProgress: log.streamProgress,
+            onProgress: (update: string) => {
+              log.streamProgress(update);
+              if (taskStateMachine && inkInstance) {
+                taskStateMachine.setLiveActivityMessage("Planner", update);
+                inkInstance.rerender(React.createElement(App, { taskStateMachine }));
+              }
+            },
             onToolUse: (tool, input) => log.toolUse("Planner", tool, input),
             onToolResult: (isError) => log.toolResult("Planner", isError),
             onComplete: (cost, duration) =>
@@ -169,7 +187,13 @@ async function interactivePlanning(
             },
           ],
           callbacks: {
-            onProgress: log.streamProgress,
+            onProgress: (update: string) => {
+              log.streamProgress(update);
+              if (taskStateMachine && inkInstance) {
+                taskStateMachine.setLiveActivityMessage("Planner", update);
+                inkInstance.rerender(React.createElement(App, { taskStateMachine }));
+              }
+            },
             onToolUse: (tool, input) => log.toolUse("Planner", tool, input),
             onToolResult: (isError) => log.toolResult("Planner", isError),
             onComplete: (cost, duration) =>

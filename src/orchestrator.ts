@@ -191,6 +191,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 coderInitialized,
                                 reviewerInitialized,
                                 uiCallback,
+                                inkInstance,
                                 options
                             );
                         }
@@ -430,7 +431,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // For Ink UI mode, handle plan approval like refiner
                         if (inkInstance && interactive) {
                             // Generate the plan without UI callback
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback, undefined, taskStateMachine, inkInstance);
 
                             // Store the plan in state machine
                             taskStateMachine.setPlan(planMd, planPath);
@@ -486,7 +487,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                         } else {
                             // Non-interactive mode - original behavior
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
                             if (!interactive) {
                                 // Display the full plan content in non-interactive mode
                                 if (planMd) {
@@ -825,6 +826,7 @@ async function runRestoredTask(
     coderInitialized: boolean,
     reviewerInitialized: boolean,
     uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined,
+    inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null,
     options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }
 ): Promise<{ cwd: string }> {
     // Main task state machine loop with audit lifecycle management
@@ -894,7 +896,7 @@ async function runRestoredTask(
                             // Get SuperReviewer feedback if this is a retry cycle
                             const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
 
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
                             if (!interactive) {
                                 log.planner(`Saved plan → ${planPath}`);
                             }
