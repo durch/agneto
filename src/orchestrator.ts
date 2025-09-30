@@ -381,6 +381,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 case TaskState.TASK_PLANNING: {
                     // Planning phase
 
+                    // Set live activity message for planner
+                    taskStateMachine.setLiveActivityMessage('Planner', 'Creating strategic plan...');
+
                     // Re-render UI to show planning state before generating plan
                     if (inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
@@ -478,6 +481,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 onRefinementFeedback: undefined
                             }));
 
+                            // Clear live activity message after Ink UI planning completes
+                            taskStateMachine.clearLiveActivityMessage();
+
                         } else {
                             // Non-interactive mode - original behavior
                             const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback);
@@ -490,9 +496,14 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                             }
                             taskStateMachine.setPlan(planMd, planPath);
                             taskStateMachine.transition(TaskEvent.PLAN_CREATED);
+
+                            // Clear live activity message after non-interactive planning completes
+                            taskStateMachine.clearLiveActivityMessage();
                         }
                     } catch (error) {
                         log.warn(`Planning failed: ${error}`);
+                        // Clear live activity message on planner error
+                        taskStateMachine.clearLiveActivityMessage();
                         taskStateMachine.transition(TaskEvent.PLAN_FAILED, error);
                     }
                     break;

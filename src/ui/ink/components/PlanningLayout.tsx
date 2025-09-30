@@ -60,6 +60,19 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const [viewMode, setViewMode] = useState<'split' | 'fullscreen'>('split');
   const [fullscreenContent, setFullscreenContent] = useState<{title: string, text: string} | null>(null);
 
+  // Animation state for live activity indicator
+  const [activityIndicatorIndex, setActivityIndicatorIndex] = useState(0);
+  const activityChars = ['⋯', '•••', '⋯'];
+
+  // Animate the activity indicator
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setActivityIndicatorIndex((prev) => (prev + 1) % activityChars.length);
+    }, 500); // Rotate every 500ms
+
+    return () => clearInterval(interval);
+  }, [activityChars.length]);
+
   // Store curmudgeon feedback when it becomes available
   React.useEffect(() => {
     const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
@@ -510,6 +523,21 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       >
         <Text color="yellow" bold>⚡ Live Activity</Text>
         <Box marginTop={1} flexDirection="column">
+          {/* Display live activity message from task state machine */}
+          {(() => {
+            const liveActivity = taskStateMachine.getLiveActivityMessage();
+            if (liveActivity) {
+              return (
+                <Box marginBottom={1}>
+                  <Text color="cyan">
+                    {activityChars[activityIndicatorIndex]} {liveActivity.agent}: {liveActivity.message}
+                  </Text>
+                </Box>
+              );
+            }
+            return null;
+          })()}
+
           <Text dimColor>
             Current Stage: {' '}
             {currentState === TaskState.TASK_REFINING && 'Refining task description...'}

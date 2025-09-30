@@ -26,6 +26,12 @@ export enum TaskState {
   TASK_ABANDONED = "TASK_ABANDONED",
 }
 
+// Live activity message for UI display
+export interface LiveActivityMessage {
+  agent: string;
+  message: string;
+}
+
 // Events that trigger parent state transitions
 export enum TaskEvent {
   // Initialization events
@@ -118,6 +124,7 @@ export class TaskStateMachine {
   private state: TaskState = TaskState.TASK_INIT;
   private context: TaskContext;
   private auditLogger?: AuditLogger;
+  private liveActivityMessage: LiveActivityMessage | null = null;
 
   constructor(
     taskId: string,
@@ -169,6 +176,19 @@ export class TaskStateMachine {
 
   getLastError(): Error | undefined {
     return this.context.lastError;
+  }
+
+  // Live activity message management
+  getLiveActivityMessage(): LiveActivityMessage | null {
+    return this.liveActivityMessage;
+  }
+
+  setLiveActivityMessage(agent: string, message: string): void {
+    this.liveActivityMessage = { agent, message };
+  }
+
+  clearLiveActivityMessage(): void {
+    this.liveActivityMessage = null;
   }
 
   // Setters for context updates
