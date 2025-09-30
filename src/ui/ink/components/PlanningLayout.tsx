@@ -62,7 +62,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Animation state for live activity indicator
   const [activityIndicatorIndex, setActivityIndicatorIndex] = useState(0);
-  const activityChars = ['⋯', '•••', '⋯'];
+  const activityChars = ['-', '+'];
 
   // Animate the activity indicator
   React.useEffect(() => {
