@@ -87,6 +87,10 @@ export interface StateMachineContext {
   lastCoderOutput?: string;
   lastReviewerOutput?: string;
 
+  // Agent summaries for concise progress tracking
+  coderSummary?: string;
+  reviewerSummary?: string;
+
   // Configuration
   maxPlanAttempts: number;
   maxCodeAttempts: number;
@@ -164,6 +168,24 @@ export class CoderReviewerStateMachine {
       return this.context.lastCoderOutput;
     } else if (agent === 'reviewer') {
       return this.context.lastReviewerOutput;
+    }
+    return undefined;
+  }
+
+  // Summary accessors for concise progress tracking
+  setSummary(agent: 'coder' | 'reviewer', summary: string): void {
+    if (agent === 'coder') {
+      this.context.coderSummary = summary;
+    } else if (agent === 'reviewer') {
+      this.context.reviewerSummary = summary;
+    }
+  }
+
+  getSummary(agent: 'coder' | 'reviewer'): string | undefined {
+    if (agent === 'coder') {
+      return this.context.coderSummary;
+    } else if (agent === 'reviewer') {
+      return this.context.reviewerSummary;
     }
     return undefined;
   }

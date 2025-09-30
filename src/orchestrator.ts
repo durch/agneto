@@ -18,6 +18,7 @@ import { getInitialChunk, getNextChunk } from "./agents/bean-counter.js";
 import { runCurmudgeon } from "./agents/curmudgeon.js";
 import { runSuperReviewer } from "./agents/super-reviewer.js";
 import { generateCommitMessage } from "./agents/scribe.js";
+import { summarizeCoderOutput, summarizeReviewerOutput } from "./agents/summarizer.js";
 import { ensureWorktree } from "./git/worktrees.js";
 import { mergeToMaster, cleanupWorktree } from "./git/sandbox.js";
 import { log as originalLog } from "./ui/log.js";
@@ -1360,6 +1361,15 @@ async function runExecutionStateMachine(
 
                     log.review(`Plan verdict: ${verdict.verdict}${verdict.feedback ? ` - ${verdict.feedback}` : ''}`);
 
+                    // Generate summary for UI (plan review)
+                    const planReviewOutput = `Verdict: ${verdict.verdict}\n\n${verdict.feedback || "No additional feedback"}`;
+                    const planReviewSummary = await summarizeReviewerOutput(
+                        provider,
+                        planReviewOutput,
+                        cwd
+                    );
+                    stateMachine.setSummary('reviewer', planReviewSummary);
+
                     // Handle verdict
                     switch (verdict.verdict) {
                         case 'approve-plan':
@@ -1449,6 +1459,10 @@ async function runExecutionStateMachine(
                         true  // Already initialized from planning phase
                     );
 
+                    // Generate concise summary of Coder implementation response
+                    const coderSummary = await summarizeCoderOutput(provider, response, cwd);
+                    stateMachine.setSummary('coder', coderSummary);
+
                     // Check if Coder applied changes (don't log here since Coder already displayed its response)
                     if (!response.includes("CODE_APPLIED:")) {
                         log.info("No changes were needed - work already complete");
@@ -1481,6 +1495,14 @@ async function runExecutionStateMachine(
                     // Capture Reviewer output for UI
                     const reviewerOutput = `Verdict: ${verdict.verdict}\n\n${verdict.feedback || "No additional feedback"}`;
                     stateMachine.setAgentOutput('reviewer', reviewerOutput);
+
+                    // Generate summary for UI (code review)
+                    const reviewerSummary = await summarizeReviewerOutput(
+                        provider,
+                        reviewerOutput,
+                        cwd
+                    );
+                    stateMachine.setSummary('reviewer', reviewerSummary);
 
                     // Trigger UI update if Ink is active
                     if (taskStateMachine && inkInstance) {
