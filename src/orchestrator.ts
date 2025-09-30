@@ -731,6 +731,18 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                         if (humanDecision.action === "approve") {
                             log.orchestrator("Human accepted work despite identified issues.");
+
+                            // Update CLAUDE.md documentation with task completion (even for incomplete acceptance)
+                            log.orchestrator("📝 Updating CLAUDE.md with task documentation (incomplete acceptance)...");
+                            const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
+                            await documentTaskCompletion(
+                                provider,
+                                cwd,
+                                taskStateMachine.getContext().taskId,
+                                taskDescription,
+                                planMd
+                            );
+
                             taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
                         } else if (humanDecision.action === "retry") {
                             log.orchestrator("Human requested a new development cycle to address issues.");
@@ -1124,6 +1136,18 @@ async function runRestoredTask(
 
                             if (humanDecision.action === "approve") {
                                 log.orchestrator("Human accepted work despite identified issues.");
+
+                                // Update CLAUDE.md documentation with task completion (even for incomplete acceptance)
+                                log.orchestrator("📝 Updating CLAUDE.md with task documentation (incomplete acceptance)...");
+                                const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
+                                await documentTaskCompletion(
+                                    provider,
+                                    cwd,
+                                    taskStateMachine.getContext().taskId,
+                                    taskDescription,
+                                    planMd
+                                );
+
                                 taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
                             } else if (humanDecision.action === "retry") {
                                 log.orchestrator("Human requested a new development cycle to address issues.");
