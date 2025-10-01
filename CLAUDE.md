@@ -99,8 +99,9 @@ Agneto is a **human-in-the-loop AI development system** with seven main personas
 
 ### The Complete Flow (With Curmudgeon Gate)
 ```
-You describe task → Task refinement (optional) → Interactive planning →
-Curmudgeon review (simplify if needed) → Plan approved →
+You describe task → Task refinement (optional) → Planner generates plan →
+Planner ↔ Curmudgeon cycles automatically (simplify if needed) →
+Curmudgeon approves → Single user approval prompt →
 Bean Counter: First chunk → Coder: Implements chunk → Reviewer: Approves →
 Bean Counter: Next chunk → Coder: Implements → Reviewer: Approves → [repeat] →
 Bean Counter: Task complete → SuperReviewer final check → Review in worktree → Merge
@@ -773,6 +774,7 @@ Set `DEBUG=true` to see:
 
 ### What Works Well
 - ✅ Interactive planning with feedback loop
+- ✅ **Streamlined approval flow** - Automatic Planner ↔ Curmudgeon cycles, single user approval
 - ✅ Safe sandbox execution with git worktrees
 - ✅ Bean Counter coordinated work breakdown (prevents loops!)
 - ✅ Small chunk implementation with frequent review cycles
@@ -810,6 +812,7 @@ Set `DEBUG=true` to see:
 ## 🗺️ Roadmap
 
 ### ✅ Completed (Recently!)
+- **Streamlined Planning Approval** - Automatic Planner ↔ Curmudgeon cycles until approved, single user approval point eliminates approval fatigue
 - **Bean Counter Agent** - "Scrum Master" coordinates work breakdown and prevents loops
 - **Small Chunk Work Cycles** - Frequent review cycles with focused implementations
 - **Session-Based Progress Memory** - Bean Counter maintains persistent progress ledger

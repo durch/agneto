@@ -438,44 +438,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 onRefinementFeedback: undefined
                             }));
 
-                            // Create promise for UI feedback
-                            let resolverFunc: ((value: PlanFeedback) => void) | null = null;
-                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                resolverFunc = resolve;
-                            });
-                            // Attach the resolver to the promise object for the UI to access
-                            (feedbackPromise as any).resolve = resolverFunc;
-
-                            // Create callback for UI to wire up
-                            const planCallback = (feedback: PlanFeedback) => {
-                                resolverFunc?.(feedback);
-                            };
-
-                            // Update UI to show plan with approval callback
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: planCallback,
-                                onRefinementFeedback: undefined
-                            }));
-
-                            // Wait for UI feedback
-                            const feedback = await feedbackPromise;
-
-                            if (feedback.type === "approve") {
-                                log.orchestrator("Plan approved by user.");
-                                taskStateMachine.transition(TaskEvent.PLAN_CREATED);
-                            } else {
-                                // Handle plan rejection - could loop back or abort
-                                log.warn("Plan rejected by user. Aborting task.");
-                                taskStateMachine.transition(TaskEvent.PLAN_FAILED, new Error("User rejected plan"));
-                            }
-
-                            // Clean up the callback after use
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined
-                            }));
+                            // Automatically transition to Curmudgeon review (no approval yet)
+                            taskStateMachine.transition(TaskEvent.PLAN_CREATED);
 
                             // Clear live activity message after Ink UI planning completes
                             taskStateMachine.clearLiveActivityMessage();
@@ -556,7 +520,40 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                             if (hasApproval && !hasConcerns) {
                                 log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
-                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+
+                                // Interactive mode: show plan to user for final approval
+                                if (inkInstance && !options?.nonInteractive) {
+                                    let resolverFunc: ((value: PlanFeedback) => void) | null = null;
+                                    const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                        resolverFunc = resolve;
+                                    });
+                                    (feedbackPromise as any).resolve = resolverFunc;
+
+                                    const planCallback = (feedback: PlanFeedback) => {
+                                        resolverFunc?.(feedback);
+                                    };
+
+                                    inkInstance.rerender(React.createElement(App, {
+                                        taskStateMachine,
+                                        onPlanFeedback: planCallback,
+                                        onRefinementFeedback: undefined
+                                    }));
+
+                                    const feedback = await feedbackPromise;
+
+                                    if (feedback.type === "approve") {
+                                        log.orchestrator("Plan approved by user.");
+                                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                    } else {
+                                        // User rejected - treat as Curmudgeon simplify request
+                                        const rejectionFeedback = feedback.details || "User requested plan revision";
+                                        taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
+                                        taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                    }
+                                } else {
+                                    // Non-interactive: proceed automatically
+                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                }
                             } else if (simplificationCount >= maxSimplifications) {
                                 // Hit the limit - proceed anyway
                                 log.orchestrator(`⚠️ Curmudgeon has feedback but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
