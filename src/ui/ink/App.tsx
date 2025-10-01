@@ -4,6 +4,7 @@ import { TaskStateMachine, TaskState } from '../../task-state-machine.js';
 import { PlanningLayout } from './components/PlanningLayout.js';
 import { ExecutionLayout } from './components/ExecutionLayout.js';
 import { FullscreenModal } from './components/FullscreenModal.js';
+import { TaskView } from './components/TaskView.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
 import type { SuperReviewerDecision } from '../../types.js';
@@ -73,6 +74,9 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
   // Global modal state for plan viewer
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
 
+  // Global modal state for task description viewer
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+
   // Modal state for execution phase agent outputs
   const [viewMode, setViewMode] = useState<'split' | 'fullscreen'>('split');
   const [fullscreenContent, setFullscreenContent] = useState<{title: string, text: string} | null>(null);
@@ -95,6 +99,16 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         setIsPlanModalOpen(true);
       }
       // Silently ignore if no plan exists yet
+      return;
+    }
+
+    // Handle 't' or 'T' to toggle task description modal
+    if (input === 't' || input === 'T') {
+      const taskInfo = getTaskInfo();
+      if (taskInfo.description && taskInfo.description !== 'No description available') {
+        setIsTaskModalOpen(true);
+      }
+      // Silently ignore if no task description exists yet
       return;
     }
 
@@ -194,6 +208,20 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
     );
   }
 
+  // Render task description modal if open
+  if (isTaskModalOpen) {
+    const taskInfo = getTaskInfo();
+
+    return (
+      <TaskView
+        taskDescription={taskInfo.description}
+        onClose={() => setIsTaskModalOpen(false)}
+        terminalHeight={terminalHeight}
+        terminalWidth={terminalWidth}
+      />
+    );
+  }
+
   // Render execution phase modal if in fullscreen mode
   if (viewMode === 'fullscreen' && fullscreenContent) {
     return (
@@ -230,11 +258,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         <Box>
           <Text dimColor>Task ID: </Text>
           <Text>{taskInfo.taskId}</Text>
-        </Box>
-
-        <Box marginTop={1}>
-          <Text dimColor>Description: </Text>
-          <Text>{taskInfo.description}</Text>
         </Box>
       </Box>
 
@@ -274,7 +297,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       {/* Keyboard Shortcuts Footer */}
       <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
         <Text dimColor>
-          [P]lan View
+          [P]lan View  [T]ask Description
           {(phase.state === TaskState.TASK_REFINING ||
             phase.state === TaskState.TASK_PLANNING ||
             phase.state === TaskState.TASK_CURMUDGEONING ||
