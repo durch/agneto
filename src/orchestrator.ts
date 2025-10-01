@@ -257,6 +257,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
             // Store the Ink instance with all necessary methods
             inkInstance = { unmount, waitUntilExit, rerender };
+            log.setSilent(true);
 
             // Keep the Ink app alive by waiting on it
             inkInstance.waitUntilExit().then(() => {

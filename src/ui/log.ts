@@ -17,7 +17,7 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 class LogUI {
   private logLevel: LogLevel;
   private logLevelValue: number;
-
+  private silent: boolean = false;
 
   // Phase tracking for automatic dividers
   private currentPhase: string | null = null;
@@ -57,6 +57,22 @@ class LogUI {
     this.indent = this.indent.bind(this);
     this.outdent = this.outdent.bind(this);
     this.setLastItem = this.setLastItem.bind(this);
+    this.setSilent = this.setSilent.bind(this);
+    this.isSilent = this.isSilent.bind(this);
+  }
+
+  /**
+   * Set silent mode to suppress all console output
+   */
+  setSilent(value: boolean): void {
+    this.silent = value;
+  }
+
+  /**
+   * Check if silent mode is enabled
+   */
+  isSilent(): boolean {
+    return this.silent;
   }
 
   /**
@@ -171,10 +187,12 @@ class LogUI {
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const prettyMessage = prettyPrint(s, { indent: 2 });
-      if (prefix) {
-        console.log(prefix + badge + chalk.cyan("📝 Planner:"), "\n" + prettyMessage);
-      } else {
-        console.log(badge + chalk.cyan("📝 Planner:"), "\n" + prettyMessage);
+      if (!this.silent) {
+        if (prefix) {
+          console.log(prefix + badge + chalk.cyan("📝 Planner:"), "\n" + prettyMessage);
+        } else {
+          console.log(badge + chalk.cyan("📝 Planner:"), "\n" + prettyMessage);
+        }
       }
     }
   }
@@ -186,10 +204,12 @@ class LogUI {
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const prettyMessage = prettyPrint(s, { indent: 2 });
-      if (prefix) {
-        console.log(prefix + badge + chalk.red("🎭 Curmudgeon:"), "\n" + prettyMessage);
-      } else {
-        console.log(badge + chalk.red("🎭 Curmudgeon:"), "\n" + prettyMessage);
+      if (!this.silent) {
+        if (prefix) {
+          console.log(prefix + badge + chalk.red("🎭 Curmudgeon:"), "\n" + prettyMessage);
+        } else {
+          console.log(badge + chalk.red("🎭 Curmudgeon:"), "\n" + prettyMessage);
+        }
       }
     }
   }
@@ -201,10 +221,12 @@ class LogUI {
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const prettyMessage = prettyPrint(s, { indent: 2 });
-      if (prefix) {
-        console.log(prefix + badge + chalk.magenta("🤖 Coder:"), "\n" + prettyMessage);
-      } else {
-        console.log(badge + chalk.magenta("🤖 Coder:"), "\n" + prettyMessage);
+      if (!this.silent) {
+        if (prefix) {
+          console.log(prefix + badge + chalk.magenta("🤖 Coder:"), "\n" + prettyMessage);
+        } else {
+          console.log(badge + chalk.magenta("🤖 Coder:"), "\n" + prettyMessage);
+        }
       }
     }
   }
@@ -216,10 +238,12 @@ class LogUI {
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const prettyMessage = prettyPrint(s, { indent: 2 });
-      if (prefix) {
-        console.log(prefix + badge + chalk.yellow("👀 Reviewer:"), "\n" + prettyMessage);
-      } else {
-        console.log(badge + chalk.yellow("👀 Reviewer:"), "\n" + prettyMessage);
+      if (!this.silent) {
+        if (prefix) {
+          console.log(prefix + badge + chalk.yellow("👀 Reviewer:"), "\n" + prettyMessage);
+        } else {
+          console.log(badge + chalk.yellow("👀 Reviewer:"), "\n" + prettyMessage);
+        }
       }
     }
   }
@@ -232,10 +256,12 @@ class LogUI {
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const prettyMessage = prettyPrint(s, { indent: 2 });
-      if (prefix) {
-        console.log(prefix + badge + chalk.blue("🧮 Bean Counter:"), "\n" + prettyMessage);
-      } else {
-        console.log(badge + chalk.blue("🧮 Bean Counter:"), "\n" + prettyMessage);
+      if (!this.silent) {
+        if (prefix) {
+          console.log(prefix + badge + chalk.blue("🧮 Bean Counter:"), "\n" + prettyMessage);
+        } else {
+          console.log(badge + chalk.blue("🧮 Bean Counter:"), "\n" + prettyMessage);
+        }
       }
     }
   }
@@ -254,10 +280,12 @@ class LogUI {
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
       const indentedMessage = this.applyIndentToMultiline(s);
-      if (prefix) {
-        console.log(prefix + badge + chalk.green("🙋 Orchestrator:"), indentedMessage);
-      } else {
-        console.log(badge + chalk.green("🙋 Orchestrator:"), indentedMessage);
+      if (!this.silent) {
+        if (prefix) {
+          console.log(prefix + badge + chalk.green("🙋 Orchestrator:"), indentedMessage);
+        } else {
+          console.log(badge + chalk.green("🙋 Orchestrator:"), indentedMessage);
+        }
       }
     }
   }
@@ -269,7 +297,7 @@ class LogUI {
     // Handle streaming text with proper formatting
     // Add word wrapping and preserve readability while maintaining real-time feel
     const cleanText = text.trim();
-    if (cleanText) {
+    if (cleanText && !this.silent) {
       // Check if text ends with punctuation (sentence/paragraph boundary)
       const endsWithPunctuation = /[.!?]\s*$/.test(cleanText);
 
@@ -293,10 +321,12 @@ class LogUI {
     const paramSummary = this.summarizeToolParams(tool, input);
     const message = `🔧 ${agent} → ${tool}${paramSummary}`;
     const prefix = this.getIndentPrefix();
-    if (prefix) {
-      console.log(chalk.gray('\n' + prefix + message));
-    } else {
-      console.log(chalk.gray('\n' + message));
+    if (!this.silent) {
+      if (prefix) {
+        console.log(chalk.gray('\n' + prefix + message));
+      } else {
+        console.log(chalk.gray('\n' + message));
+      }
     }
   }
 
@@ -306,17 +336,21 @@ class LogUI {
     const icon = isError ? '❌' : '✅';
     const message = `${icon} ${agent} tool completed`;
     const prefix = this.getIndentPrefix();
-    if (prefix) {
-      console.log(chalk.gray(prefix + message));
-    } else {
-      console.log(chalk.gray(message));
+    if (!this.silent) {
+      if (prefix) {
+        console.log(chalk.gray(prefix + message));
+      } else {
+        console.log(chalk.gray(message));
+      }
     }
   }
 
   complete(agent: string, cost: number, duration: number): void {
     if (!this.shouldLog('debug')) return;
 
-    console.log(chalk.dim(`\n💰 ${agent}: $${cost.toFixed(4)} | ${duration}ms`));
+    if (!this.silent) {
+      console.log(chalk.dim(`\n💰 ${agent}: $${cost.toFixed(4)} | ${duration}ms`));
+    }
   }
 
   // Utility functions (info level - always shown in normal operation)
@@ -325,10 +359,12 @@ class LogUI {
       const badge = this.currentPhase ? this.generatePhaseBadge() : '';
       const prefix = this.getIndentPrefix();
       const indentedMessage = this.applyIndentToMultiline(s);
-      if (prefix) {
-        console.log(prefix + badge + chalk.blue("ℹ️ Info:"), indentedMessage);
-      } else {
-        console.log(badge + chalk.blue("ℹ️ Info:"), indentedMessage);
+      if (!this.silent) {
+        if (prefix) {
+          console.log(prefix + badge + chalk.blue("ℹ️ Info:"), indentedMessage);
+        } else {
+          console.log(badge + chalk.blue("ℹ️ Info:"), indentedMessage);
+        }
       }
     }
   }
@@ -338,10 +374,12 @@ class LogUI {
       const badge = this.currentPhase ? this.generatePhaseBadge() : '';
       const prefix = this.getIndentPrefix();
       const indentedMessage = this.applyIndentToMultiline(s);
-      if (prefix) {
-        console.log(prefix + badge + chalk.yellowBright("⚠️ Warning:"), indentedMessage);
-      } else {
-        console.log(badge + chalk.yellowBright("⚠️ Warning:"), indentedMessage);
+      if (!this.silent) {
+        if (prefix) {
+          console.log(prefix + badge + chalk.yellowBright("⚠️ Warning:"), indentedMessage);
+        } else {
+          console.log(badge + chalk.yellowBright("⚠️ Warning:"), indentedMessage);
+        }
       }
     }
   }
@@ -351,14 +389,18 @@ class LogUI {
    */
   logDivider(label?: string): void {
     if (this.shouldLog('info')) {
-      console.log('\n' + this.renderDivider(label) + '\n');
+      if (!this.silent) {
+        console.log('\n' + this.renderDivider(label) + '\n');
+      }
     }
   }
 
   // Agent start with streaming setup (verbose level)
   startStreaming(agent: string): void {
     if (this.shouldLog('verbose')) {
-      console.log(chalk.bold(`\n${this.getAgentIcon(agent)} ${agent}: `));
+      if (!this.silent) {
+        console.log(chalk.bold(`\n${this.getAgentIcon(agent)} ${agent}: `));
+      }
     }
   }
 
@@ -436,7 +478,9 @@ class LogUI {
     if (this.currentPhase && this.currentPhase !== newPhase) {
       // Phase has changed, insert a divider
       if (this.shouldLog('info')) {
-        console.log('\n' + this.renderDivider(newPhase) + '\n');
+        if (!this.silent) {
+          console.log('\n' + this.renderDivider(newPhase) + '\n');
+        }
       }
     }
     this.currentPhase = newPhase;
@@ -586,14 +630,16 @@ class LogUI {
    * Creates a single updating status line using ANSI escape codes
    */
   showToolStatus(agent: string, tool: string, input?: any): void {
-    // Clear any existing status line first
-    process.stdout.write('\r\x1b[K');
+    if (!this.silent) {
+      // Clear any existing status line first
+      process.stdout.write('\r\x1b[K');
 
-    const paramSummary = this.summarizeToolParams(tool, input);
-    const statusLine = `⚙️ [${agent}] → ${tool}${paramSummary}`;
+      const paramSummary = this.summarizeToolParams(tool, input);
+      const statusLine = `⚙️ [${agent}] → ${tool}${paramSummary}`;
 
-    // Write status line and ensure it ends properly positioned
-    process.stdout.write(statusLine);
+      // Write status line and ensure it ends properly positioned
+      process.stdout.write(statusLine);
+    }
   }
 
   /**
@@ -608,7 +654,7 @@ class LogUI {
    */
   clearToolStatus(hasContent: boolean = true): void {
     // Only clear the tool status when hasContent is true
-    if (hasContent) {
+    if (hasContent && !this.silent) {
       // Use carriage return to move cursor to line start, then clear to end of line, then newline
       process.stdout.write('\r\x1b[K\n');
     }
