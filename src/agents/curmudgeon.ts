@@ -32,7 +32,8 @@ export async function runCurmudgeon(
 
   const res = await provider.query({
     cwd,
-    mode: "plan", // Read-only mode since Curmudgeon only reviews plans
+    mode: "default", // Curmudgeon needs tools to verify claims about codebase
+    allowedTools: ["ReadFile", "ListDir", "Grep", "Bash"],
     messages: [
       { role: "system", content: sys },
       {
