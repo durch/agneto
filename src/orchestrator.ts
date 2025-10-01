@@ -1310,12 +1310,12 @@ async function runExecutionStateMachine(
                             }));
                         }
 
-                        // Session strategy per agent:
-                        // - Coder: Global session persists across ALL chunks for full task context
-                        // - Reviewer: Fresh session per chunk for unbiased review
+                        // Session strategy: Both agents get fresh sessions per chunk
+                        // This prevents context accumulation and ensures clean state for each work unit
                         reviewerSessionId = generateUUID();
                         reviewerInitialized = false;
-                        // Note: coderSessionId and coderInitialized remain unchanged to maintain continuity
+                        coderSessionId = generateUUID();
+                        coderInitialized = false;
                         stateMachine.transition(Event.CHUNK_READY, {
                             description: chunk.description,
                             requirements: chunk.requirements,
@@ -1385,6 +1385,10 @@ async function runExecutionStateMachine(
                     // Capture Coder output for UI
                     const coderOutput = `${proposal.description}\n\nFiles: ${proposal.affectedFiles?.join(", ") || "N/A"}\n\nSteps:\n${proposal.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
                     stateMachine.setAgentOutput('coder', coderOutput);
+
+                    // Generate concise summary of Coder plan proposal
+                    const coderPlanSummary = await summarizeCoderOutput(provider, coderOutput, cwd);
+                    stateMachine.setSummary('coder', coderPlanSummary);
 
                     // Trigger UI update if Ink is active
                     if (taskStateMachine && inkInstance) {
