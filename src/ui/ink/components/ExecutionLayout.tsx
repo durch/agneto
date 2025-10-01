@@ -120,8 +120,11 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
   // Calculate pane dimensions
   const isWideTerminal = terminalWidth > 120;
-  const panelWidth = Math.floor(terminalWidth * 0.4);
-  const paneContentHeight = Math.floor((terminalHeight * 0.6) / 2) - 4;
+  const leftPanelWidth = Math.floor(terminalWidth * 0.48);
+  const rightPanelWidth = Math.floor(terminalWidth * 0.48);
+  // Bean Counter pane gets most of available vertical space (minus header, status panel, margins)
+  const beanCounterHeight = Math.max(15, Math.floor(terminalHeight * 0.5));
+  const agentPaneHeight = Math.floor(terminalHeight * 0.2);
 
   // Determine left and right pane content based on current state
   let leftTitle = '';
@@ -178,20 +181,20 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
           borderStyle="single"
           borderColor={leftColor}
           padding={1}
-          width={isWideTerminal ? panelWidth : undefined}
+          width={isWideTerminal ? leftPanelWidth : undefined}
           marginRight={isWideTerminal ? 1 : 0}
           marginBottom={isWideTerminal ? 0 : 1}
         >
           <Text color={leftColor} bold>{leftTitle}</Text>
           <Box marginTop={1}>
-            <Text wrap="wrap">{truncateContent(leftContent, paneContentHeight).display}</Text>
+            <Text wrap="wrap">{truncateContent(leftContent, beanCounterHeight).display}</Text>
           </Box>
         </Box>
 
         {/* Right Panel - Split into Coder (top) and Reviewer (bottom) */}
         <Box
           flexDirection="column"
-          width={isWideTerminal ? panelWidth : undefined}
+          width={isWideTerminal ? rightPanelWidth : undefined}
         >
           {/* Coder Section (Top 50%) */}
           <Box

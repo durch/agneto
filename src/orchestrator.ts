@@ -1446,6 +1446,15 @@ async function runExecutionStateMachine(
                     );
                     stateMachine.setSummary('reviewer', planReviewSummary);
 
+                    // Trigger UI update if Ink is active
+                    if (taskStateMachine && inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+                    }
+
                     // Handle verdict
                     switch (verdict.verdict) {
                         case 'approve-plan':
@@ -1538,6 +1547,15 @@ async function runExecutionStateMachine(
                     // Generate concise summary of Coder implementation response
                     const coderSummary = await summarizeCoderOutput(provider, response, cwd);
                     stateMachine.setSummary('coder', coderSummary);
+
+                    // Trigger UI update if Ink is active
+                    if (taskStateMachine && inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+                    }
 
                     // Check if Coder applied changes (don't log here since Coder already displayed its response)
                     if (!response.includes("CODE_APPLIED:")) {
