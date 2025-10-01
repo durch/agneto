@@ -21,11 +21,8 @@ export interface SuperReviewerDecision {
 }
 
 // Curmudgeon types
-export type CurmudgeonVerdict = "approve" | "simplify" | "reject";
-
 export interface CurmudgeonResult {
-  verdict: CurmudgeonVerdict;
-  reasoning: string;
+  feedback: string;
 }
 
 // Task refinement types

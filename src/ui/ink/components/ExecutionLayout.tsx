@@ -196,49 +196,39 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
           flexDirection="column"
           width={isWideTerminal ? rightPanelWidth : undefined}
         >
-          {/* Coder Section (Top 50%) */}
+          {/* Coder Section */}
           <Box
             flexDirection="column"
             borderStyle="single"
             borderColor={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'}
             padding={1}
-            height="50%"
             marginBottom={1}
           >
-            <Box marginBottom={1}>
+            <Box>
               {getStatusIndicator('coder')}
               <Text color={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'} bold>
                 🤖 Coder
               </Text>
             </Box>
-            <Box marginBottom={1}>
-              <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
-            </Box>
-            <Box>
-              <Text wrap="wrap">{executionStateMachine.getSummary('coder') || 'Generating summary...'}</Text>
-            </Box>
+            <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
+            <Text wrap="wrap">{executionStateMachine.getSummary('coder') || 'Generating summary...'}</Text>
           </Box>
 
-          {/* Reviewer Section (Bottom 50%) */}
+          {/* Reviewer Section */}
           <Box
             flexDirection="column"
             borderStyle="single"
             borderColor={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'}
             padding={1}
-            height="50%"
           >
-            <Box marginBottom={1}>
+            <Box>
               {getStatusIndicator('reviewer')}
               <Text color={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'} bold>
                 👀 Reviewer
               </Text>
             </Box>
-            <Box marginBottom={1}>
-              <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
-            </Box>
-            <Box>
-              <Text wrap="wrap">{executionStateMachine.getSummary('reviewer') || 'Generating summary...'}</Text>
-            </Box>
+            <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
+            <Text wrap="wrap">{executionStateMachine.getSummary('reviewer') || 'Generating summary...'}</Text>
           </Box>
         </Box>
       </Box>
@@ -251,12 +241,8 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         padding={1}
       >
         <Text color="blue" bold>⚡ Live Activity</Text>
-        <Box marginTop={1}>
-          <Text>{statusMessage}</Text>
-        </Box>
-        <Box marginTop={1}>
-          <Text dimColor>State: {currentState}</Text>
-        </Box>
+        <Text>{statusMessage}</Text>
+        <Text dimColor>State: {currentState}</Text>
       </Box>
     </Box>
   );

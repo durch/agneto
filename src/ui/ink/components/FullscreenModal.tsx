@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text, useInput } from 'ink';
+import { MarkdownText } from './MarkdownText.js';
 
 export interface FullscreenModalProps {
   title: string;
@@ -62,13 +63,13 @@ export const FullscreenModal: React.FC<FullscreenModalProps> = ({
 
       </Box>
 
-      {/* Content Area - Let Ink handle text wrapping and overflow */}
+      {/* Content Area - Rendered with markdown formatting */}
       <Box
         flexDirection="column"
         flexGrow={1}
         height={contentHeight}
       >
-        <Text wrap="wrap">{content}</Text>
+        <MarkdownText>{content}</MarkdownText>
       </Box>
     </Box>
   );

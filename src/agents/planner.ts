@@ -36,7 +36,7 @@ export async function runPlanner(
 
     let userMessage = `Task: ${task}`;
     if (curmudgeonFeedback) {
-      userMessage += `\n\nThe Curmudgeon has reviewed your previous plan and requests simplification:\n${curmudgeonFeedback}\n\nPlease revise the plan to be simpler and more straightforward.`;
+      userMessage += `\n\nThe Curmudgeon has reviewed your previous plan with the following feedback:\n\n${curmudgeonFeedback}\n\nPlease address this feedback in your revised plan.`;
     }
     if (superReviewerFeedback) {
       userMessage += `\n\nPrevious implementation was reviewed by SuperReviewer with the following feedback:\n`;
@@ -111,7 +111,7 @@ async function interactivePlanning(
 
   // If we have Curmudgeon feedback, add it to the feedback history
   if (curmudgeonFeedback) {
-    feedbackHistory.push(`Curmudgeon simplification request: ${curmudgeonFeedback}`);
+    feedbackHistory.push(`Curmudgeon review feedback: ${curmudgeonFeedback}`);
     log.planner("Starting interactive planning with Curmudgeon feedback...");
   }
 

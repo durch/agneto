@@ -7,6 +7,7 @@ import type { RefinementFeedback } from '../../refinement-interface.js';
 import type { SuperReviewerDecision } from '../../../types.js';
 import { FullscreenModal } from './FullscreenModal.js';
 import { TextInputModal } from './TextInputModal.js';
+import { MarkdownText } from './MarkdownText.js';
 
 // TypeScript interface for PlanningLayout props
 interface PlanningLayoutProps {
@@ -18,22 +19,6 @@ interface PlanningLayoutProps {
   terminalHeight: number;
   terminalWidth: number;
   availableContentHeight: number;
-}
-
-// Helper function to truncate content
-function truncateContent(content: string, maxLines: number): { display: string; isTruncated: boolean } {
-  if (!content) return { display: '', isTruncated: false };
-
-  const lines = content.split('\n');
-  if (lines.length <= maxLines) {
-    return { display: content, isTruncated: false };
-  }
-
-  const visibleLines = lines.slice(0, maxLines - 1);
-  return {
-    display: visibleLines.join('\n') + '\n... [Press Enter to view all]',
-    isTruncated: true
-  };
 }
 
 // Planning Layout Component - handles TASK_PLANNING, TASK_REFINING, TASK_CURMUDGEONING
@@ -492,12 +477,11 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 {focusedPane === 'left' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
-                <Text wrap="wrap">
-                  {truncateContent(
-                    beanCounterOutput || 'Determining work chunk...',
-                    paneContentHeight
-                  ).display}
-                </Text>
+                {beanCounterOutput ? (
+                  <MarkdownText maxLines={paneContentHeight}>{beanCounterOutput}</MarkdownText>
+                ) : (
+                  <Text dimColor>Determining work chunk...</Text>
+                )}
               </Box>
             </>
           ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
@@ -510,7 +494,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {planMd ? (
                   <Box flexDirection="column">
-                    <Text wrap="wrap">{truncateContent(planMd, paneContentHeight).display}</Text>
+                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -529,7 +513,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {planMd ? (
                   <Box flexDirection="column">
-                    <Text wrap="wrap">{truncateContent(planMd, paneContentHeight).display}</Text>
+                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -546,7 +530,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 {focusedPane === 'left' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
-                <Text wrap="wrap">{truncateContent(previousCurmudgeonFeedback, paneContentHeight).display}</Text>
+                <MarkdownText maxLines={paneContentHeight}>{previousCurmudgeonFeedback}</MarkdownText>
               </Box>
             </>
           ) : (
@@ -558,7 +542,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
                   <Box flexDirection="column">
-                    <Text wrap="wrap">{truncateContent(pendingRefinement.raw || pendingRefinement.goal, paneContentHeight).display}</Text>
+                    <MarkdownText maxLines={paneContentHeight - 2}>
+                      {pendingRefinement.raw || pendingRefinement.goal}
+                    </MarkdownText>
                     <Box marginTop={1}>
                       <Text color="yellow" bold>⏳ Awaiting Approval</Text>
                     </Box>
@@ -566,7 +552,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 ) : currentState === TaskState.TASK_REFINING ? (
                   <Text dimColor>Refining task description...</Text>
                 ) : taskToUse ? (
-                  <Text wrap="wrap">{truncateContent(taskToUse, paneContentHeight).display}</Text>
+                  <MarkdownText maxLines={paneContentHeight}>{taskToUse}</MarkdownText>
                 ) : (
                   <Text dimColor>No task description available</Text>
                 )}
@@ -599,12 +585,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 {focusedPane === 'right' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
-                <Text wrap="wrap">
-                  {truncateContent(
-                    reviewerOutput || coderOutput || 'Processing...',
-                    paneContentHeight
-                  ).display}
-                </Text>
+                {reviewerOutput || coderOutput ? (
+                  <MarkdownText maxLines={paneContentHeight}>
+                    {reviewerOutput || coderOutput || ''}
+                  </MarkdownText>
+                ) : (
+                  <Text dimColor>Processing...</Text>
+                )}
               </Box>
             </>
           ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
@@ -620,7 +607,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   if (superReviewResult) {
                     return (
                       <Box flexDirection="column">
-                        <Text wrap="wrap">{truncateContent(superReviewResult.summary, paneContentHeight - 5).display}</Text>
+                        <MarkdownText maxLines={paneContentHeight - 5}>{superReviewResult.summary}</MarkdownText>
                         {superReviewResult.issues && superReviewResult.issues.length > 0 && (
                           <Box marginTop={1} flexDirection="column">
                             <Text color="yellow" bold>Issues Found:</Text>
@@ -648,7 +635,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {curmudgeonFeedback ? (
                   <Box flexDirection="column">
-                    <Text wrap="wrap">{truncateContent(curmudgeonFeedback, paneContentHeight).display}</Text>
+                    <MarkdownText maxLines={paneContentHeight - 2}>{curmudgeonFeedback}</MarkdownText>
                     <Box marginTop={1}>
                       <Text dimColor>Simplification attempt {simplificationCount + 1}/2</Text>
                     </Box>
@@ -667,7 +654,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {planMd ? (
                   <Box flexDirection="column">
-                    <Text wrap="wrap">{truncateContent(planMd, paneContentHeight).display}</Text>
+                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -690,7 +677,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   <Text dimColor>Creating strategic plan...</Text>
                 ) : planMd ? (
                   <Box flexDirection="column">
-                    <Text wrap="wrap">{truncateContent(planMd, paneContentHeight).display}</Text>
+                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -717,13 +704,19 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           {(() => {
             const liveActivity = taskStateMachine.getLiveActivityMessage();
             if (liveActivity) {
-              return (
-                <Box marginBottom={1}>
-                  <Text color="cyan">
-                    {activityIndicator} {liveActivity.agent}: {liveActivity.message}
-                  </Text>
-                </Box>
-              );
+              // Filter out multiline content (likely full plan output) from live activity
+              // Only show brief status updates (single line or short messages)
+              const isLongContent = liveActivity.message.includes('\n') || liveActivity.message.length > 150;
+
+              if (!isLongContent) {
+                return (
+                  <Box marginBottom={1}>
+                    <Text color="cyan">
+                      {activityIndicator} {liveActivity.agent}: {liveActivity.message}
+                    </Text>
+                  </Box>
+                );
+              }
             }
             return null;
           })()}

@@ -535,7 +535,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     }
 
                     try {
-                        log.orchestrator("🧐 Curmudgeon reviewing plan for over-engineering...");
+                        log.orchestrator("🧐 Curmudgeon reviewing plan...");
 
                         // Get the task description to pass to Curmudgeon
                         // This could be the refined task or the original task
@@ -543,34 +543,35 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                         const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription);
 
-                        if (!result) {
-                            // Parsing failed, proceed without curmudgeon review
-                            log.warn("Could not parse Curmudgeon response - proceeding with plan as-is");
+                        if (!result || !result.feedback) {
+                            // No feedback or error - proceed with plan as-is
+                            log.orchestrator("✅ Curmudgeon has no concerns - proceeding with plan");
                             taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                        } else if (result.verdict === "approve") {
-                            log.orchestrator("✅ Curmudgeon approved the plan");
-                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                        } else if (result.verdict === "simplify") {
-                            // Check if we're still under the limit
-                            if (simplificationCount < maxSimplifications - 1) {
-                                log.orchestrator(`🔄 Curmudgeon requests simplification: ${result.reasoning}`);
-                                // Store the feedback for the planner
-                                taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
+                        } else {
+                            // Curmudgeon provided feedback - check if we should replan
+                            // Simple heuristic: if feedback contains approval language, proceed
+                            const feedbackLower = result.feedback.toLowerCase();
+                            const hasApproval = feedbackLower.includes('looks good') ||
+                                              feedbackLower.includes('this is good') ||
+                                              feedbackLower.includes('proceed') ||
+                                              feedbackLower.includes('appropriate');
+                            const hasConcerns = feedbackLower.includes('too complex') ||
+                                              feedbackLower.includes('simplif') ||
+                                              feedbackLower.includes('over-engineered') ||
+                                              feedbackLower.includes('missing') ||
+                                              feedbackLower.includes('incomplete');
 
-                                // Update UI to show feedback before transitioning
-                                if (inkInstance) {
-                                    inkInstance.rerender(React.createElement(App, {
-                                        taskStateMachine,
-                                        onPlanFeedback: undefined,
-                                        onRefinementFeedback: undefined
-                                    }));
-                                }
-
-                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                            if (hasApproval && !hasConcerns) {
+                                log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                            } else if (simplificationCount >= maxSimplifications) {
+                                // Hit the limit - proceed anyway
+                                log.orchestrator(`⚠️ Curmudgeon has feedback but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                             } else {
-                                // This is the last allowed simplification
-                                log.orchestrator(`⚠️ Curmudgeon requests simplification but this is the final attempt (${simplificationCount + 1}/${maxSimplifications})`);
-                                taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
+                                // Store feedback and replan
+                                log.orchestrator(`🔄 Curmudgeon feedback (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
+                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
 
                                 // Update UI to show feedback before transitioning
                                 if (inkInstance) {
@@ -583,9 +584,6 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                             }
-                        } else if (result.verdict === "reject") {
-                            log.orchestrator(`❌ Curmudgeon rejected the plan: ${result.reasoning}`);
-                            taskStateMachine.transition(TaskEvent.ERROR_OCCURRED, new Error(`Curmudgeon rejected: ${result.reasoning}`));
                         }
                     } catch (error) {
                         log.warn(`Curmudgeon review failed: ${error}`);
@@ -962,7 +960,7 @@ async function runRestoredTask(
                         }
 
                         try {
-                            log.orchestrator("🧐 Curmudgeon reviewing plan for over-engineering...");
+                            log.orchestrator("🧐 Curmudgeon reviewing plan...");
 
                             // Get the task description to pass to Curmudgeon
                             // This could be the refined task or the original task
@@ -970,29 +968,37 @@ async function runRestoredTask(
 
                             const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription);
 
-                            if (!result) {
-                                // Parsing failed, proceed without curmudgeon review
-                                log.warn("Could not parse Curmudgeon response - proceeding with plan as-is");
+                            if (!result || !result.feedback) {
+                                // No feedback or error - proceed with plan as-is
+                                log.orchestrator("✅ Curmudgeon has no concerns - proceeding with plan");
                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                            } else if (result.verdict === "approve") {
-                                log.orchestrator("✅ Curmudgeon approved the plan");
-                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                            } else if (result.verdict === "simplify") {
-                                // Check if we're still under the limit
-                                if (simplificationCount < maxSimplifications - 1) {
-                                    log.orchestrator(`🔄 Curmudgeon requests simplification: ${result.reasoning}`);
-                                    // Store the feedback for the planner
-                                    taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                            } else {
+                                // Curmudgeon provided feedback - check if we should replan
+                                // Simple heuristic: if feedback contains approval language, proceed
+                                const feedbackLower = result.feedback.toLowerCase();
+                                const hasApproval = feedbackLower.includes('looks good') ||
+                                                  feedbackLower.includes('this is good') ||
+                                                  feedbackLower.includes('proceed') ||
+                                                  feedbackLower.includes('appropriate');
+                                const hasConcerns = feedbackLower.includes('too complex') ||
+                                                  feedbackLower.includes('simplif') ||
+                                                  feedbackLower.includes('over-engineered') ||
+                                                  feedbackLower.includes('missing') ||
+                                                  feedbackLower.includes('incomplete');
+
+                                if (hasApproval && !hasConcerns) {
+                                    log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
+                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                } else if (simplificationCount >= maxSimplifications) {
+                                    // Hit the limit - proceed anyway
+                                    log.orchestrator(`⚠️ Curmudgeon has feedback but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
+                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                                 } else {
-                                    // This is the last allowed simplification
-                                    log.orchestrator(`⚠️ Curmudgeon requests simplification but this is the final attempt (${simplificationCount + 1}/${maxSimplifications})`);
-                                    taskStateMachine.setCurmudgeonFeedback(result.reasoning || "Plan needs simplification");
+                                    // Store feedback and replan
+                                    log.orchestrator(`🔄 Curmudgeon feedback (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
+                                    taskStateMachine.setCurmudgeonFeedback(result.feedback);
                                     taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                                 }
-                            } else if (result.verdict === "reject") {
-                                log.orchestrator(`❌ Curmudgeon rejected the plan: ${result.reasoning}`);
-                                taskStateMachine.transition(TaskEvent.ERROR_OCCURRED, new Error(`Curmudgeon rejected: ${result.reasoning}`));
                             }
                         } catch (error) {
                             log.warn(`Curmudgeon review failed: ${error}`);

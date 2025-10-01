@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { LLMProvider } from "../providers/index.js";
-import type { CurmudgeonVerdict, CurmudgeonResult } from "../types.js";
+import type { CurmudgeonResult } from "../types.js";
 import { log } from "../ui/log.js";
-import { interpretCurmudgeonResponse } from "../protocol/interpreter.js";
 
 export async function runCurmudgeon(
   provider: LLMProvider,
@@ -22,11 +21,11 @@ export async function runCurmudgeon(
   if (taskDescription) {
     userMessage = `Task Requirements:\n\n${taskDescription}\n\n`;
   }
-  userMessage += `Plan (Markdown):\n\n${planMd}\n\nReview this plan for over-engineering, unnecessary complexity, or scope creep`;
+  userMessage += `Plan (Markdown):\n\n${planMd}\n\nReview this plan for over-engineering, unnecessary complexity, integration gaps, or scope creep`;
   if (taskDescription) {
     userMessage += " in the context of the stated requirements";
   }
-  userMessage += ". Provide your verdict.";
+  userMessage += ". Provide your assessment.";
 
   const res = await provider.query({
     cwd,
@@ -50,17 +49,14 @@ export async function runCurmudgeon(
   // Log the curmudgeon response for visibility
   log.curmudgeon(res?.trim() || "No response received", 'CURMUDGEONING');
 
-  // Use interpreter to extract verdict from natural language response
-  const interpretation = await interpretCurmudgeonResponse(provider, res, cwd);
-
-  if (!interpretation) {
-    log.warn("Failed to interpret Curmudgeon response - proceeding without review");
+  // Return the raw natural language feedback - let Planner interpret it
+  const feedback = res?.trim();
+  if (!feedback) {
+    log.warn("No response from Curmudgeon - proceeding without review");
     return null;
   }
 
-  // Return both the verdict and the full original response for planner context
   return {
-    verdict: interpretation.verdict,
-    reasoning: res?.trim() || "No response received",
+    feedback,
   };
 }
