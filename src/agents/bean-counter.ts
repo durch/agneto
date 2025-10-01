@@ -63,7 +63,7 @@ export async function getInitialChunk(
         sessionId,
         isInitialized,
         messages,
-        model: "opus", // Use opus for better reasoning
+        // model: "opus", // Use opus for better reasoning
         callbacks: {
           onProgress: log.streamProgress,
           onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
@@ -149,7 +149,7 @@ export async function getNextChunk(
         sessionId,
         isInitialized: true,
         messages,
-        model: "opus", // Use opus for better reasoning
+        // model: "opus", // Use opus for better reasoning
         callbacks: {
           onProgress: log.streamProgress,
           onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),

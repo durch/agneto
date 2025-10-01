@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LLMProvider } from "../providers/index.js";
 import { log } from "../ui/log.js";
@@ -55,17 +55,12 @@ export async function runGardener(
   // Derive CLAUDE.md path from working directory
   const claudeMdPath = join(params.workingDirectory, 'CLAUDE.md');
 
-  // Check file size and prune if needed (before provider call)
+  // Check file size for informational purposes (Gardener LLM will decide if pruning is needed)
   try {
     const claudeMdContent = readFileSync(claudeMdPath, 'utf-8');
     const currentSize = claudeMdContent.length;
 
     log.info(`📏 CLAUDE.md size: ${currentSize} characters`);
-
-    if (currentSize > 35000) {
-      log.info(`⚠️  CLAUDE.md exceeds 35,000 chars, pruning before update...`);
-      pruneClaudeMd(claudeMdPath, claudeMdContent);
-    }
   } catch (error) {
     // File might not exist or be readable - continue anyway
     log.warn(`Could not check CLAUDE.md size: ${error instanceof Error ? error.message : String(error)}`);
@@ -187,49 +182,3 @@ function extractSectionsFromResponse(response: string): string[] {
   return sections;
 }
 
-/**
- * Prune outdated content from CLAUDE.md to keep it under 35,000 characters
- * Currently targets duplicate "Recently Completed" sections in the Roadmap
- */
-function pruneClaudeMd(claudeMdPath: string, content: string): void {
-  const lines = content.split('\n');
-
-  // Find the older "Completed (Recently!)" section (around line 791)
-  // and remove it along with its content until the next section
-  let startIdx = -1;
-  let endIdx = -1;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Find the start of "### ✅ Completed (Recently!)"
-    if (line.includes('### ✅ Completed (Recently!)')) {
-      startIdx = i;
-    }
-
-    // Find the end - next "###" heading after we found the start
-    if (startIdx !== -1 && endIdx === -1 && i > startIdx && line.startsWith('###')) {
-      endIdx = i;
-      break;
-    }
-  }
-
-  if (startIdx !== -1 && endIdx !== -1) {
-    // Remove the section (from start to end, excluding the next section's header)
-    const prunedLines = [
-      ...lines.slice(0, startIdx),
-      ...lines.slice(endIdx)
-    ];
-
-    const prunedContent = prunedLines.join('\n');
-    const charsRemoved = content.length - prunedContent.length;
-
-    // Write the pruned content back
-    writeFileSync(claudeMdPath, prunedContent, 'utf-8');
-
-    log.info(`✂️  Pruned ${charsRemoved} characters from CLAUDE.md (removed old "Completed (Recently!)" section)`);
-    log.info(`📏 New size: ${prunedContent.length} characters`);
-  } else {
-    log.warn('⚠️  Could not locate section to prune - manual intervention may be needed');
-  }
-}

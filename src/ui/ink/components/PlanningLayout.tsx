@@ -49,15 +49,49 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 }) => {
   const { stdout } = useStdout();
 
+  // Modal state interface
+  interface ModalState {
+    isOpen: boolean;
+    context: 'refinement' | 'plan' | 'superreviewer' | null;
+    title: string;
+    placeholder: string;
+  }
+
   // Local state for interactive feedback
   const [isProcessingFeedback, setIsProcessingFeedback] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [refinementResolver, setRefinementResolver] = useState<((value: RefinementFeedback) => void) | null>(null);
   const [superReviewerResolver, setSuperReviewerResolver] = useState<((value: SuperReviewerDecision) => void) | null>(null);
-  const [isTextInputModalOpen, setIsTextInputModalOpen] = useState(false);
+
+  // Structured modal state
+  const [modalState, setModalState] = useState<ModalState>({
+    isOpen: false,
+    context: null,
+    title: '',
+    placeholder: ''
+  });
+
+  // Active resolver for modal text input
+  const [activeResolver, setActiveResolver] = useState<((value: string) => void) | null>(null);
 
   // Track previous curmudgeon feedback to enable swap pattern when replanning
   const [previousCurmudgeonFeedback, setPreviousCurmudgeonFeedback] = useState<string | null>(null);
+
+  // Unified helper to open text input modal with context
+  const openTextInputModal = (
+    context: 'refinement' | 'plan' | 'superreviewer',
+    title: string,
+    placeholder: string,
+    resolver: (value: string) => void
+  ) => {
+    setModalState({
+      isOpen: true,
+      context,
+      title,
+      placeholder
+    });
+    setActiveResolver(() => resolver);
+  };
 
   // Pane navigation state
   const [focusedPane, setFocusedPane] = useState<'left' | 'right'>('left');
@@ -177,8 +211,19 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         setSuperReviewerResolver(null);
         return;
       } else if (input === 'r' || input === 'R') {
-        // Open modal to collect retry feedback
-        setIsTextInputModalOpen(true);
+        // Open modal to collect retry feedback using new structured state
+        openTextInputModal(
+          'superreviewer',
+          'Provide Retry Feedback',
+          'Describe what needs to be fixed or improved...',
+          (feedbackText: string) => {
+            if (superReviewerResolver) {
+              superReviewerResolver({ action: 'retry', feedback: feedbackText });
+              setSuperReviewerResolver(null);
+              setLastAction('Retry requested with feedback');
+            }
+          }
+        );
         return;
       } else if (input === 'x' || input === 'X') {
         superReviewerResolver({ action: 'abandon' });
@@ -203,20 +248,27 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   };
 
-  // Handle reject action
-  const handleReject = async () => {
-    setIsProcessingFeedback(true);
-    setLastAction('Rejected - feedback requested');
+  // Handle reject action - opens modal to collect feedback
+  const handleReject = () => {
+    openTextInputModal(
+      'plan',
+      'Reject Plan',
+      'Explain what\'s wrong with this approach...',
+      (feedbackText: string) => {
+        setIsProcessingFeedback(true);
+        setLastAction('Rejected - sending feedback');
 
-    try {
-      const feedback: PlanFeedback = { type: 'wrong-approach' };
-      onPlanFeedback?.(feedback);
-      setLastAction('Rejection feedback sent');
-    } catch (error) {
-      setLastAction('Error processing rejection');
-    } finally {
-      setIsProcessingFeedback(false);
-    }
+        try {
+          const feedback: PlanFeedback = { type: 'wrong-approach', details: feedbackText };
+          onPlanFeedback?.(feedback);
+          setLastAction('Rejection feedback sent');
+        } catch (error) {
+          setLastAction('Error processing rejection');
+        } finally {
+          setIsProcessingFeedback(false);
+        }
+      }
+    );
   };
 
   // Handle refinement approve action
@@ -237,37 +289,55 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   };
 
-  // Handle refinement reject action
-  const handleRefinementReject = async () => {
+  // Handle refinement reject action - opens modal to collect feedback
+  const handleRefinementReject = () => {
     if (!refinementResolver) return;
 
-    setIsProcessingFeedback(true);
-    setLastAction('Rejected refinement');
+    openTextInputModal(
+      'refinement',
+      'Reject Refinement',
+      'Why reject this refinement? Explain what\'s wrong...',
+      (feedbackText: string) => {
+        setIsProcessingFeedback(true);
+        setLastAction('Rejected refinement - sending feedback');
 
-    try {
-      const feedback: RefinementFeedback = { type: 'reject', details: 'User rejected via UI' };
-      refinementResolver(feedback);
-      setRefinementResolver(null);
-    } catch (error) {
-      setLastAction('Error processing refinement rejection');
-    } finally {
-      setIsProcessingFeedback(false);
+        try {
+          const feedback: RefinementFeedback = { type: 'reject', details: feedbackText };
+          refinementResolver(feedback);
+          setRefinementResolver(null);
+          setLastAction('Refinement rejection sent');
+        } catch (error) {
+          setLastAction('Error processing refinement rejection');
+        } finally {
+          setIsProcessingFeedback(false);
+        }
+      }
+    );
+  };
+
+  // Handle modal submit - calls the active resolver and closes modal
+  const handleModalSubmit = (feedbackText: string) => {
+    if (activeResolver) {
+      activeResolver(feedbackText);
     }
+    setModalState({
+      isOpen: false,
+      context: null,
+      title: '',
+      placeholder: ''
+    });
+    setActiveResolver(null);
   };
 
-  // Handle retry submit from TextInputModal
-  const handleRetrySubmit = (feedbackText: string) => {
-    if (!superReviewerResolver) return;
-
-    superReviewerResolver({ action: 'retry', feedback: feedbackText });
-    setSuperReviewerResolver(null);
-    setIsTextInputModalOpen(false);
-    setLastAction('Retry requested with feedback');
-  };
-
-  // Handle retry cancel from TextInputModal
-  const handleRetryCancel = () => {
-    setIsTextInputModalOpen(false);
+  // Handle modal cancel - just closes the modal
+  const handleModalCancel = () => {
+    setModalState({
+      isOpen: false,
+      context: null,
+      title: '',
+      placeholder: ''
+    });
+    setActiveResolver(null);
   };
 
   // Handle opening fullscreen modal for focused pane
@@ -764,13 +834,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         </Box>
       </Box>
 
-      {/* TextInputModal for retry feedback */}
-      {isTextInputModalOpen && currentState === TaskState.TASK_SUPER_REVIEWING && (
+      {/* TextInputModal - unified for all rejection contexts */}
+      {modalState.isOpen && (
         <TextInputModal
-          title="Provide Retry Feedback"
-          placeholder="Describe what needs to be fixed or improved..."
-          onSubmit={handleRetrySubmit}
-          onCancel={handleRetryCancel}
+          title={modalState.title}
+          placeholder={modalState.placeholder}
+          onSubmit={handleModalSubmit}
+          onCancel={handleModalCancel}
         />
       )}
     </Box>
