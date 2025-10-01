@@ -7,7 +7,7 @@ import { FullscreenModal } from './components/FullscreenModal.js';
 import { TaskView } from './components/TaskView.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
-import type { SuperReviewerDecision } from '../../types.js';
+import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.js';
 
 // TypeScript interface for component props
 interface AppProps {
@@ -15,6 +15,7 @@ interface AppProps {
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
   onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
+  onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
 }
 
 // Helper function to convert TaskState enum to human-readable format
@@ -65,7 +66,7 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onSuperReviewerDecision }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onSuperReviewerDecision, onHumanReviewDecision }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
@@ -281,7 +282,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
                 availableContentHeight={availableContentHeight}
               />
             ) : phase.state === TaskState.TASK_EXECUTING ? (
-              <ExecutionLayout taskStateMachine={taskStateMachine} />
+              <ExecutionLayout taskStateMachine={taskStateMachine} onHumanReviewDecision={onHumanReviewDecision} />
             ) : (
               <Text dimColor italic>
                 Phase-specific content will be displayed here...

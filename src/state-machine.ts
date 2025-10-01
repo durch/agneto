@@ -92,6 +92,10 @@ export interface StateMachineContext {
   coderSummary?: string;
   reviewerSummary?: string;
 
+  // Human review tracking
+  needsHumanReview: boolean;
+  humanReviewContext?: string;
+
   // Configuration
   maxPlanAttempts: number;
   maxCodeAttempts: number;
@@ -109,7 +113,8 @@ export class CoderReviewerStateMachine {
       codeAttempts: 0,
       maxPlanAttempts,
       maxCodeAttempts,
-      baselineCommit
+      baselineCommit,
+      needsHumanReview: false
     };
     this.auditLogger = auditLogger;
     log.orchestrator(`State machine initialized: ${this.state}`);
@@ -224,6 +229,25 @@ export class CoderReviewerStateMachine {
 
   clearCodeFeedback() {
     this.context.codeFeedback = undefined;
+  }
+
+  // Human review state management
+  setNeedsHumanReview(needed: boolean, context?: string): void {
+    this.context.needsHumanReview = needed;
+    this.context.humanReviewContext = context;
+  }
+
+  getNeedsHumanReview(): boolean {
+    return this.context.needsHumanReview;
+  }
+
+  getHumanReviewContext(): string | undefined {
+    return this.context.humanReviewContext;
+  }
+
+  clearHumanReview(): void {
+    this.context.needsHumanReview = false;
+    this.context.humanReviewContext = undefined;
   }
 
   // Increment attempts - should be called before each attempt
@@ -506,7 +530,8 @@ export class CoderReviewerStateMachine {
       planAttempts: 0,
       codeAttempts: 0,
       maxPlanAttempts: this.context.maxPlanAttempts,
-      maxCodeAttempts: this.context.maxCodeAttempts
+      maxCodeAttempts: this.context.maxCodeAttempts,
+      needsHumanReview: false
     };
   }
 

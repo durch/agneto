@@ -1,12 +1,15 @@
 import React from 'react';
-import { Text, Box, useStdout } from 'ink';
+import { Text, Box, useStdout, useInput } from 'ink';
 import { TaskStateMachine } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
 import { StatusIndicator } from './StatusIndicator.js';
+import type { HumanInteractionResult } from '../../../types.js';
+import { TextInputModal } from './TextInputModal.js';
 
 // TypeScript interface for ExecutionLayout props
 interface ExecutionLayoutProps {
   taskStateMachine: TaskStateMachine;
+  onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
 }
 
 // Helper function to truncate content
@@ -65,13 +68,63 @@ function getAgentStatusText(agent: 'coder' | 'reviewer', currentState: State): s
 }
 
 // Execution Layout Component - handles TASK_EXECUTING with dynamic two-pane view
-export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine }) => {
+export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine, onHumanReviewDecision }) => {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns || 120;
   const terminalHeight = stdout?.rows || 40;
 
+  // Local state for human review decision resolver
+  const [humanReviewResolver, setHumanReviewResolver] = React.useState<((value: HumanInteractionResult) => void) | null>(null);
+
+  // Retry modal state
+  const [showRetryModal, setShowRetryModal] = React.useState(false);
+  const [retryFeedback, setRetryFeedback] = React.useState("");
+
   // Get execution state machine
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
+
+  // Wire up human review decision when callback is provided
+  React.useEffect(() => {
+    if (onHumanReviewDecision && executionStateMachine?.getNeedsHumanReview()) {
+      // Create a dummy promise to get the resolver attached by orchestrator
+      const dummyPromise = new Promise<HumanInteractionResult>((resolve) => {
+        // This resolve will be replaced by the orchestrator
+      });
+
+      // Call the callback which will attach the real resolver
+      onHumanReviewDecision(dummyPromise);
+
+      // Extract the resolver that was attached by orchestrator
+      const resolver = (dummyPromise as any).resolve;
+      if (resolver) {
+        setHumanReviewResolver(() => resolver);
+      }
+    }
+  }, [onHumanReviewDecision, executionStateMachine?.getNeedsHumanReview()]);
+
+  // Handle keyboard input for human review decisions
+  useInput((input, key) => {
+    // Guard: only handle input when human review is needed and resolver is ready
+    if (executionStateMachine?.getNeedsHumanReview() && humanReviewResolver) {
+      if (input === 'a' || input === 'A') {
+        // Approve - continue with current implementation
+        humanReviewResolver({ decision: 'approve' });
+        setHumanReviewResolver(null);
+        executionStateMachine.clearHumanReview();
+        return;
+      } else if (input === 'r' || input === 'R') {
+        // Retry - open modal for feedback
+        setShowRetryModal(true);
+        return;
+      } else if (input === 'x' || input === 'X') {
+        // Reject - skip this chunk
+        humanReviewResolver({ decision: 'reject' });
+        setHumanReviewResolver(null);
+        executionStateMachine.clearHumanReview();
+        return;
+      }
+    }
+  });
 
   if (!executionStateMachine) {
     return (
@@ -241,7 +294,47 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
         <Text>{statusMessage}</Text>
         <Text dimColor>State: {currentState}</Text>
+
+        {/* Human Review Instructions */}
+        {executionStateMachine.getNeedsHumanReview() && (
+          <Box flexDirection="column" marginTop={1}>
+            <Text color="yellow" bold>⚠ Human Review Required</Text>
+            <Text>{executionStateMachine.getHumanReviewContext()}</Text>
+            <Box marginTop={1}>
+              <Text>
+                Press <Text color="green" bold>[A]</Text> to approve
+              </Text>
+              <Text>
+                Press <Text color="yellow" bold>[R]</Text> to retry with feedback
+              </Text>
+              <Text>
+                Press <Text color="red" bold>[X]</Text> to reject
+              </Text>
+            </Box>
+          </Box>
+        )}
       </Box>
+
+      {/* Retry Feedback Modal */}
+      {showRetryModal && (
+        <TextInputModal
+          title="Provide Retry Feedback"
+          placeholder="Describe what needs to be fixed..."
+          onSubmit={(feedbackText) => {
+            if (humanReviewResolver) {
+              humanReviewResolver({ decision: 'retry', feedback: feedbackText });
+              setHumanReviewResolver(null);
+              executionStateMachine?.clearHumanReview();
+            }
+            setShowRetryModal(false);
+            setRetryFeedback("");
+          }}
+          onCancel={() => {
+            setShowRetryModal(false);
+            setRetryFeedback("");
+          }}
+        />
+      )}
     </Box>
   );
 };

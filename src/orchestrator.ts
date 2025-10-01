@@ -25,15 +25,12 @@ import { log as originalLog } from "./ui/log.js";
 import { enableAuditLogging } from "./audit/integration-example.js";
 import { CheckpointService } from "./audit/checkpoint-service.js";
 import { RestorationService } from "./audit/restoration-service.js";
-import { promptForSuperReviewerDecision } from "./ui/human-review.js";
 import { generateUUID } from "./utils/id-generator.js";
 import { bell } from "./utils/terminal-bell.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
 import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
-import type { SuperReviewerDecision } from './types.js';
+import type { SuperReviewerDecision, HumanInteractionResult } from './types.js';
 import {
-  handlePlanHumanReview,
-  handleCodeHumanReview,
   revertLastCommit,
   commitChanges,
   documentTaskCompletion
@@ -1493,13 +1490,49 @@ async function runExecutionStateMachine(
                             break;
 
                         case 'needs-human':
-                            const planDecision = await handlePlanHumanReview(proposal, verdict.feedback || "");
+                            // Create promise with resolver for human decision
+                            let humanReviewResolverFunc: ((value: HumanInteractionResult) => void) | null = null;
+                            const humanReviewDecisionPromise = new Promise<HumanInteractionResult>((resolve) => {
+                                humanReviewResolverFunc = resolve;
+                            });
+                            (humanReviewDecisionPromise as any).resolve = humanReviewResolverFunc;
 
+                            // Create callback for UI to wire up
+                            const humanReviewCallback = (decision: Promise<HumanInteractionResult>) => {
+                                (decision as any).resolve = humanReviewResolverFunc;
+                            };
+
+                            // Set human review state in execution state machine
+                            stateMachine.setNeedsHumanReview(true, verdict.feedback || "Reviewer requires human input");
+
+                            // Update UI to show human review prompt with callback
+                            if (inkInstance) {
+                                inkInstance.rerender(React.createElement(App, {
+                                    taskStateMachine,
+                                    onHumanReviewDecision: humanReviewCallback
+                                }));
+                            }
+
+                            // Wait for UI decision
+                            const planDecision = await humanReviewDecisionPromise;
+
+                            // Clear human review state
+                            stateMachine.clearHumanReview();
+
+                            // Handle decision
                             if (planDecision.decision === 'approve') {
+                                log.orchestrator("Human approved the plan");
                                 stateMachine.transition(Event.PLAN_APPROVED);
-                            } else if (planDecision.decision === 'revise') {
-                                stateMachine.transition(Event.PLAN_REVISION_REQUESTED, planDecision.feedback);
-                            } else {
+                            } else if (planDecision.decision === 'retry') {
+                                log.orchestrator("Human requested plan revision");
+                                // Combine reviewer feedback with human feedback
+                                let combinedFeedback = verdict.feedback || "";
+                                if (planDecision.feedback) {
+                                    combinedFeedback += (combinedFeedback ? "\n\n" : "") + `Human feedback: ${planDecision.feedback}`;
+                                }
+                                stateMachine.transition(Event.PLAN_REVISION_REQUESTED, combinedFeedback);
+                            } else { // 'reject'
+                                log.orchestrator("Human rejected the plan");
                                 stateMachine.transition(Event.PLAN_REJECTED, planDecision.feedback);
                             }
                             break;
@@ -1676,12 +1709,38 @@ async function runExecutionStateMachine(
                             break;
 
                         case 'needs-human':
-                            const codeDecision = await handleCodeHumanReview(
-                                changeDescription,
-                                verdict.feedback || ""
-                            );
+                            // Create promise with resolver for human decision
+                            let codeHumanReviewResolverFunc: ((value: HumanInteractionResult) => void) | null = null;
+                            const codeHumanReviewDecisionPromise = new Promise<HumanInteractionResult>((resolve) => {
+                                codeHumanReviewResolverFunc = resolve;
+                            });
+                            (codeHumanReviewDecisionPromise as any).resolve = codeHumanReviewResolverFunc;
 
+                            // Create callback for UI to wire up
+                            const codeHumanReviewCallback = (decision: Promise<HumanInteractionResult>) => {
+                                (decision as any).resolve = codeHumanReviewResolverFunc;
+                            };
+
+                            // Set human review state in execution state machine
+                            stateMachine.setNeedsHumanReview(true, verdict.feedback || "Reviewer requires human input on code implementation");
+
+                            // Update UI to show human review prompt with callback
+                            if (inkInstance) {
+                                inkInstance.rerender(React.createElement(App, {
+                                    taskStateMachine,
+                                    onHumanReviewDecision: codeHumanReviewCallback
+                                }));
+                            }
+
+                            // Wait for UI decision
+                            const codeDecision = await codeHumanReviewDecisionPromise;
+
+                            // Clear human review state
+                            stateMachine.clearHumanReview();
+
+                            // Handle decision
                             if (codeDecision.decision === 'approve') {
+                                log.orchestrator("Human approved the code implementation");
                                 // Generate proper commit message using scribe
                                 const commitMsg3 = await generateCommitMessage(provider, cwd);
                                 await commitChanges(cwd, commitMsg3);
@@ -1703,10 +1762,17 @@ async function runExecutionStateMachine(
                                     `Human approved: ${changeDescription}`,
                                     log
                                 );
-                            } else if (codeDecision.decision === 'revise') {
+                            } else if (codeDecision.decision === 'retry') {
+                                log.orchestrator("Human requested code revision");
                                 await revertLastCommit(cwd, stateMachine.getContext().baselineCommit);
-                                stateMachine.transition(Event.CODE_REVISION_REQUESTED, codeDecision.feedback);
-                            } else {
+                                // Combine reviewer feedback with human feedback
+                                let combinedFeedback = verdict.feedback || "";
+                                if (codeDecision.feedback) {
+                                    combinedFeedback += (combinedFeedback ? "\n\n" : "") + `Human feedback: ${codeDecision.feedback}`;
+                                }
+                                stateMachine.transition(Event.CODE_REVISION_REQUESTED, combinedFeedback);
+                            } else { // 'reject'
+                                log.orchestrator("Human rejected the code implementation");
                                 await revertLastCommit(cwd, stateMachine.getContext().baselineCommit);
                                 stateMachine.transition(Event.CODE_REJECTED, codeDecision.feedback);
                             }
