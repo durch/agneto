@@ -38,7 +38,7 @@ import {
 import type { CoderPlanProposal } from "./types.js";
 import type { RecoveryDecision } from "./cli.js";
 
-export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean; uiMode?: string; recoveryDecision?: RecoveryDecision }) {
+export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }) {
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId);
 
@@ -56,15 +56,13 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     let coderInitialized = false;
     let reviewerInitialized = false;
 
-    // Setup UI callback mechanism for Ink mode (available for both fresh and restored tasks)
+    // Setup UI callback mechanism (available for both fresh and restored tasks)
     let uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined = undefined;
     let inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null = null;
 
-    if (options?.uiMode === 'ink') {
-        log.orchestrator("🖥️ Ink UI mode enabled - UI callback mechanism will be available for plan feedback");
-        // The actual callback will be set up when the Ink UI is rendered
-        // to properly wire up the promise resolver mechanism
-    }
+    log.orchestrator("🖥️ Ink UI enabled - UI callback mechanism will be available for plan feedback");
+    // The actual callback will be set up when the Ink UI is rendered
+    // to properly wire up the promise resolver mechanism
 
     // Check for checkpoint restoration request
     if (options?.recoveryDecision?.action === "resume") {
@@ -213,65 +211,62 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     // Set TaskStateMachine reference in AuditLogger for phase tracking
     auditLogger.setTaskStateMachine(taskStateMachine);
 
-    // Setup Ink UI first if enabled - UI is the app!
-    // Conditional Ink UI rendering for main task path
-    if (options?.uiMode === 'ink') {
-        try {
-            // Create Promise-based callback mechanism for plan feedback
-            let planFeedbackResolver: ((feedback: PlanFeedback) => void) | null = null;
-            const createPlanFeedbackPromise = () => new Promise<PlanFeedback>((resolve) => {
-                planFeedbackResolver = resolve;
-            });
+    // Setup Ink UI - UI is the app!
+    try {
+        // Create Promise-based callback mechanism for plan feedback
+        let planFeedbackResolver: ((feedback: PlanFeedback) => void) | null = null;
+        const createPlanFeedbackPromise = () => new Promise<PlanFeedback>((resolve) => {
+            planFeedbackResolver = resolve;
+        });
 
-            // Create callback function that resolves the Promise when user provides feedback
-            const handlePlanFeedback = (feedback: PlanFeedback) => {
-                if (planFeedbackResolver) {
-                    planFeedbackResolver(feedback);
-                    planFeedbackResolver = null; // Clean up resolver
-                }
-            };
+        // Create callback function that resolves the Promise when user provides feedback
+        const handlePlanFeedback = (feedback: PlanFeedback) => {
+            if (planFeedbackResolver) {
+                planFeedbackResolver(feedback);
+                planFeedbackResolver = null; // Clean up resolver
+            }
+        };
 
-            // Update uiCallback to wire up the resolver from the planner's promise and provide rerender
-            uiCallback = (feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => {
-                // Extract and store the resolver from the planner's promise
-                // The planner attaches the resolver to the promise object
-                planFeedbackResolver = (feedbackPromise as any).resolve;
+        // Update uiCallback to wire up the resolver from the planner's promise and provide rerender
+        uiCallback = (feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => {
+            // Extract and store the resolver from the planner's promise
+            // The planner attaches the resolver to the promise object
+            planFeedbackResolver = (feedbackPromise as any).resolve;
 
-                // If rerender is requested, update the Ink UI
-                if (rerenderCallback && inkInstance) {
-                    // Re-render the Ink UI (App will read current state dynamically)
-                    inkInstance.rerender(React.createElement(App, {
-                        taskStateMachine,
-                        onPlanFeedback: handlePlanFeedback
-                    }));
-                    rerenderCallback();
-                }
-            };
+            // If rerender is requested, update the Ink UI
+            if (rerenderCallback && inkInstance) {
+                // Re-render the Ink UI (App will read current state dynamically)
+                inkInstance.rerender(React.createElement(App, {
+                    taskStateMachine,
+                    onPlanFeedback: handlePlanFeedback
+                }));
+                rerenderCallback();
+            }
+        };
 
-            // Render Ink UI immediately - it will observe state changes
-            // Don't pass currentState as prop - let App read it dynamically
-            const { unmount, waitUntilExit, rerender } = render(React.createElement(App, {
-                taskStateMachine,
-                onPlanFeedback: handlePlanFeedback
-            }));
+        // Render Ink UI immediately - it will observe state changes
+        // Don't pass currentState as prop - let App read it dynamically
+        const { unmount, waitUntilExit, rerender } = render(React.createElement(App, {
+            taskStateMachine,
+            onPlanFeedback: handlePlanFeedback
+        }));
 
-            // Store the Ink instance with all necessary methods
-            inkInstance = { unmount, waitUntilExit, rerender };
-            log.setSilent(true);
+        // Store the Ink instance with all necessary methods
+        inkInstance = { unmount, waitUntilExit, rerender };
+        log.setSilent(true);
 
-            // Keep the Ink app alive by waiting on it
-            inkInstance.waitUntilExit().then(() => {
-                log.orchestrator("Ink UI exited");
-            }).catch(error => {
-                log.orchestrator(`Ink UI exit error: ${error}`);
-            });
+        // Keep the Ink app alive by waiting on it
+        inkInstance.waitUntilExit().then(() => {
+            log.orchestrator("Ink UI exited");
+        }).catch(error => {
+            log.orchestrator(`Ink UI exit error: ${error}`);
+        });
 
-            log.orchestrator("🖥️ Ink UI started - will display all task phases");
-        } catch (error) {
-            log.warn(`⚠️ Failed to render Ink UI: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            log.warn("Falling back to standard interactive planning interface");
-            uiCallback = undefined; // Ensure fallback to existing behavior
-        }
+        log.orchestrator("🖥️ Ink UI started - will display all task phases");
+    } catch (error) {
+        log.warn(`⚠️ Failed to render Ink UI: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        log.warn("Falling back to standard interactive planning interface");
+        uiCallback = undefined; // Ensure fallback to existing behavior
     }
 
     // Start the task
