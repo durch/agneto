@@ -14,7 +14,7 @@ import { App } from './ui/ink/App.js';
 import { getPlanFeedback, type PlanFeedback } from './ui/planning-interface.js';
 import { proposePlan, implementPlan } from "./agents/coder.js";
 import { reviewPlan, reviewCode } from "./agents/reviewer.js";
-import { getInitialChunk, getNextChunk } from "./agents/bean-counter.js";
+import { getNextChunk } from "./agents/bean-counter.js";
 import { runCurmudgeon } from "./agents/curmudgeon.js";
 import { runSuperReviewer } from "./agents/super-reviewer.js";
 import { generateCommitMessage } from "./agents/scribe.js";
@@ -1274,31 +1274,24 @@ async function runExecutionStateMachine(
                 case State.BEAN_COUNTING: {
                     log.orchestrator("🧮 Bean Counter: Determining work chunk...");
 
-                    let chunk;
-                    if (!beanCounterInitialized) {
-                        // Initial chunking: Break down high-level plan into first chunk
-                        chunk = await getInitialChunk(
-                            provider,
-                            cwd,
-                            planMd,
-                            beanCounterSessionId,
-                            beanCounterInitialized
-                        );
-                        beanCounterInitialized = true;
-                    } else {
-                        // Progressive chunking: Get next chunk based on last approval
-                        // Get the actual approval message from the last code review cycle
-                        const context = stateMachine.getContext();
-                        const lastApprovalMessage = context.codeFeedback || "Previous work was approved";
+                    // Get previous approval message if this is not the first chunk
+                    const context = stateMachine.getContext();
+                    const previousApproval = beanCounterInitialized
+                        ? (context.codeFeedback || "Previous work was approved")
+                        : undefined;
 
-                        chunk = await getNextChunk(
-                            provider,
-                            cwd,
-                            planMd,
-                            lastApprovalMessage,
-                            beanCounterSessionId,
-                            beanCounterInitialized
-                        );
+                    const chunk = await getNextChunk(
+                        provider,
+                        cwd,
+                        planMd,
+                        beanCounterSessionId,
+                        beanCounterInitialized,
+                        previousApproval
+                    );
+
+                    // Mark as initialized after first call
+                    if (!beanCounterInitialized) {
+                        beanCounterInitialized = true;
                     }
 
                     if (!chunk) {

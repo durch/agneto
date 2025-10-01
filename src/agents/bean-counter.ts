@@ -5,7 +5,7 @@ import { interpretBeanCounterResponse, type BeanCounterInterpretation } from "..
 
 const DEBUG = process.env.DEBUG === "true";
 
-// AIDEV-NOTE: Bean Counter agent handles all work chunking decisions - both initial and progressive.
+// AIDEV-NOTE: Bean Counter agent handles all work chunking decisions.
 // It breaks down high-level plans into implementable chunks and tracks progress through completion.
 
 export interface BeanCounterChunk {
@@ -15,13 +15,14 @@ export interface BeanCounterChunk {
   context: string;
 }
 
-// Initial chunking: Break down high-level plan into first implementable chunk
-export async function getInitialChunk(
+// Unified chunking: Get next chunk (first or subsequent)
+export async function getNextChunk(
   provider: LLMProvider,
   cwd: string,
   planMd: string,
-  sessionId?: string,
-  isInitialized?: boolean
+  sessionId: string,
+  isInitialized: boolean,
+  previousApproval?: string
 ): Promise<BeanCounterChunk | null> {
   const template = readFileSync(
     new URL("../prompts/bean-counter.md", import.meta.url),
@@ -36,15 +37,15 @@ export async function getInitialChunk(
       { role: "system", content: template },
       {
         role: "user",
-        content: `High-Level Plan (Markdown):\n\n${planMd}\n\n[INITIAL CHUNKING]\n\nBreak down this plan into the first implementable chunk. Focus on creating a small, reviewable piece of work that establishes a foundation for subsequent chunks.`,
+        content: `High-Level Plan:\n\n${planMd}\n\nWhat's the next chunk to work on?`,
       }
     );
   } else {
-    // This shouldn't happen for initial chunking, but handle gracefully
+    // Subsequent call: provide approval and ask for next chunk
+    const approvalMsg = previousApproval || "Previous work was approved";
     messages.push({
       role: "user",
-      content:
-        "[INITIAL CHUNKING]\n\nProvide the first implementable chunk for the given plan.",
+      content: `Work completed: ${approvalMsg}\n\nWhat's the next chunk, or is the task complete?`,
     });
   }
 
@@ -53,154 +54,37 @@ export async function getInitialChunk(
       log.startStreaming("Bean Counter");
     }
 
-    // Try with opus first for better reasoning
-    let rawResponse;
-    try {
-      rawResponse = await provider.query({
-        cwd,
-        mode: "default", // Use default mode for consistent streaming
-        allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
-        sessionId,
-        isInitialized,
-        messages,
-        // model: "opus", // Use opus for better reasoning
-        callbacks: {
-          onProgress: log.streamProgress,
-          onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
-          onToolResult: (isError) => log.toolResult("Bean Counter", isError),
-          onComplete: (cost, duration) =>
-            log.complete("Bean Counter", cost, duration),
-        },
-      });
-    } catch (error) {
-      // Fallback without model specification if opus fails
-      if (DEBUG) {
-        console.error("Opus model failed, using default:", error);
-      }
-      rawResponse = await provider.query({
-        cwd,
-        mode: "default", // Use default mode for consistent streaming
-        allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
-        sessionId,
-        isInitialized,
-        messages,
-        callbacks: {
-          onProgress: log.streamProgress,
-          onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
-          onToolResult: (isError) => log.toolResult("Bean Counter", isError),
-          onComplete: (cost, duration) =>
-            log.complete("Bean Counter", cost, duration),
-        },
-      });
-    }
+    const rawResponse = await provider.query({
+      cwd,
+      mode: "default",
+      allowedTools: ["ReadFile", "Grep", "Bash"],
+      sessionId,
+      isInitialized,
+      messages,
+      callbacks: {
+        onProgress: log.streamProgress,
+        onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
+        onToolResult: (isError) => log.toolResult("Bean Counter", isError),
+        onComplete: (cost, duration) =>
+          log.complete("Bean Counter", cost, duration),
+      },
+    });
 
-    // Always display the full Bean Counter response (will be pretty printed)
+    // Display the Bean Counter response
     if (rawResponse && rawResponse.trim()) {
-        log.beanCounter(rawResponse);
+      log.beanCounter(rawResponse);
     }
 
-    // Use interpreter to avoid false positives from partial word matches
+    // Use interpreter to extract structured decision
     const interpretation = await interpretBeanCounterResponse(provider, rawResponse, cwd);
     if (!interpretation) {
       console.error("Failed to interpret Bean Counter response");
       return null;
     }
 
-    // Convert interpretation to BeanCounterChunk format
     return interpretation;
   } catch (error) {
-    console.error("Failed to get initial chunk from Bean Counter:", error);
+    console.error("Failed to get chunk from Bean Counter:", error);
     return null;
   }
 }
-
-// Progressive chunking: After approval, determine next chunk or completion
-export async function getNextChunk(
-  provider: LLMProvider,
-  cwd: string,
-  planMd: string,
-  approvalMessage: string,
-  sessionId: string, // Required for progressive chunking to maintain ledger
-  isInitialized: boolean
-): Promise<BeanCounterChunk | null> {
-  const messages: Msg[] = [];
-
-  if (!isInitialized) {
-    // This shouldn't happen for progressive chunking
-    throw new Error(
-      "Bean Counter session must be initialized for progressive chunking"
-    );
-  }
-
-  // Progressive call: update ledger with approval and determine next chunk
-  messages.push({
-    role: "user",
-    content: `[CHUNK COMPLETED]\n\nApproved work: ${approvalMessage}\n\n[NEXT CHUNKING]\n\nUpdate your progress ledger and determine the next implementable chunk, or signal completion if all work is done.`,
-  });
-
-  try {
-    // Try with opus first for better reasoning
-    let rawResponse;
-    try {
-      rawResponse = await provider.query({
-        cwd,
-        mode: "default", // Use default mode for consistent streaming
-        allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
-        sessionId,
-        isInitialized: true,
-        messages,
-        // model: "opus", // Use opus for better reasoning
-        callbacks: {
-          onProgress: log.streamProgress,
-          onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
-          onToolResult: (isError) => log.toolResult("Bean Counter", isError),
-          onComplete: (cost, duration) =>
-            log.complete("Bean Counter", cost, duration),
-        },
-      });
-    } catch (error) {
-      // Fallback without model specification if opus fails
-      if (DEBUG) {
-        console.error("Opus model failed, using default:", error);
-      }
-      rawResponse = await provider.query({
-        cwd,
-        mode: "default", // Use default mode for consistent streaming
-        allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
-        sessionId,
-        isInitialized: true,
-        messages,
-        callbacks: {
-          onProgress: log.streamProgress,
-          onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
-          onToolResult: (isError) => log.toolResult("Bean Counter", isError),
-          onComplete: (cost, duration) =>
-            log.complete("Bean Counter", cost, duration),
-        },
-      });
-    }
-
-    // Always display the full Bean Counter response (will be pretty printed)
-    if (rawResponse && rawResponse.trim()) {
-        log.beanCounter(rawResponse);
-    }
-
-    // Use interpreter to avoid false positives from partial word matches
-    const interpretation = await interpretBeanCounterResponse(provider, rawResponse, cwd);
-    if (!interpretation) {
-      console.error("Failed to interpret Bean Counter response");
-      return null;
-    }
-
-    // Convert interpretation to BeanCounterChunk format
-    return interpretation;
-  } catch (error) {
-    console.error("Failed to get next chunk from Bean Counter:", error);
-    return null;
-  }
-}
-
-// DEPRECATED: Old parsing function that had false positive bug with partial word matches
-// Kept for reference only - now using interpretBeanCounterResponse() instead
-// This function incorrectly triggered on "complete" appearing in words like "completion"
-// which caused premature task termination. The interpreter pattern fixes this issue.

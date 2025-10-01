@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, Box, useStdout } from 'ink';
 import { TaskStateMachine } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
+import { StatusIndicator } from './StatusIndicator.js';
 
 // TypeScript interface for ExecutionLayout props
 interface ExecutionLayoutProps {
@@ -72,17 +73,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   // Get execution state machine
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
 
-  // Blinking animation state for status indicators
-  const [blinkOn, setBlinkOn] = React.useState(true);
-
-  React.useEffect(() => {
-    const intervalId = setInterval(() => {
-      setBlinkOn((prev) => !prev);
-    }, 750);
-
-    return () => clearInterval(intervalId);
-  }, []);
-
   if (!executionStateMachine) {
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1}>
@@ -98,25 +88,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   const beanCounterOutput = executionStateMachine.getAgentOutput('bean');
   const coderOutput = executionStateMachine.getAgentOutput('coder');
   const reviewerOutput = executionStateMachine.getAgentOutput('reviewer');
-
-  // Helper function to get status indicator with animation and color
-  const getStatusIndicator = (agent: 'coder' | 'reviewer'): React.ReactElement => {
-    const activeAgent = getActiveAgent(currentState);
-    const isActive = activeAgent === agent;
-
-    // Determine color based on agent type and active state
-    let color: string;
-    if (isActive) {
-      color = agent === 'coder' ? 'green' : 'yellow';
-    } else {
-      color = 'gray';
-    }
-
-    // Blink between filled and empty circle when active
-    const symbol = isActive && blinkOn ? '● ' : '○ ';
-
-    return <Text color={color}>{symbol}</Text>;
-  };
 
   // Calculate pane dimensions
   const isWideTerminal = terminalWidth > 120;
@@ -175,7 +146,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         flexDirection={isWideTerminal ? "row" : "column"}
         marginBottom={1}
       >
-        {/* Left Panel */}
+        {/* Left Panel - Bean Counter */}
         <Box
           flexDirection="column"
           borderStyle="single"
@@ -185,7 +156,10 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
           marginRight={isWideTerminal ? 1 : 0}
           marginBottom={isWideTerminal ? 0 : 1}
         >
-          <Text color={leftColor} bold>{leftTitle}</Text>
+          <Box>
+            <StatusIndicator agent="bean" isActive={currentState === State.BEAN_COUNTING} />
+            <Text color={leftColor} bold>{leftTitle}</Text>
+          </Box>
           <Box marginTop={1}>
             <Text wrap="wrap">{truncateContent(leftContent, beanCounterHeight).display}</Text>
           </Box>
@@ -205,7 +179,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             marginBottom={1}
           >
             <Box>
-              {getStatusIndicator('coder')}
+              <StatusIndicator agent="coder" isActive={getActiveAgent(currentState) === 'coder'} />
               <Text color={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'} bold>
                 🤖 Coder
               </Text>
@@ -222,7 +196,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             padding={1}
           >
             <Box>
-              {getStatusIndicator('reviewer')}
+              <StatusIndicator agent="reviewer" isActive={getActiveAgent(currentState) === 'reviewer'} />
               <Text color={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'} bold>
                 👀 Reviewer
               </Text>
