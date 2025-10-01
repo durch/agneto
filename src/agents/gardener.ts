@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LLMProvider } from "../providers/index.js";
+import type { GardenerResult } from "../types.js";
 import { log } from "../ui/log.js";
 
 /**
@@ -11,16 +12,6 @@ export interface GardenerParams {
   taskDescription: string;
   planSummary: string;
   workingDirectory: string;  // CLAUDE.md location derived from this
-}
-
-/**
- * Result from Gardener agent execution
- */
-export interface GardenerResult {
-  success: boolean;
-  message: string;
-  sectionsUpdated: string[];
-  error?: string;
 }
 
 /**

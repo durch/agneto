@@ -2,6 +2,7 @@ import { log } from "./ui/log.js";
 import { execSync } from "child_process";
 import { runGardener, type GardenerParams } from "./agents/gardener.js";
 import type { LLMProvider } from "./providers/index.js";
+import type { GardenerResult } from "./types.js";
 
 /**
  * Commit current changes with a descriptive message
@@ -120,7 +121,7 @@ export async function documentTaskCompletion(
   taskId: string,
   description: string,
   planContent: string
-): Promise<void> {
+): Promise<GardenerResult | null> {
   try {
     const params: GardenerParams = {
       taskId,
@@ -129,9 +130,11 @@ export async function documentTaskCompletion(
       workingDirectory: workingDir
     };
 
-    await runGardener(provider, params);
+    const result = await runGardener(provider, params);
+    return result;
   } catch (error) {
     // Log errors but never throw - documentation updates should never block task completion
     log.warn(`Failed to update documentation: ${error}`);
+    return null;
   }
 }

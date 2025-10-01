@@ -723,13 +723,20 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                             // Update CLAUDE.md documentation with task completion (even for incomplete acceptance)
                             log.orchestrator("📝 Updating CLAUDE.md with task documentation (incomplete acceptance)...");
                             const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
-                            await documentTaskCompletion(
+                            const gardenerResult = await documentTaskCompletion(
                                 provider,
                                 cwd,
                                 taskStateMachine.getContext().taskId,
                                 taskDescription,
                                 planMd
                             );
+
+                            if (gardenerResult?.success) {
+                                await commitChanges(
+                                    taskStateMachine.getContext().taskId,
+                                    "docs: Update CLAUDE.md documentation"
+                                );
+                            }
 
                             taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
                         } else if (humanDecision.action === "retry") {
@@ -747,13 +754,20 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // Update CLAUDE.md documentation with task completion
                         log.orchestrator("📝 Updating CLAUDE.md with task documentation...");
                         const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
-                        await documentTaskCompletion(
+                        const gardenerResult = await documentTaskCompletion(
                             provider,
                             cwd,
                             taskStateMachine.getContext().taskId,
                             taskDescription,
                             planMd
                         );
+
+                        if (gardenerResult?.success) {
+                            await commitChanges(
+                                taskStateMachine.getContext().taskId,
+                                "docs: Update CLAUDE.md documentation"
+                            );
+                        }
 
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
                     }
@@ -1136,13 +1150,20 @@ async function runRestoredTask(
                                 // Update CLAUDE.md documentation with task completion (even for incomplete acceptance)
                                 log.orchestrator("📝 Updating CLAUDE.md with task documentation (incomplete acceptance)...");
                                 const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
-                                await documentTaskCompletion(
+                                const gardenerResult = await documentTaskCompletion(
                                     provider,
                                     cwd,
                                     taskStateMachine.getContext().taskId,
                                     taskDescription,
                                     planMd
                                 );
+
+                                if (gardenerResult?.success) {
+                                    await commitChanges(
+                                        taskStateMachine.getContext().taskId,
+                                        "docs: Update CLAUDE.md documentation"
+                                    );
+                                }
 
                                 taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
                             } else if (humanDecision.action === "retry") {
@@ -1160,13 +1181,20 @@ async function runRestoredTask(
                             // Update CLAUDE.md documentation with task completion
                             log.orchestrator("📝 Updating CLAUDE.md with task documentation...");
                             const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
-                            await documentTaskCompletion(
+                            const gardenerResult = await documentTaskCompletion(
                                 provider,
                                 cwd,
                                 taskStateMachine.getContext().taskId,
                                 taskDescription,
                                 planMd
                             );
+
+                            if (gardenerResult?.success) {
+                                await commitChanges(
+                                    taskStateMachine.getContext().taskId,
+                                    "docs: Update CLAUDE.md documentation"
+                                );
+                            }
 
                             taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
                         }

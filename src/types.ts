@@ -85,3 +85,11 @@ export interface BeanCounterTaskComplete {
   requirements: string[];
   context: string;
 }
+
+// Gardener types for CLAUDE.md updates
+export interface GardenerResult {
+  success: boolean;
+  message: string;
+  sectionsUpdated: string[];
+  error?: string;
+}
