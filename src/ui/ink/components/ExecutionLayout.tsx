@@ -108,7 +108,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
   // Left pane: Always show latest Bean Counter chunk
   leftTitle = '🧮 Bean Counter Chunk';
-  leftContent = beanCounterOutput || 'Determining work chunk...';
+  leftContent = currentState === State.BEAN_COUNTING ? 'Bean Counting!' : (beanCounterOutput || 'Determining work chunk...');
   leftColor = 'cyan';
 
   // Status message based on execution state
@@ -184,8 +184,12 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
                 🤖 Coder
               </Text>
             </Box>
-            <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
-            <Text wrap="wrap">{executionStateMachine.getSummary('coder') || 'Generating summary...'}</Text>
+            <Box marginTop={1}>
+              <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
+            </Box>
+            {getActiveAgent(currentState) !== 'coder' && (
+              <Text wrap="wrap">{executionStateMachine.getSummary('coder') || 'Generating summary...'}</Text>
+            )}
           </Box>
 
           {/* Reviewer Section */}
@@ -201,8 +205,12 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
                 👀 Reviewer
               </Text>
             </Box>
-            <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
-            <Text wrap="wrap">{executionStateMachine.getSummary('reviewer') || 'Generating summary...'}</Text>
+            <Box marginTop={1}>
+              <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
+            </Box>
+            {getActiveAgent(currentState) !== 'reviewer' && (
+              <Text wrap="wrap">{executionStateMachine.getSummary('reviewer') || 'Generating summary...'}</Text>
+            )}
           </Box>
         </Box>
       </Box>
@@ -215,6 +223,22 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         padding={1}
       >
         <Text color="blue" bold>⚡ Live Activity</Text>
+
+        {/* Tool status display */}
+        {(() => {
+          const toolStatus = executionStateMachine.getToolStatus();
+          if (toolStatus) {
+            return (
+              <Box marginBottom={1}>
+                <Text color="cyan">
+                  ⚙️ [{toolStatus.agent}] → {toolStatus.tool}: {toolStatus.summary}
+                </Text>
+              </Box>
+            );
+          }
+          return null;
+        })()}
+
         <Text>{statusMessage}</Text>
         <Text dimColor>State: {currentState}</Text>
       </Box>

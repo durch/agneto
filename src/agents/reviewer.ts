@@ -3,6 +3,8 @@ import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderPlanProposal, ReviewerPlanVerdict, ReviewerCodeVerdict } from "../types.js";
 import { interpretReviewerResponse, convertReviewerInterpretation } from "../protocol/interpreter.js";
 import { log } from "../ui/log.js";
+import { summarizeToolParams } from "../utils/tool-summary.js";
+import type { CoderReviewerStateMachine } from "../state-machine.js";
 
 const DEBUG = process.env.DEBUG === "true";
 
@@ -13,7 +15,8 @@ export async function reviewPlan(
     chunkContext: { description: string; requirements: string[]; context: string; },
     proposal: CoderPlanProposal,
     sessionId?: string,
-    isInitialized?: boolean
+    isInitialized?: boolean,
+    stateMachine?: CoderReviewerStateMachine
 ): Promise<ReviewerPlanVerdict> {
     // Load the natural language prompt (no schema injection)
     const template = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
@@ -44,8 +47,18 @@ export async function reviewPlan(
         messages,
         callbacks: {
             onProgress: log.streamProgress,
-            onToolUse: (tool, input) => log.toolUse("Reviewer", tool, input),
-            onToolResult: (isError) => log.toolResult("Reviewer", isError),
+            onToolUse: (tool, input) => {
+                log.toolUse("Reviewer", tool, input);
+                if (stateMachine) {
+                    stateMachine.setToolStatus("Reviewer", tool, summarizeToolParams(tool, input));
+                }
+            },
+            onToolResult: (isError) => {
+                log.toolResult("Reviewer", isError);
+                if (stateMachine) {
+                    stateMachine.clearToolStatus();
+                }
+            },
             onComplete: (cost, duration) => log.complete("Reviewer", cost, duration)
         }
     });
@@ -107,7 +120,8 @@ export async function reviewCode(
     chunkContext: { description: string; requirements: string[]; context: string; } | null,
     changeDescription: string,
     sessionId?: string,
-    isInitialized?: boolean
+    isInitialized?: boolean,
+    stateMachine?: CoderReviewerStateMachine
 ): Promise<ReviewerCodeVerdict> {
     // Load the natural language prompt (no schema injection)
     const template = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
@@ -138,8 +152,18 @@ export async function reviewCode(
         messages,
         callbacks: {
             onProgress: log.streamProgress,
-            onToolUse: (tool, input) => log.toolUse("Reviewer", tool, input),
-            onToolResult: (isError) => log.toolResult("Reviewer", isError),
+            onToolUse: (tool, input) => {
+                log.toolUse("Reviewer", tool, input);
+                if (stateMachine) {
+                    stateMachine.setToolStatus("Reviewer", tool, summarizeToolParams(tool, input));
+                }
+            },
+            onToolResult: (isError) => {
+                log.toolResult("Reviewer", isError);
+                if (stateMachine) {
+                    stateMachine.clearToolStatus();
+                }
+            },
             onComplete: (cost, duration) => log.complete("Reviewer", cost, duration)
         }
     });

@@ -2,12 +2,15 @@ import { readFileSync } from "node:fs";
 import type { LLMProvider } from "../providers/index.js";
 import type { CurmudgeonResult } from "../types.js";
 import { log } from "../ui/log.js";
+import { summarizeToolParams } from "../utils/tool-summary.js";
+import type { TaskStateMachine } from "../task-state-machine.js";
 
 export async function runCurmudgeon(
   provider: LLMProvider,
   cwd: string,
   planMd: string,
-  taskDescription?: string
+  taskDescription?: string,
+  taskStateMachine?: TaskStateMachine
 ): Promise<CurmudgeonResult | null> {
   const sys = readFileSync(
     new URL("../prompts/curmudgeon.md", import.meta.url),
@@ -39,8 +42,18 @@ export async function runCurmudgeon(
     ],
     callbacks: {
       onProgress: log.streamProgress,
-      onToolUse: (tool, input) => log.toolUse("Curmudgeon", tool, input),
-      onToolResult: (isError) => log.toolResult("Curmudgeon", isError),
+      onToolUse: (tool, input) => {
+        log.toolUse("Curmudgeon", tool, input);
+        if (taskStateMachine) {
+          taskStateMachine.setToolStatus("Curmudgeon", tool, summarizeToolParams(tool, input));
+        }
+      },
+      onToolResult: (isError) => {
+        log.toolResult("Curmudgeon", isError);
+        if (taskStateMachine) {
+          taskStateMachine.clearToolStatus();
+        }
+      },
       onComplete: (cost, duration) =>
         log.complete("Curmudgeon", cost, duration),
     },

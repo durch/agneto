@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import type { CoderPlanProposal } from "../types.js";
 import { log } from "../ui/log.js";
+import { summarizeToolParams } from "../utils/tool-summary.js";
+import type { CoderReviewerStateMachine } from "../state-machine.js";
 
 const DEBUG = process.env.DEBUG === "true";
 
@@ -12,7 +14,8 @@ export async function proposePlan(
     stepDescription: string,
     feedback?: string,
     sessionId?: string,
-    isInitialized?: boolean
+    isInitialized?: boolean,
+    stateMachine?: CoderReviewerStateMachine
 ): Promise<CoderPlanProposal | null> {
     // Load the natural language prompt (no schema injection)
     const template = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
@@ -46,8 +49,18 @@ export async function proposePlan(
         messages,
         callbacks: {
             onProgress: log.streamProgress,
-            onToolUse: (tool, input) => log.toolUse("Coder", tool, input),
-            onToolResult: (isError) => log.toolResult("Coder", isError),
+            onToolUse: (tool, input) => {
+                log.toolUse("Coder", tool, input);
+                if (stateMachine) {
+                    stateMachine.setToolStatus("Coder", tool, summarizeToolParams(tool, input));
+                }
+            },
+            onToolResult: (isError) => {
+                log.toolResult("Coder", isError);
+                if (stateMachine) {
+                    stateMachine.clearToolStatus();
+                }
+            },
             onComplete: (cost, duration) => log.complete("Coder", cost, duration)
         }
     });
@@ -85,7 +98,8 @@ export async function implementPlan(
     approvedPlan: CoderPlanProposal,
     feedback?: string,
     sessionId?: string,
-    isInitialized?: boolean
+    isInitialized?: boolean,
+    stateMachine?: CoderReviewerStateMachine
 ): Promise<string> {
     // Load the natural language prompt (no schema injection)
     const template = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
@@ -120,8 +134,18 @@ export async function implementPlan(
         messages,
         callbacks: {
             onProgress: log.streamProgress,
-            onToolUse: (tool, input) => log.toolUse("Coder", tool, input),
-            onToolResult: (isError) => log.toolResult("Coder", isError),
+            onToolUse: (tool, input) => {
+                log.toolUse("Coder", tool, input);
+                if (stateMachine) {
+                    stateMachine.setToolStatus("Coder", tool, summarizeToolParams(tool, input));
+                }
+            },
+            onToolResult: (isError) => {
+                log.toolResult("Coder", isError);
+                if (stateMachine) {
+                    stateMachine.clearToolStatus();
+                }
+            },
             onComplete: (cost, duration) => log.complete("Coder", cost, duration)
         }
     });

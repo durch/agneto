@@ -32,6 +32,13 @@ export interface LiveActivityMessage {
   message: string;
 }
 
+// Tool status for UI display
+export interface ToolStatus {
+  agent: string;
+  tool: string;
+  summary: string; // Brief description of what the tool is doing
+}
+
 // Events that trigger parent state transitions
 export enum TaskEvent {
   // Initialization events
@@ -125,6 +132,7 @@ export class TaskStateMachine {
   private context: TaskContext;
   private auditLogger?: AuditLogger;
   private liveActivityMessage: LiveActivityMessage | null = null;
+  private toolStatus: ToolStatus | null = null;
 
   constructor(
     taskId: string,
@@ -189,6 +197,19 @@ export class TaskStateMachine {
 
   clearLiveActivityMessage(): void {
     this.liveActivityMessage = null;
+  }
+
+  // Tool status management for UI display
+  getToolStatus(): ToolStatus | null {
+    return this.toolStatus;
+  }
+
+  setToolStatus(agent: string, tool: string, summary: string): void {
+    this.toolStatus = { agent, tool, summary };
+  }
+
+  clearToolStatus(): void {
+    this.toolStatus = null;
   }
 
   // Setters for context updates

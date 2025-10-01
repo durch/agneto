@@ -308,7 +308,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         const refinerAgent = new RefinerAgent(provider);
 
                         // Generate refinement
-                        const refinedTask = await refinerAgent.refine(cwd, humanTask, taskId);
+                        const refinedTask = await refinerAgent.refine(cwd, humanTask, taskId, taskStateMachine);
 
                         // Store as pending for UI approval
                         taskStateMachine.setPendingRefinement(refinedTask);
@@ -541,7 +541,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // This could be the refined task or the original task
                         const taskDescription = taskStateMachine.getContext().taskToUse || humanTask;
 
-                        const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription);
+                        const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription, taskStateMachine);
 
                         if (!result || !result.feedback) {
                             // No feedback or error - proceed with plan as-is
@@ -681,7 +681,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     }
 
                     log.orchestrator("🔍 Running SuperReviewer for final quality check...");
-                    const superReviewResult = await runSuperReviewer(provider, cwd, planMd);
+                    const superReviewResult = await runSuperReviewer(provider, cwd, planMd, taskStateMachine);
                     taskStateMachine.setSuperReviewResult(superReviewResult);
 
                     log.review(`SuperReviewer verdict: ${superReviewResult.verdict}`);
@@ -966,7 +966,7 @@ async function runRestoredTask(
                             // This could be the refined task or the original task
                             const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
 
-                            const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription);
+                            const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription, taskStateMachine);
 
                             if (!result || !result.feedback) {
                                 // No feedback or error - proceed with plan as-is
@@ -1094,7 +1094,7 @@ async function runRestoredTask(
                         }
 
                         log.orchestrator("🔍 Running SuperReviewer for final quality check...");
-                        const superReviewResult = await runSuperReviewer(provider, cwd, planMd);
+                        const superReviewResult = await runSuperReviewer(provider, cwd, planMd, taskStateMachine);
                         taskStateMachine.setSuperReviewResult(superReviewResult);
 
                         log.review(`SuperReviewer verdict: ${superReviewResult.verdict}`);
@@ -1286,7 +1286,8 @@ async function runExecutionStateMachine(
                         planMd,
                         beanCounterSessionId,
                         beanCounterInitialized,
-                        previousApproval
+                        previousApproval,
+                        stateMachine
                     );
 
                     // Mark as initialized after first call
@@ -1371,7 +1372,8 @@ async function runExecutionStateMachine(
                         chunkDescription,
                         feedback,
                         coderSessionId,
-                        coderInitialized
+                        coderInitialized,
+                        stateMachine
                     );
                     coderInitialized = true;
 
@@ -1430,7 +1432,8 @@ async function runExecutionStateMachine(
                         reviewChunk,
                         proposal,
                         reviewerSessionId,
-                        reviewerInitialized
+                        reviewerInitialized,
+                        stateMachine
                     );
                     reviewerInitialized = true;
 
@@ -1540,7 +1543,8 @@ async function runExecutionStateMachine(
                         approvedPlan,
                         feedback,
                         coderSessionId,
-                        true  // Already initialized from planning phase
+                        true,  // Already initialized from planning phase
+                        stateMachine
                     );
 
                     // Generate concise summary of Coder implementation response
@@ -1580,7 +1584,8 @@ async function runExecutionStateMachine(
                         reviewChunk,
                         changeDescription,
                         reviewerSessionId,
-                        true  // Already initialized from planning phase
+                        true,  // Already initialized from planning phase
+                        stateMachine
                     );
 
                     log.review(`Code verdict: ${verdict.verdict}${verdict.feedback ? ` - ${verdict.feedback}` : ''}`);

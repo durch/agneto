@@ -12,6 +12,7 @@ import {
 import { log } from "../ui/log.js";
 import React from "react";
 import { App } from "../ui/ink/App.js";
+import { summarizeToolParams } from "../utils/tool-summary.js";
 
 export async function runPlanner(
   provider: LLMProvider,
@@ -71,8 +72,18 @@ export async function runPlanner(
               inkInstance.rerender(React.createElement(App, { taskStateMachine }));
             }
           },
-          onToolUse: (tool, input) => log.toolUse("Planner", tool, input),
-          onToolResult: (isError) => log.toolResult("Planner", isError),
+          onToolUse: (tool, input) => {
+            log.toolUse("Planner", tool, input);
+            if (taskStateMachine) {
+              taskStateMachine.setToolStatus("Planner", tool, summarizeToolParams(tool, input));
+            }
+          },
+          onToolResult: (isError) => {
+            log.toolResult("Planner", isError);
+            if (taskStateMachine) {
+              taskStateMachine.clearToolStatus();
+            }
+          },
           onComplete: (cost, duration) =>
             log.complete("Planner", cost, duration),
         },
@@ -157,8 +168,18 @@ async function interactivePlanning(
                 inkInstance.rerender(React.createElement(App, { taskStateMachine }));
               }
             },
-            onToolUse: (tool, input) => log.toolUse("Planner", tool, input),
-            onToolResult: (isError) => log.toolResult("Planner", isError),
+            onToolUse: (tool, input) => {
+              log.toolUse("Planner", tool, input);
+              if (taskStateMachine) {
+                taskStateMachine.setToolStatus("Planner", tool, summarizeToolParams(tool, input));
+              }
+            },
+            onToolResult: (isError) => {
+              log.toolResult("Planner", isError);
+              if (taskStateMachine) {
+                taskStateMachine.clearToolStatus();
+              }
+            },
             onComplete: (cost, duration) =>
               log.complete("Planner", cost, duration),
           },
@@ -194,8 +215,18 @@ async function interactivePlanning(
                 inkInstance.rerender(React.createElement(App, { taskStateMachine }));
               }
             },
-            onToolUse: (tool, input) => log.toolUse("Planner", tool, input),
-            onToolResult: (isError) => log.toolResult("Planner", isError),
+            onToolUse: (tool, input) => {
+              log.toolUse("Planner", tool, input);
+              if (taskStateMachine) {
+                taskStateMachine.setToolStatus("Planner", tool, summarizeToolParams(tool, input));
+              }
+            },
+            onToolResult: (isError) => {
+              log.toolResult("Planner", isError);
+              if (taskStateMachine) {
+                taskStateMachine.clearToolStatus();
+              }
+            },
             onComplete: (cost, duration) =>
               log.complete("Planner", cost, duration),
           },

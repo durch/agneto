@@ -3,11 +3,14 @@ import type { LLMProvider } from "../providers/index.js";
 import type { SuperReviewerVerdict, SuperReviewerResult } from "../types.js";
 import { log } from "../ui/log.js";
 import { interpretSuperReviewerResponse } from "../protocol/interpreter.js";
+import { summarizeToolParams } from "../utils/tool-summary.js";
+import type { TaskStateMachine } from "../task-state-machine.js";
 
 export async function runSuperReviewer(
   provider: LLMProvider,
   cwd: string,
-  planMd: string
+  planMd: string,
+  taskStateMachine?: TaskStateMachine
 ): Promise<SuperReviewerResult> {
   const sys = readFileSync(
     new URL("../prompts/super-reviewer.md", import.meta.url),
@@ -29,8 +32,18 @@ export async function runSuperReviewer(
     ],
     callbacks: {
       onProgress: log.streamProgress,
-      onToolUse: (tool, input) => log.toolUse("Super-Reviewer", tool, input),
-      onToolResult: (isError) => log.toolResult("Super-Reviewer", isError),
+      onToolUse: (tool, input) => {
+        log.toolUse("Super-Reviewer", tool, input);
+        if (taskStateMachine) {
+          taskStateMachine.setToolStatus("Super-Reviewer", tool, summarizeToolParams(tool, input));
+        }
+      },
+      onToolResult: (isError) => {
+        log.toolResult("Super-Reviewer", isError);
+        if (taskStateMachine) {
+          taskStateMachine.clearToolStatus();
+        }
+      },
       onComplete: (cost, duration) =>
         log.complete("Super-Reviewer", cost, duration),
     },

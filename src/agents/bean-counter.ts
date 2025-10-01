@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import type { LLMProvider, Msg } from "../providers/index.js";
 import { log } from "../ui/log.js";
 import { interpretBeanCounterResponse, type BeanCounterInterpretation } from "../protocol/interpreter.js";
+import { summarizeToolParams } from "../utils/tool-summary.js";
+import type { CoderReviewerStateMachine } from "../state-machine.js";
 
 const DEBUG = process.env.DEBUG === "true";
 
@@ -22,7 +24,8 @@ export async function getNextChunk(
   planMd: string,
   sessionId: string,
   isInitialized: boolean,
-  previousApproval?: string
+  previousApproval?: string,
+  stateMachine?: CoderReviewerStateMachine
 ): Promise<BeanCounterChunk | null> {
   const template = readFileSync(
     new URL("../prompts/bean-counter.md", import.meta.url),
@@ -63,8 +66,18 @@ export async function getNextChunk(
       messages,
       callbacks: {
         onProgress: log.streamProgress,
-        onToolUse: (tool, input) => log.toolUse("Bean Counter", tool, input),
-        onToolResult: (isError) => log.toolResult("Bean Counter", isError),
+        onToolUse: (tool, input) => {
+          log.toolUse("Bean Counter", tool, input);
+          if (stateMachine) {
+            stateMachine.setToolStatus("Bean Counter", tool, summarizeToolParams(tool, input));
+          }
+        },
+        onToolResult: (isError) => {
+          log.toolResult("Bean Counter", isError);
+          if (stateMachine) {
+            stateMachine.clearToolStatus();
+          }
+        },
         onComplete: (cost, duration) =>
           log.complete("Bean Counter", cost, duration),
       },

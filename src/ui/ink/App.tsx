@@ -264,11 +264,8 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       {/* Status Section - Ready for future phase-based content */}
       <Box borderStyle="round" borderColor="gray" padding={1}>
         <Box flexDirection="column">
-          <Text dimColor>Status:</Text>
-          <Text>{taskInfo.status}</Text>
-
           {/* Phase-specific content */}
-          <Box marginTop={1}>
+          <Box>
             {(phase.state === TaskState.TASK_REFINING ||
               phase.state === TaskState.TASK_PLANNING ||
               phase.state === TaskState.TASK_CURMUDGEONING ||

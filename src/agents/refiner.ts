@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import type { LLMProvider } from "../providers/index.js";
 import type { RefinedTask } from "../types.js";
 import { log } from "../ui/log.js";
+import { summarizeToolParams } from "../utils/tool-summary.js";
+import type { TaskStateMachine } from "../task-state-machine.js";
 
 export class RefinerAgent {
     private provider: LLMProvider;
@@ -15,7 +17,8 @@ export class RefinerAgent {
     async refine(
         cwd: string,
         rawTask: string,
-        taskId: string
+        taskId: string,
+        taskStateMachine?: TaskStateMachine
     ): Promise<RefinedTask> {
         log.startStreaming("Task Refiner");
 
@@ -29,8 +32,18 @@ export class RefinerAgent {
             ],
             callbacks: {
                 onProgress: log.streamProgress,
-                onToolUse: (tool, input) => log.toolUse("Task Refiner", tool, input),
-                onToolResult: (isError) => log.toolResult("Task Refiner", isError),
+                onToolUse: (tool, input) => {
+                    log.toolUse("Task Refiner", tool, input);
+                    if (taskStateMachine) {
+                        taskStateMachine.setToolStatus("Task Refiner", tool, summarizeToolParams(tool, input));
+                    }
+                },
+                onToolResult: (isError) => {
+                    log.toolResult("Task Refiner", isError);
+                    if (taskStateMachine) {
+                        taskStateMachine.clearToolStatus();
+                    }
+                },
                 onComplete: (cost, duration) => log.complete("Task Refiner", cost, duration)
             }
         });

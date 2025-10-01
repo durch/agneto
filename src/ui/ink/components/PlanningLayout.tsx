@@ -721,6 +721,24 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             return null;
           })()}
 
+          {/* Display tool status from state machine */}
+          {(() => {
+            // Check execution state machine first (if in execution phase)
+            const executionStateMachine = taskStateMachine.getExecutionStateMachine();
+            const toolStatus = executionStateMachine?.getToolStatus() || taskStateMachine.getToolStatus();
+
+            if (toolStatus) {
+              return (
+                <Box marginBottom={1}>
+                  <Text color="cyan">
+                    ⚙️ [{toolStatus.agent}] → {toolStatus.tool}: {toolStatus.summary}
+                  </Text>
+                </Box>
+              );
+            }
+            return null;
+          })()}
+
           <Text dimColor>
             Current Stage: {' '}
             {currentState === TaskState.TASK_REFINING && 'Refining task description...'}
@@ -756,13 +774,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   <Text color="blue">⏳ Processing your feedback...</Text>
                 </Box>
               )}
-
-              {/* Show last action taken */}
-              {lastAction && !isProcessingFeedback && (
-                <Box marginTop={1}>
-                  <Text color="cyan">✓ {lastAction}</Text>
-                </Box>
-              )}
             </Box>
           )}
 
@@ -782,13 +793,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               {isProcessingFeedback && (
                 <Box marginTop={1}>
                   <Text color="blue">⏳ Processing your feedback...</Text>
-                </Box>
-              )}
-
-              {/* Show last action taken */}
-              {lastAction && !isProcessingFeedback && (
-                <Box marginTop={1}>
-                  <Text color="cyan">✓ {lastAction}</Text>
                 </Box>
               )}
             </Box>
@@ -813,13 +817,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               {isProcessingFeedback && (
                 <Box marginTop={1}>
                   <Text color="blue">⏳ Processing your decision...</Text>
-                </Box>
-              )}
-
-              {/* Show last action taken */}
-              {lastAction && !isProcessingFeedback && (
-                <Box marginTop={1}>
-                  <Text color="cyan">✓ {lastAction}</Text>
                 </Box>
               )}
             </Box>

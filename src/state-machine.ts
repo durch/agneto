@@ -2,6 +2,7 @@ import { log } from "./ui/log.js";
 import type { CoderPlanProposal } from "./types.js";
 import type { ExecutionStateCheckpoint } from "./audit/types.js";
 import type { AuditLogger } from "./audit/audit-logger.js";
+import type { ToolStatus } from "./task-state-machine.js";
 
 // State definitions for the Bean Counter coordinated protocol
 // AIDEV-NOTE: Bean Counter acts as "Scrum Master" - maintains session-based progress ledger,
@@ -100,6 +101,7 @@ export class CoderReviewerStateMachine {
   private state: State = State.TASK_START;
   private context: StateMachineContext;
   private auditLogger?: AuditLogger;
+  private toolStatus: ToolStatus | null = null;
 
   constructor(maxPlanAttempts = 7, maxCodeAttempts = 7, baselineCommit?: string, auditLogger?: AuditLogger) {
     this.context = {
@@ -188,6 +190,19 @@ export class CoderReviewerStateMachine {
       return this.context.reviewerSummary;
     }
     return undefined;
+  }
+
+  // Tool status management for UI display
+  getToolStatus(): ToolStatus | null {
+    return this.toolStatus;
+  }
+
+  setToolStatus(agent: string, tool: string, summary: string): void {
+    this.toolStatus = { agent, tool, summary };
+  }
+
+  clearToolStatus(): void {
+    this.toolStatus = null;
   }
 
   // Setters for testing and external manipulation
