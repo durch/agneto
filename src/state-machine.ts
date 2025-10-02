@@ -444,7 +444,7 @@ export class CoderReviewerStateMachine {
           this.context.codeAttempts = 0;
           this.context.currentPlan = undefined;
           this.context.currentChunk = undefined;
-          this.context.planFeedback = data; // Use rejection reason as feedback
+          this.context.codeFeedback = data; // Use rejection reason as feedback
           return true;
         } else if (event === Event.CODE_NEEDS_HUMAN) {
           // Store feedback and wait for human decision

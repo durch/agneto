@@ -473,7 +473,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     // Curmudgeon review phase - check for over-engineering
                     const planMd = taskStateMachine.getPlanMd();
                     const simplificationCount = taskStateMachine.getSimplificationCount();
-                    const maxSimplifications = 2;
+                    const maxSimplifications = 4;
 
                     // Update UI to show we're entering curmudgeon phase
                     if (inkInstance) {
@@ -482,6 +482,46 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
+                    }
+
+                    // Check if user has already reviewed a plan - skip Curmudgeon and show directly to user
+                    if (taskStateMachine.getUserHasReviewedPlan()) {
+                        log.orchestrator("User has reviewed previous plan - skipping Curmudgeon review and showing revised plan directly");
+
+                        // Interactive mode: show plan to user for approval
+                        if (inkInstance && !options?.nonInteractive) {
+                            let resolverFunc: ((value: PlanFeedback) => void) | null = null;
+                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                resolverFunc = resolve;
+                            });
+                            (feedbackPromise as any).resolve = resolverFunc;
+
+                            const planCallback = (feedback: PlanFeedback) => {
+                                resolverFunc?.(feedback);
+                            };
+
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: planCallback,
+                                onRefinementFeedback: undefined
+                            }));
+
+                            const feedback = await feedbackPromise;
+
+                            if (feedback.type === "approve") {
+                                log.orchestrator("Plan approved by user.");
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                            } else {
+                                // User rejected again - go back to planning with feedback
+                                const rejectionFeedback = feedback.details || "User requested plan revision";
+                                taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                            }
+                        } else {
+                            // Non-interactive: proceed automatically
+                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                        }
+                        break;
                     }
 
                     // Check if we've exceeded the simplification limit
@@ -546,10 +586,12 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                                     if (feedback.type === "approve") {
                                         log.orchestrator("Plan approved by user.");
+                                        taskStateMachine.setUserHasReviewedPlan(true);
                                         taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                                     } else {
                                         // User rejected - treat as Curmudgeon simplify request
                                         const rejectionFeedback = feedback.details || "User requested plan revision";
+                                        taskStateMachine.setUserHasReviewedPlan(true);
                                         taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
                                         taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                                     }
@@ -587,6 +629,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 }
 
                 case TaskState.TASK_EXECUTING: {
+                    // Reset user review flag when entering execution (planning phase complete)
+                    taskStateMachine.setUserHasReviewedPlan(false);
+
                     // Keep Ink UI alive during execution phase for real-time updates
                     if (inkInstance) {
                         log.orchestrator("🖥️ Ink UI will continue displaying execution phase...");
@@ -957,7 +1002,14 @@ async function runRestoredTask(
                         // Curmudgeon review phase - check for over-engineering
                         const planMd = taskStateMachine.getPlanMd();
                         const simplificationCount = taskStateMachine.getSimplificationCount();
-                        const maxSimplifications = 2;
+                        const maxSimplifications = 4;
+
+                        // Check if user has already reviewed a plan - skip Curmudgeon (for restored tasks this shouldn't happen but include for completeness)
+                        if (taskStateMachine.getUserHasReviewedPlan()) {
+                            log.orchestrator("User has reviewed previous plan - proceeding without Curmudgeon review");
+                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                            break;
+                        }
 
                         // Check if we've exceeded the simplification limit
                         if (simplificationCount >= maxSimplifications) {
@@ -1016,6 +1068,9 @@ async function runRestoredTask(
                     }
 
                     case TaskState.TASK_EXECUTING: {
+                        // Reset user review flag when entering execution (planning phase complete)
+                        taskStateMachine.setUserHasReviewedPlan(false);
+
                         // Cleanup Ink UI when entering execution phase (restored tasks)
                         // Note: Restored tasks don't have inkInstance reference since UI wasn't rendered in this session
                         if (uiCallback) {
@@ -1298,7 +1353,7 @@ async function runExecutionStateMachine(
                     // Get previous approval message if this is not the first chunk
                     const context = stateMachine.getContext();
                     const previousApproval = beanCounterInitialized
-                        ? (context.codeFeedback || "Previous work was approved")
+                        ? context.codeFeedback
                         : undefined;
 
                     const chunk = await getNextChunk(
