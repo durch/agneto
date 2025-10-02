@@ -1785,7 +1785,6 @@ async function runExecutionStateMachine(
                             break;
 
                         case 'revise-code':
-                            await revertLastCommit(cwd, stateMachine.getContext().baselineCommit);
                             stateMachine.transition(Event.CODE_REVISION_REQUESTED, verdict.feedback);
                             break;
 
@@ -1850,7 +1849,6 @@ async function runExecutionStateMachine(
                                 );
                             } else if (codeDecision.decision === 'retry') {
                                 log.orchestrator("Human requested code revision");
-                                await revertLastCommit(cwd, stateMachine.getContext().baselineCommit);
                                 // Combine reviewer feedback with human feedback
                                 let combinedFeedback = verdict.feedback || "";
                                 if (codeDecision.feedback) {
