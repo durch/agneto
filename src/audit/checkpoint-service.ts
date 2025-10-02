@@ -208,6 +208,7 @@ export class CheckpointService {
         retryFeedback: taskStateMachine.getContext().retryFeedback,
         simplificationCount: taskStateMachine.getSimplificationCount?.() || 0,
         curmudgeonFeedback: taskStateMachine.getCurmudgeonFeedback?.(),
+        userHasReviewedPlan: taskStateMachine.getUserHasReviewedPlan?.() || false,
         superReviewResult: taskStateMachine.getSuperReviewResult?.()
       };
     } catch (error) {

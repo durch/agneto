@@ -125,6 +125,9 @@ export interface TaskContext {
   // Curmudgeon tracking
   simplificationCount: number;
   curmudgeonFeedback?: string;
+
+  // User review tracking
+  userHasReviewedPlan: boolean;
 }
 
 export class TaskStateMachine {
@@ -147,6 +150,7 @@ export class TaskStateMachine {
       workingDirectory,
       options,
       simplificationCount: 0,
+      userHasReviewedPlan: false,
       liveActivity: null,
     };
     this.auditLogger = auditLogger;
@@ -276,6 +280,14 @@ export class TaskStateMachine {
 
   clearCurmudgeonFeedback() {
     this.context.curmudgeonFeedback = undefined;
+  }
+
+  setUserHasReviewedPlan(value: boolean) {
+    this.context.userHasReviewedPlan = value;
+  }
+
+  getUserHasReviewedPlan(): boolean {
+    return this.context.userHasReviewedPlan;
   }
 
   getLiveActivity(): { agent: string; message: string } | null {
@@ -583,6 +595,9 @@ export class TaskStateMachine {
       if (checkpoint.curmudgeonFeedback !== undefined) {
         this.context.curmudgeonFeedback = checkpoint.curmudgeonFeedback;
       }
+
+      // Restore user review tracking
+      this.context.userHasReviewedPlan = checkpoint.userHasReviewedPlan || false;
 
       // Restore super review result if available
       if (checkpoint.superReviewResult) {

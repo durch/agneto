@@ -141,6 +141,9 @@ export interface TaskStateCheckpoint {
   simplificationCount: number;
   curmudgeonFeedback?: string;
 
+  /** User review tracking */
+  userHasReviewedPlan?: boolean;
+
   /** Super review results */
   superReviewResult?: {
     verdict: string;

@@ -6,6 +6,7 @@ import { State } from '../../../state-machine.js';
 import { StatusIndicator } from './StatusIndicator.js';
 import type { HumanInteractionResult } from '../../../types.js';
 import { TextInputModal } from './TextInputModal.js';
+import { useSpinner } from '../hooks/useSpinner.js';
 
 // TypeScript interface for ExecutionLayout props
 interface ExecutionLayoutProps {
@@ -83,6 +84,10 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
   // Get execution state machine
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
+
+  // Get tool status to determine if spinner should animate
+  const toolStatus = executionStateMachine?.getToolStatus();
+  const activityIndicator = useSpinner(!!toolStatus);
 
   // Wire up human review decision when callback is provided
   React.useEffect(() => {
@@ -258,19 +263,13 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         <Text color="blue" bold>⚡ Live Activity</Text>
 
         {/* Tool status display */}
-        {(() => {
-          const toolStatus = executionStateMachine.getToolStatus();
-          if (toolStatus) {
-            return (
-              <Box marginBottom={1}>
-                <Text color="cyan">
-                  ⚙️ [{toolStatus.agent}] → {toolStatus.tool}: {toolStatus.summary}
-                </Text>
-              </Box>
-            );
-          }
-          return null;
-        })()}
+        {toolStatus && (
+          <Box marginBottom={1}>
+            <Text color="cyan">
+              {activityIndicator} [{toolStatus.agent}] → {toolStatus.tool}: {toolStatus.summary}
+            </Text>
+          </Box>
+        )}
 
         <Text>{statusMessage}</Text>
         <Text dimColor>State: {currentState}</Text>

@@ -9,6 +9,7 @@ import type { SuperReviewerDecision } from '../../../types.js';
 import { FullscreenModal } from './FullscreenModal.js';
 import { TextInputModal } from './TextInputModal.js';
 import { MarkdownText } from './MarkdownText.js';
+import { useSpinner } from '../hooks/useSpinner.js';
 
 // TypeScript interface for PlanningLayout props
 interface PlanningLayoutProps {
@@ -79,9 +80,11 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     setActiveResolver(() => resolver);
   };
 
+  // Get live activity to determine if spinner should animate
+  const liveActivity = taskStateMachine.getLiveActivityMessage();
 
-  // Static activity indicator (no animation to prevent flickering)
-  const activityIndicator = '⚡';
+  // Animated activity indicator (spinner when activity is present)
+  const activityIndicator = useSpinner(!!liveActivity);
 
   // Store curmudgeon feedback when it becomes available
   React.useEffect(() => {
@@ -508,22 +511,19 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         <Text color="yellow" bold>⚡ Live Activity</Text>
         <Box marginTop={1} flexDirection="column">
           {/* Display live activity message from task state machine */}
-          {(() => {
-            const liveActivity = taskStateMachine.getLiveActivityMessage();
-            if (liveActivity) {
-              // Filter out multiline content (likely full plan output) from live activity
-              // Only show brief status updates (single line or short messages)
-              const isLongContent = liveActivity.message.includes('\n') || liveActivity.message.length > 150;
+          {liveActivity && (() => {
+            // Filter out multiline content (likely full plan output) from live activity
+            // Only show brief status updates (single line or short messages)
+            const isLongContent = liveActivity.message.includes('\n') || liveActivity.message.length > 150;
 
-              if (!isLongContent) {
-                return (
-                  <Box marginBottom={1}>
-                    <Text color="cyan">
-                      {activityIndicator} {liveActivity.agent}: {liveActivity.message}
-                    </Text>
-                  </Box>
-                );
-              }
+            if (!isLongContent) {
+              return (
+                <Box marginBottom={1}>
+                  <Text color="cyan">
+                    {activityIndicator} {liveActivity.agent}: {liveActivity.message}
+                  </Text>
+                </Box>
+              );
             }
             return null;
           })()}
@@ -591,8 +591,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {((currentState === TaskState.TASK_PLANNING) ||
-            (currentState === TaskState.TASK_CURMUDGEONING && onPlanFeedback)) &&
+          {(currentState === TaskState.TASK_CURMUDGEONING && onPlanFeedback) &&
            planMd && !isProcessingFeedback && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🎯 Plan Ready for Review</Text>
