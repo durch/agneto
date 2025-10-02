@@ -246,10 +246,16 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
         // Render Ink UI immediately - it will observe state changes
         // Don't pass currentState as prop - let App read it dynamically
-        const { unmount, waitUntilExit, rerender } = render(React.createElement(App, {
-            taskStateMachine,
-            onPlanFeedback: handlePlanFeedback
-        }));
+        const { unmount, waitUntilExit, rerender } = render(
+            React.createElement(App, {
+                taskStateMachine,
+                onPlanFeedback: handlePlanFeedback
+            }),
+            {
+                patchConsole: false,  // Disable console interception to prevent flickering
+                maxFps: 15            // Lower FPS for smoother terminal rendering
+            }
+        );
 
         // Store the Ink instance with all necessary methods
         inkInstance = { unmount, waitUntilExit, rerender };
@@ -727,7 +733,13 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     }
 
                     log.orchestrator("🔍 Running SuperReviewer for final quality check...");
-                    const superReviewResult = await runSuperReviewer(provider, cwd, planMd, taskStateMachine);
+                    const superReviewResult = await runSuperReviewer(
+                        provider,
+                        cwd,
+                        planMd,
+                        taskStateMachine,
+                        taskStateMachine.getBaselineCommit()
+                    );
                     taskStateMachine.setSuperReviewResult(superReviewResult);
 
                     log.review(`SuperReviewer verdict: ${superReviewResult.verdict}`);
@@ -1170,7 +1182,13 @@ async function runRestoredTask(
                         }
 
                         log.orchestrator("🔍 Running SuperReviewer for final quality check...");
-                        const superReviewResult = await runSuperReviewer(provider, cwd, planMd, taskStateMachine);
+                        const superReviewResult = await runSuperReviewer(
+                            provider,
+                            cwd,
+                            planMd,
+                            taskStateMachine,
+                            taskStateMachine.getBaselineCommit()
+                        );
                         taskStateMachine.setSuperReviewResult(superReviewResult);
 
                         log.review(`SuperReviewer verdict: ${superReviewResult.verdict}`);

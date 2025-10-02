@@ -10,7 +10,8 @@ export async function runSuperReviewer(
   provider: LLMProvider,
   cwd: string,
   planMd: string,
-  taskStateMachine?: TaskStateMachine
+  taskStateMachine?: TaskStateMachine,
+  baselineCommit?: string
 ): Promise<SuperReviewerResult> {
   const sys = readFileSync(
     new URL("../prompts/super-reviewer.md", import.meta.url),
@@ -18,6 +19,14 @@ export async function runSuperReviewer(
   );
 
   log.startStreaming("Super-Reviewer");
+
+  // Construct user message with baseline commit information
+  let userMessage = "";
+  if (baselineCommit) {
+    userMessage += `**Task Baseline Commit**: \`${baselineCommit}\`\n\n`;
+    userMessage += `IMPORTANT: Compare changes ONLY against this baseline commit using \`git diff ${baselineCommit}..HEAD\`. Do NOT compare against master/main.\n\n`;
+  }
+  userMessage += `**Plan (Markdown)**:\n\n${planMd}\n\nPerform comprehensive review and provide verdict on the implementation.`;
 
   const res = await provider.query({
     cwd,
@@ -27,7 +36,7 @@ export async function runSuperReviewer(
       { role: "system", content: sys },
       {
         role: "user",
-        content: `Plan (Markdown):\n\n${planMd}\n\nPerform comprehensive review and provide verdict on the implementation.`,
+        content: userMessage,
       },
     ],
     callbacks: {

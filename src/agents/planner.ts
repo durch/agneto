@@ -69,7 +69,8 @@ export async function runPlanner(
             log.streamProgress(update);
             if (taskStateMachine && inkInstance) {
               taskStateMachine.setLiveActivityMessage("Planner", update);
-              inkInstance.rerender(React.createElement(App, { taskStateMachine }));
+              // Removed rerender - streaming updates aren't displayed anyway due to length filter in UI
+              // inkInstance.rerender(React.createElement(App, { taskStateMachine }));
             }
           },
           onToolUse: (tool, input) => {
@@ -165,7 +166,8 @@ async function interactivePlanning(
               log.streamProgress(update);
               if (taskStateMachine && inkInstance) {
                 taskStateMachine.setLiveActivityMessage("Planner", update);
-                inkInstance.rerender(React.createElement(App, { taskStateMachine }));
+                // Removed rerender - streaming updates aren't displayed anyway due to length filter in UI
+                // inkInstance.rerender(React.createElement(App, { taskStateMachine }));
               }
             },
             onToolUse: (tool, input) => {
@@ -212,7 +214,8 @@ async function interactivePlanning(
               log.streamProgress(update);
               if (taskStateMachine && inkInstance) {
                 taskStateMachine.setLiveActivityMessage("Planner", update);
-                inkInstance.rerender(React.createElement(App, { taskStateMachine }));
+                // Removed rerender - streaming updates aren't displayed anyway due to length filter in UI
+                // inkInstance.rerender(React.createElement(App, { taskStateMachine }));
               }
             },
             onToolUse: (tool, input) => {

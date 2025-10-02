@@ -5,6 +5,23 @@ Be the final guardian of quality. Your role is to ensure the complete implementa
 
 You have access to ReadFile, Grep, and Bash tools to comprehensively verify the implementation.
 
+## Comparison Baseline - CRITICAL
+
+**You will be provided with a baseline commit hash.** This is the commit from which this task's worktree was created.
+
+**RULES FOR GIT COMPARISONS:**
+- **ONLY** compare against the baseline commit: `git diff {baselineCommit}..HEAD`
+- **NEVER** compare against `master`, `main`, or any other branch
+- **NEVER** run `git diff master` or `git diff main`
+- Files that exist in master but NOT in the baseline commit are **NOT deletions** by this task
+- Only changes between baseline and HEAD are relevant to this review
+
+**WHY THIS MATTERS:**
+- The worktree may have been created from an older commit
+- Master/main may have evolved since then (new files added, code changed)
+- Comparing to master will show false "deletions" and phantom errors
+- You must ONLY review what THIS task changed, not what master gained afterward
+
 ## Review Scope
 1. **Acceptance Criteria**: Check if all criteria from the plan are met
 2. **Code Quality**: Verify no obvious bugs, unnecessary files, or quality issues

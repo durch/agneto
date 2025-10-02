@@ -250,7 +250,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
   }
 
   return (
-    <Box flexDirection="column" padding={1} minHeight={terminalHeight}>
+    <Box flexDirection="column" padding={1} height={terminalHeight - 2}>
       {/* Header Section */}
       <Box marginBottom={1}>
         <Text bold>🤖 Agneto Task Monitor</Text>
