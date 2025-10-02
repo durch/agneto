@@ -60,6 +60,10 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     let uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined = undefined;
     let inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null = null;
 
+    // Plan feedback resolver and callback (scoped to entire function for reuse)
+    let planFeedbackResolver: ((feedback: PlanFeedback) => void) | null = null;
+    let handlePlanFeedback: ((feedback: PlanFeedback) => void) | undefined = undefined;
+
     log.orchestrator("🖥️ Ink UI enabled - UI callback mechanism will be available for plan feedback");
     // The actual callback will be set up when the Ink UI is rendered
     // to properly wire up the promise resolver mechanism
@@ -213,14 +217,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
     // Setup Ink UI - UI is the app!
     try {
-        // Create Promise-based callback mechanism for plan feedback
-        let planFeedbackResolver: ((feedback: PlanFeedback) => void) | null = null;
-        const createPlanFeedbackPromise = () => new Promise<PlanFeedback>((resolve) => {
-            planFeedbackResolver = resolve;
-        });
-
-        // Create callback function that resolves the Promise when user provides feedback
-        const handlePlanFeedback = (feedback: PlanFeedback) => {
+        // Initialize the plan feedback callback (assigned to function-scoped variable)
+        handlePlanFeedback = (feedback: PlanFeedback) => {
             if (planFeedbackResolver) {
                 planFeedbackResolver(feedback);
                 planFeedbackResolver = null; // Clean up resolver
@@ -496,19 +494,16 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                         // Interactive mode: show plan to user for approval
                         if (inkInstance && !options?.nonInteractive) {
-                            let resolverFunc: ((value: PlanFeedback) => void) | null = null;
+                            // Create NEW promise and set the global resolver for UI to use
                             const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                resolverFunc = resolve;
+                                planFeedbackResolver = resolve;
                             });
-                            (feedbackPromise as any).resolve = resolverFunc;
 
-                            const planCallback = (feedback: PlanFeedback) => {
-                                resolverFunc?.(feedback);
-                            };
-
+                            // Rerender UI - it will use the existing handlePlanFeedback callback
+                            // which will call planFeedbackResolver when user interacts
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
-                                onPlanFeedback: planCallback,
+                                onPlanFeedback: handlePlanFeedback,
                                 onRefinementFeedback: undefined
                             }));
 
@@ -578,19 +573,16 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                                 // Interactive mode: show plan to user for final approval
                                 if (inkInstance && !options?.nonInteractive) {
-                                    let resolverFunc: ((value: PlanFeedback) => void) | null = null;
+                                    // Create NEW promise and set the global resolver for UI to use
                                     const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                        resolverFunc = resolve;
+                                        planFeedbackResolver = resolve;
                                     });
-                                    (feedbackPromise as any).resolve = resolverFunc;
 
-                                    const planCallback = (feedback: PlanFeedback) => {
-                                        resolverFunc?.(feedback);
-                                    };
-
+                                    // Rerender UI - it will use the existing handlePlanFeedback callback
+                                    // which will call planFeedbackResolver when user interacts
                                     inkInstance.rerender(React.createElement(App, {
                                         taskStateMachine,
-                                        onPlanFeedback: planCallback,
+                                        onPlanFeedback: handlePlanFeedback,
                                         onRefinementFeedback: undefined
                                     }));
 
@@ -801,7 +793,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                             if (gardenerResult?.success) {
                                 await commitChanges(
-                                    taskStateMachine.getContext().taskId,
+                                    cwd,
                                     "docs: Update CLAUDE.md documentation"
                                 );
                             }
@@ -1281,7 +1273,7 @@ async function runRestoredTask(
 
                             if (gardenerResult?.success) {
                                 await commitChanges(
-                                    taskStateMachine.getContext().taskId,
+                                    cwd,
                                     "docs: Update CLAUDE.md documentation"
                                 );
                             }

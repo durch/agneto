@@ -86,7 +86,7 @@ Please analyze this completed task and update CLAUDE.md with relevant insights. 
     const response = await provider.query({
       cwd: params.workingDirectory,
       mode: "default", // Enable file operation tools
-      allowedTools: ["ReadFile", "Edit", "Write", "Grep"],
+      allowedTools: ["ReadFile", "Edit", "Write", "Grep", "Bash"],
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage }

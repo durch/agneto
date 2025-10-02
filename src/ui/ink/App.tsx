@@ -102,15 +102,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       return;
     }
 
-    // Handle Ctrl+T to toggle task description modal
-    if (key.ctrl && (input === 't' || input === 'T')) {
-      const taskInfo = getTaskInfo();
-      if (taskInfo.description && taskInfo.description !== 'No description available') {
-        setIsTaskModalOpen(true);
-      }
-      return;
-    }
-
     // Handle pane fullscreen shortcuts (Ctrl+Q/W/E)
     if (key.ctrl && (input === 'q' || input === 'Q' || input === 'w' || input === 'W' || input === 'e' || input === 'E')) {
       const paneMap: { [key: string]: number } = { q: 1, Q: 1, w: 2, W: 2, e: 3, E: 3 };
