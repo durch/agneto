@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, Box, useStdout } from 'ink';
+import { Text, Box, useStdout, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import { TaskStateMachine } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
@@ -12,6 +12,7 @@ import { Spinner } from './Spinner.js';
 interface ExecutionLayoutProps {
   taskStateMachine: TaskStateMachine;
   onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
+  onFullscreen?: (paneNum: number) => void;
 }
 
 // Helper function to truncate content
@@ -70,7 +71,7 @@ function getAgentStatusText(agent: 'coder' | 'reviewer', currentState: State): s
 }
 
 // Execution Layout Component - handles TASK_EXECUTING with dynamic two-pane view
-export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine, onHumanReviewDecision }) => {
+export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine, onHumanReviewDecision, onFullscreen }) => {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns || 120;
   const terminalHeight = stdout?.rows || 40;
@@ -87,6 +88,15 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
   // Get tool status to determine if spinner should animate
   const toolStatus = executionStateMachine?.getToolStatus();
+
+  // Intercept Ctrl+Q/W/E for fullscreen panes
+  useInput((input, key) => {
+    if (key.ctrl && (input === 'q' || input === 'Q' || input === 'w' || input === 'W' || input === 'e' || input === 'E')) {
+      const paneMap: { [key: string]: number } = { q: 1, Q: 1, w: 2, W: 2, e: 3, E: 3 };
+      onFullscreen?.(paneMap[input]);
+      return;
+    }
+  });
 
   // Wire up human review decision when callback is provided
   React.useEffect(() => {
@@ -110,9 +120,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   if (!executionStateMachine) {
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1}>
-        <Box marginBottom={1}>
-          <Text color="yellow" bold>⚡ Execution Phase</Text>
-        </Box>
         <Text dimColor>Initializing execution state machine...</Text>
       </Box>
     );
@@ -125,8 +132,8 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
   // Calculate pane dimensions
   const isWideTerminal = terminalWidth > 120;
-  const leftPanelWidth = Math.floor(terminalWidth * 0.48);
-  const rightPanelWidth = Math.floor(terminalWidth * 0.48);
+  const leftPanelWidth = Math.floor(terminalWidth * 0.49);
+  const rightPanelWidth = Math.floor(terminalWidth * 0.49);
   // Bean Counter pane gets most of available vertical space (minus header, status panel, margins)
   const beanCounterHeight = Math.max(15, Math.floor(terminalHeight * 0.5));
   const agentPaneHeight = Math.floor(terminalHeight * 0.2);
@@ -171,10 +178,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1}>
-      <Box marginBottom={1}>
-        <Text color="yellow" bold>⚡ Execution Phase</Text>
-      </Box>
-
       {/* Two-pane layout */}
       <Box
         flexDirection={isWideTerminal ? "row" : "column"}
@@ -185,14 +188,17 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
           flexDirection="column"
           borderStyle="single"
           borderColor="gray"
-          padding={1}
+          paddingX={1}
           width={isWideTerminal ? leftPanelWidth : undefined}
           marginRight={isWideTerminal ? 1 : 0}
           marginBottom={isWideTerminal ? 0 : 1}
         >
-          <Box>
-            <StatusIndicator agent="bean" isActive={currentState === State.BEAN_COUNTING} />
-            <Text color={leftColor} bold>{leftTitle}</Text>
+          <Box justifyContent="space-between">
+            <Box>
+              <StatusIndicator agent="bean" isActive={currentState === State.BEAN_COUNTING} />
+              <Text color={leftColor} bold>{leftTitle}</Text>
+            </Box>
+            <Text dimColor>[Q]</Text>
           </Box>
           <Box marginTop={1}>
             <Text wrap="wrap">{truncateContent(leftContent, beanCounterHeight).display}</Text>
@@ -204,7 +210,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
           flexDirection="column"
           borderStyle="single"
           borderColor="gray"
-          padding={1}
+          paddingX={1}
           width={isWideTerminal ? rightPanelWidth : undefined}
         >
           {/* Coder Section */}
@@ -212,14 +218,17 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             flexDirection="column"
             borderStyle="single"
             borderColor={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'}
-            padding={1}
+            paddingX={1}
             marginBottom={1}
           >
-            <Box>
-              <StatusIndicator agent="coder" isActive={getActiveAgent(currentState) === 'coder'} />
-              <Text color={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'} bold>
-                🤖 Coder
-              </Text>
+            <Box justifyContent="space-between">
+              <Box>
+                <StatusIndicator agent="coder" isActive={getActiveAgent(currentState) === 'coder'} />
+                <Text color={getActiveAgent(currentState) === 'coder' ? 'green' : 'gray'} bold>
+                  🤖 Coder
+                </Text>
+              </Box>
+              <Text dimColor>[W]</Text>
             </Box>
             <Box marginTop={1}>
               <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
@@ -234,13 +243,16 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             flexDirection="column"
             borderStyle="single"
             borderColor={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'}
-            padding={1}
+            paddingX={1}
           >
-            <Box>
-              <StatusIndicator agent="reviewer" isActive={getActiveAgent(currentState) === 'reviewer'} />
-              <Text color={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'} bold>
-                👀 Reviewer
-              </Text>
+            <Box justifyContent="space-between">
+              <Box>
+                <StatusIndicator agent="reviewer" isActive={getActiveAgent(currentState) === 'reviewer'} />
+                <Text color={getActiveAgent(currentState) === 'reviewer' ? 'yellow' : 'gray'} bold>
+                  👀 Reviewer
+                </Text>
+              </Box>
+              <Text dimColor>[E]</Text>
             </Box>
             <Box marginTop={1}>
               <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
@@ -257,10 +269,8 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         flexDirection="column"
         borderStyle="single"
         borderColor="blue"
-        padding={1}
+        paddingX={1}
       >
-        <Text color="blue" bold>⚡ Live Activity</Text>
-
         {/* Tool status display */}
         {toolStatus && (
           <Box marginBottom={1}>

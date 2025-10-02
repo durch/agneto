@@ -31,7 +31,12 @@ export class RefinerAgent {
                 { role: "user", content: `Task: ${rawTask}\n\nAnalyze and refine this task description.` }
             ],
             callbacks: {
-                onProgress: log.streamProgress,
+                onProgress: (update: string) => {
+                    log.streamProgress(update);
+                    if (taskStateMachine) {
+                        taskStateMachine.setLiveActivityMessage("Task Refiner", update);
+                    }
+                },
                 onToolUse: (tool, input) => {
                     log.toolUse("Task Refiner", tool, input);
                     if (taskStateMachine) {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, Box, useStdout } from 'ink';
+import { Text, Box, useStdout, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import { TaskStateMachine, TaskState } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
@@ -18,6 +18,7 @@ interface PlanningLayoutProps {
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
   onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
+  onFullscreen?: (paneNum: number) => void;
   terminalHeight: number;
   terminalWidth: number;
   availableContentHeight: number;
@@ -30,6 +31,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   onPlanFeedback,
   onRefinementFeedback,
   onSuperReviewerDecision,
+  onFullscreen,
   terminalHeight,
   terminalWidth,
   availableContentHeight
@@ -79,6 +81,15 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     });
     setActiveResolver(() => resolver);
   };
+
+  // Intercept Ctrl+Q/W/E for fullscreen panes
+  useInput((input, key) => {
+    if (key.ctrl && (input === 'q' || input === 'Q' || input === 'w' || input === 'W' || input === 'e' || input === 'E')) {
+      const paneMap: { [key: string]: number } = { q: 1, Q: 1, w: 2, W: 2, e: 3, E: 3 };
+      onFullscreen?.(paneMap[input]);
+      return;
+    }
+  });
 
   // Get live activity to determine if spinner should animate
   const liveActivity = taskStateMachine.getLiveActivityMessage();
@@ -239,7 +250,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Calculate responsive layout based on terminal width
   const isWideTerminal = terminalWidth > 120;
-  const panelWidth = Math.floor(terminalWidth * 0.48);
+  const panelWidth = Math.floor(terminalWidth * 0.49);
 
   // Get data from TaskStateMachine
   const context = taskStateMachine.getContext();
@@ -260,6 +271,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Calculate content height for each pane in split view
   const paneContentHeight = Math.floor(availableContentHeight / 2) - 4; // Divide by 2 for two rows, subtract for borders/padding
 
+  // Determine if a query is in progress based on state and data availability
+  const isQueryInProgress =
+    (currentState === TaskState.TASK_REFINING && !pendingRefinement) ||
+    (currentState === TaskState.TASK_PLANNING && !planMd) ||
+    (currentState === TaskState.TASK_CURMUDGEONING && !curmudgeonFeedback) ||
+    !!liveActivity;
+
   // Determine phase title and color
   const isExecuting = currentState === TaskState.TASK_EXECUTING;
   const isSuperReviewing = currentState === TaskState.TASK_SUPER_REVIEWING;
@@ -268,10 +286,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={phaseColor} padding={1} flexGrow={1}>
-      <Box marginBottom={1}>
-        <Text color={phaseColor} bold>{phaseTitle}</Text>
-      </Box>
-
       {/* Top row: Refined Task and Plan Content panels */}
       <Box
         flexDirection={isWideTerminal ? "row" : "column"}
@@ -284,7 +298,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           borderColor={
             currentState === TaskState.TASK_CURMUDGEONING ? "green" : (currentState === TaskState.TASK_PLANNING && previousCurmudgeonFeedback ? "yellow" : "gray")
           }
-          padding={1}
+          paddingX={1}
           width={isWideTerminal ? panelWidth : undefined}
           marginRight={isWideTerminal ? 1 : 0}
           marginBottom={isWideTerminal ? 0 : 1}
@@ -295,6 +309,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="cyan" bold>🧮 Bean Counter Chunk</Text>
+                <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
                 {beanCounterOutput ? (
@@ -309,6 +324,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="cyan" bold>📋 Original Plan</Text>
+                <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
@@ -327,6 +343,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>📋 Current Plan</Text>
+                <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
@@ -345,6 +362,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="yellow" bold>🧐 Previous Feedback</Text>
+                <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
                 <MarkdownText maxLines={paneContentHeight}>{previousCurmudgeonFeedback}</MarkdownText>
@@ -354,6 +372,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="cyan" bold>📝 Refined Task</Text>
+                <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
@@ -382,7 +401,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           flexDirection="column"
           borderStyle="single"
           borderColor={currentState === TaskState.TASK_CURMUDGEONING ? "yellow" : "gray"}
-          padding={1}
+          paddingX={1}
           width={isWideTerminal ? panelWidth : undefined}
           marginBottom={isWideTerminal ? 0 : 1}
         >
@@ -394,6 +413,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 <Text color="green" bold>
                   {reviewerOutput ? '👀 Reviewer Feedback' : '🤖 Coder Proposal'}
                 </Text>
+                <Text dimColor>[W]</Text>
               </Box>
               <Box marginTop={1}>
                 {reviewerOutput || coderOutput ? (
@@ -410,6 +430,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>🔍 Quality Check Results</Text>
+                <Text dimColor>[W]</Text>
               </Box>
               <Box marginTop={1}>
                 {(() => {
@@ -440,6 +461,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="yellow" bold>🧐 Curmudgeon Feedback</Text>
+                <Text dimColor>[W]</Text>
               </Box>
               <Box marginTop={1}>
                 {curmudgeonFeedback ? (
@@ -458,6 +480,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>📋 New Plan</Text>
+                <Text dimColor>[W]</Text>
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
@@ -476,6 +499,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>📋 Plan Content</Text>
+                <Text dimColor>[W]</Text>
               </Box>
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING ? (
@@ -503,10 +527,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="yellow"
-        padding={1}
+        paddingX={1}
       >
-        <Text color="yellow" bold>⚡ Live Activity</Text>
-        <Box marginTop={1} flexDirection="column">
+        <Box flexDirection="column">
           {/* Display live activity message from task state machine */}
           {liveActivity && (() => {
             // Filter out multiline content (likely full plan output) from live activity
@@ -517,7 +540,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               return (
                 <Box marginBottom={1}>
                   <Text color="cyan">
-                    <Spinner isActive={!!liveActivity} /> {liveActivity.agent}: {liveActivity.message}
+                    {liveActivity.agent}: {liveActivity.message}
                   </Text>
                 </Box>
               );
@@ -544,7 +567,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           })()}
 
           <Text dimColor>
-            Current Stage: {' '}
+            <Spinner isActive={isQueryInProgress} /> Current Stage: {' '}
             {currentState === TaskState.TASK_REFINING && 'Refining task description...'}
             {currentState === TaskState.TASK_PLANNING && 'Creating strategic plan...'}
             {currentState === TaskState.TASK_CURMUDGEONING && 'Reviewing plan complexity...'}

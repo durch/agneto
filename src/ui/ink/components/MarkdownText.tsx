@@ -257,7 +257,7 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }
   if (isTruncated) {
     elements.push(
       <Box key="truncated" marginTop={1}>
-        <Text dimColor>... [Press Enter to view all]</Text>
+        <Text dimColor>...</Text>
       </Box>
     );
   }

@@ -111,46 +111,11 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       return;
     }
 
-    // Handle execution phase keyboard shortcuts (Ctrl+C/Ctrl+R for Coder/Reviewer)
-    const currentState = taskStateMachine.getCurrentState();
-    if (currentState === TaskState.TASK_EXECUTING) {
-      const executionStateMachine = taskStateMachine.getExecutionStateMachine();
-
-      if (key.ctrl && (input === 'b' || input === 'B')) {
-        const beanOutput = executionStateMachine?.getAgentOutput('bean');
-        if (beanOutput) {
-          setFullscreenContent({
-            title: '🧮 Bean Counter Chunk',
-            text: beanOutput
-          });
-          setViewMode('fullscreen');
-        }
-        return;
-      }
-
-      if (key.ctrl && (input === 'o' || input === 'O')) {
-        const coderOutput = executionStateMachine?.getAgentOutput('coder');
-        if (coderOutput) {
-          setFullscreenContent({
-            title: '🤖 Coder Implementation',
-            text: coderOutput
-          });
-          setViewMode('fullscreen');
-        }
-        return;
-      }
-
-      if (key.ctrl && (input === 'r' || input === 'R')) {
-        const reviewerOutput = executionStateMachine?.getAgentOutput('reviewer');
-        if (reviewerOutput) {
-          setFullscreenContent({
-            title: '👀 Reviewer Feedback',
-            text: reviewerOutput
-          });
-          setViewMode('fullscreen');
-        }
-        return;
-      }
+    // Handle pane fullscreen shortcuts (Ctrl+Q/W/E)
+    if (key.ctrl && (input === 'q' || input === 'Q' || input === 'w' || input === 'W' || input === 'e' || input === 'E')) {
+      const paneMap: { [key: string]: number } = { q: 1, Q: 1, w: 2, W: 2, e: 3, E: 3 };
+      handleFullscreen(paneMap[input]);
+      return;
     }
   });
 
@@ -189,6 +154,96 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         description: 'Error accessing task information',
         status: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
+    }
+  };
+
+  // Get pane content by number based on current state
+  const getPaneContent = (paneNum: number): { title: string; content: string } | null => {
+    const currentState = taskStateMachine.getCurrentState();
+
+    // Execution phase: 3 numbered panes
+    if (currentState === TaskState.TASK_EXECUTING) {
+      const executionStateMachine = taskStateMachine.getExecutionStateMachine();
+      switch (paneNum) {
+        case 1:
+          return {
+            title: '🧮 Bean Counter Chunk',
+            content: executionStateMachine?.getAgentOutput('bean') || 'Determining work chunk...'
+          };
+        case 2:
+          return {
+            title: '🤖 Coder',
+            content: executionStateMachine?.getAgentOutput('coder') || 'Processing...'
+          };
+        case 3:
+          return {
+            title: '👀 Reviewer',
+            content: executionStateMachine?.getAgentOutput('reviewer') || 'Processing...'
+          };
+        default:
+          return null;
+      }
+    }
+
+    // Planning phases: 2 numbered panes
+    if (
+      currentState === TaskState.TASK_REFINING ||
+      currentState === TaskState.TASK_PLANNING ||
+      currentState === TaskState.TASK_CURMUDGEONING ||
+      currentState === TaskState.TASK_SUPER_REVIEWING
+    ) {
+      const context = taskStateMachine.getContext();
+      const planMd = taskStateMachine.getPlanMd();
+      const pendingRefinement = taskStateMachine.getPendingRefinement();
+      const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
+      const superReviewResult = taskStateMachine.getSuperReviewResult();
+      const previousCurmudgeonFeedback = currentState === TaskState.TASK_PLANNING && curmudgeonFeedback;
+
+      if (paneNum === 1) {
+        // Left pane - dynamic based on state
+        if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+          return { title: '📋 Original Plan', content: planMd || 'No plan available' };
+        } else if (currentState === TaskState.TASK_CURMUDGEONING) {
+          return { title: '📋 Current Plan', content: planMd || 'No plan available' };
+        } else if (previousCurmudgeonFeedback) {
+          return { title: '🧐 Previous Feedback', content: curmudgeonFeedback || '' };
+        } else if (currentState === TaskState.TASK_REFINING && pendingRefinement) {
+          return { title: '📝 Refined Task', content: pendingRefinement.raw || pendingRefinement.goal || '' };
+        } else {
+          return { title: '📝 Refined Task', content: context.taskToUse || context.humanTask || 'No task description' };
+        }
+      } else if (paneNum === 2) {
+        // Right pane - dynamic based on state
+        if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+          const summary = superReviewResult?.summary || 'Performing final quality check...';
+          const issues = superReviewResult?.issues?.map((issue, idx) => `• ${issue}`).join('\n') || '';
+          const verdict = superReviewResult?.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review';
+          return {
+            title: '🔍 Quality Check Results',
+            content: `${summary}\n\n${issues ? `Issues Found:\n${issues}\n\n` : ''}Verdict: ${verdict}`
+          };
+        } else if (currentState === TaskState.TASK_CURMUDGEONING) {
+          return { title: '🧐 Curmudgeon Feedback', content: curmudgeonFeedback || 'Reviewing plan for over-engineering...' };
+        } else if (previousCurmudgeonFeedback) {
+          return { title: '📋 New Plan', content: planMd || 'Creating simplified plan...' };
+        } else {
+          return { title: '📋 Plan Content', content: planMd || 'Creating strategic plan...' };
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // Fullscreen handler for pane numbers - can be called from child components
+  const handleFullscreen = (paneNum: number) => {
+    const paneContent = getPaneContent(paneNum);
+    if (paneContent) {
+      setFullscreenContent({
+        title: paneContent.title,
+        text: paneContent.content
+      });
+      setViewMode('fullscreen');
     }
   };
 
@@ -250,66 +305,48 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
   }
 
   return (
-    <Box flexDirection="column" padding={1} height={terminalHeight - 2}>
+    <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1} height={terminalHeight}>
       {/* Header Section */}
       <Box marginBottom={1}>
-        <Text bold>🤖 Agneto Task Monitor</Text>
-      </Box>
-
-      {/* Current Phase Display */}
-      <Box marginBottom={1}>
-        <Text>Current Phase: </Text>
-        <Text color={phase.color} bold>
-          {phase.displayName}
-        </Text>
-      </Box>
-
-      {/* Task Information Section */}
-      <Box flexDirection="column" marginBottom={1}>
-        <Box>
-          <Text dimColor>Task ID: </Text>
-          <Text>{taskInfo.taskId}</Text>
-        </Box>
+        <Text bold>🧲 Agneto</Text>
+        <Text dimColor> | Task ID: </Text>
+        <Text>{taskInfo.taskId}</Text>
+        <Text dimColor> | Phase: </Text>
+        <Text color={phase.color} bold>{phase.displayName}</Text>
       </Box>
 
       {/* Status Section - Ready for future phase-based content */}
-      <Box borderStyle="round" borderColor="gray" padding={1}>
-        <Box flexDirection="column">
-          {/* Phase-specific content */}
-          <Box>
-            {(phase.state === TaskState.TASK_REFINING ||
-              phase.state === TaskState.TASK_PLANNING ||
-              phase.state === TaskState.TASK_CURMUDGEONING ||
-              phase.state === TaskState.TASK_SUPER_REVIEWING) ? (
-              <PlanningLayout
-                currentState={phase.state}
-                taskStateMachine={taskStateMachine}
-                onPlanFeedback={onPlanFeedback}
-                onRefinementFeedback={onRefinementFeedback}
-                onSuperReviewerDecision={onSuperReviewerDecision}
-                terminalHeight={terminalHeight}
-                terminalWidth={terminalWidth}
-                availableContentHeight={availableContentHeight}
-              />
-            ) : phase.state === TaskState.TASK_EXECUTING ? (
-              <ExecutionLayout taskStateMachine={taskStateMachine} onHumanReviewDecision={onHumanReviewDecision} />
-            ) : (
-              <Text dimColor italic>
-                Phase-specific content will be displayed here...
-              </Text>
-            )}
-          </Box>
-        </Box>
-      </Box>
+      {(phase.state === TaskState.TASK_REFINING ||
+        phase.state === TaskState.TASK_PLANNING ||
+        phase.state === TaskState.TASK_CURMUDGEONING ||
+        phase.state === TaskState.TASK_SUPER_REVIEWING) ? (
+        <PlanningLayout
+          currentState={phase.state}
+          taskStateMachine={taskStateMachine}
+          onPlanFeedback={onPlanFeedback}
+          onRefinementFeedback={onRefinementFeedback}
+          onSuperReviewerDecision={onSuperReviewerDecision}
+          onFullscreen={handleFullscreen}
+          terminalHeight={terminalHeight}
+          terminalWidth={terminalWidth}
+          availableContentHeight={availableContentHeight}
+        />
+      ) : phase.state === TaskState.TASK_EXECUTING ? (
+        <ExecutionLayout
+          taskStateMachine={taskStateMachine}
+          onHumanReviewDecision={onHumanReviewDecision}
+          onFullscreen={handleFullscreen}
+        />
+      ) : (
+        <Text dimColor italic>
+          Phase-specific content will be displayed here...
+        </Text>
+      )}
 
       {/* Keyboard Shortcuts Footer */}
-      <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
+      <Box marginTop={1} paddingX={1}>
         <Text dimColor>
-          [Ctrl+P] Plan  [Ctrl+T] Task
-          {phase.state === TaskState.TASK_EXECUTING && (
-            <>  [Ctrl+B] Bean  [Ctrl+O] Coder  [Ctrl+R] Reviewer</>
-          )}
-          {' '} [Esc] Close
+          [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+Q/W/E] Fullscreen  [Esc] Close
         </Text>
       </Box>
     </Box>

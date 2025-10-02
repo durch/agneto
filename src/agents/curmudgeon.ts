@@ -42,7 +42,12 @@ export async function runCurmudgeon(
       },
     ],
     callbacks: {
-      onProgress: log.streamProgress,
+      onProgress: (update: string) => {
+        log.streamProgress(update);
+        if (taskStateMachine) {
+          taskStateMachine.setLiveActivityMessage("Curmudgeon", update);
+        }
+      },
       onToolUse: (tool, input) => {
         log.toolUse("Curmudgeon", tool, input);
         if (taskStateMachine) {
