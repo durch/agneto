@@ -61,6 +61,7 @@
     "cors": "=2.8.5",
     "express": "=5.1.0",
     "ink": "=6.3.1",
+    "ink-select-input": "^6.2.0",
     "ink-text-input": "^6.0.0",
     "react": "=19.1.1",
     "simple-git": "=3.28.0",

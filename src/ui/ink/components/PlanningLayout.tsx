@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Text, Box, useStdout, useInput } from 'ink';
+import { Text, Box, useStdout } from 'ink';
+import SelectInput from 'ink-select-input';
 import { TaskStateMachine, TaskState } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
 import { getPlanFeedback, type PlanFeedback } from '../../planning-interface.js';
@@ -78,12 +79,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     setActiveResolver(() => resolver);
   };
 
-  // Pane navigation state
-  const [focusedPane, setFocusedPane] = useState<'left' | 'right'>('left');
-
-  // Modal state for fullscreen view
-  const [viewMode, setViewMode] = useState<'split' | 'fullscreen'>('split');
-  const [fullscreenContent, setFullscreenContent] = useState<{title: string, text: string} | null>(null);
 
   // Static activity indicator (no animation to prevent flickering)
   const activityIndicator = '⚡';
@@ -135,88 +130,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   }, [onSuperReviewerDecision, currentState, taskStateMachine]);
 
-  // Handle keyboard input for navigation, modal, and approve/reject actions
-  useInput((input, key) => {
-    // If in fullscreen mode, only allow Esc to close
-    if (viewMode === 'fullscreen') {
-      if (key.escape) {
-        setViewMode('split');
-        setFullscreenContent(null);
-      }
-      return;
-    }
-
-    if (isProcessingFeedback) return;
-
-    // Pane navigation with arrow keys
-    if (key.leftArrow) {
-      setFocusedPane('left');
-      return;
-    }
-    if (key.rightArrow) {
-      setFocusedPane('right');
-      return;
-    }
-
-    // Tab to cycle focus
-    if (key.tab) {
-      setFocusedPane(prev => prev === 'left' ? 'right' : 'left');
-      return;
-    }
-
-    // Enter to open focused pane in fullscreen
-    if (key.return) {
-      handleOpenFullscreen();
-      return;
-    }
-
-    // Handle refinement approval during TASK_REFINING state
-    if (currentState === TaskState.TASK_REFINING && refinementResolver && taskStateMachine.getPendingRefinement()) {
-      if (input === 'a' || input === 'A') {
-        handleRefinementApprove();
-      } else if (input === 'r' || input === 'R') {
-        handleRefinementReject();
-      }
-      return;
-    }
-
-    // Handle plan approval during TASK_PLANNING state
-    if (currentState === TaskState.TASK_PLANNING) {
-      if (input === 'a' || input === 'A') {
-        handleApprove();
-      } else if (input === 'r' || input === 'R') {
-        handleReject();
-      }
-    }
-
-    // Handle SuperReviewer decisions during TASK_SUPER_REVIEWING state
-    if (currentState === TaskState.TASK_SUPER_REVIEWING && superReviewerResolver) {
-      if (input === 'a' || input === 'A') {
-        superReviewerResolver({ action: 'approve' });
-        setSuperReviewerResolver(null);
-        return;
-      } else if (input === 'r' || input === 'R') {
-        // Open modal to collect retry feedback using new structured state
-        openTextInputModal(
-          'superreviewer',
-          'Provide Retry Feedback',
-          'Describe what needs to be fixed or improved...',
-          (feedbackText: string) => {
-            if (superReviewerResolver) {
-              superReviewerResolver({ action: 'retry', feedback: feedbackText });
-              setSuperReviewerResolver(null);
-              setLastAction('Retry requested with feedback');
-            }
-          }
-        );
-        return;
-      } else if (input === 'x' || input === 'X') {
-        superReviewerResolver({ action: 'abandon' });
-        setSuperReviewerResolver(null);
-        return;
-      }
-    }
-  });
 
   // Handle approve action
   const handleApprove = async () => {
@@ -228,8 +141,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       onPlanFeedback?.(feedback);
     } catch (error) {
       setLastAction('Error processing approval');
-    } finally {
-      setIsProcessingFeedback(false);
+      setIsProcessingFeedback(false); // Only reset on error
     }
   };
 
@@ -249,8 +161,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           setLastAction('Rejection feedback sent');
         } catch (error) {
           setLastAction('Error processing rejection');
-        } finally {
-          setIsProcessingFeedback(false);
+          setIsProcessingFeedback(false); // Only reset on error
         }
       }
     );
@@ -325,78 +236,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     setActiveResolver(null);
   };
 
-  // Handle opening fullscreen modal for focused pane
-  const handleOpenFullscreen = () => {
-    // Get content based on focused pane and current state
-    const context = taskStateMachine.getContext();
-    const planMd = taskStateMachine.getPlanMd();
-    const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
-    const pendingRefinement = taskStateMachine.getPendingRefinement();
-    const taskToUse = context.taskToUse || context.humanTask;
-
-    let title = '';
-    let content = '';
-
-    if (focusedPane === 'left') {
-      // Left pane logic
-      if (currentState === TaskState.TASK_EXECUTING) {
-        title = '🧮 Bean Counter Chunk';
-        content = beanCounterOutput || 'Determining work chunk...';
-      } else if (currentState === TaskState.TASK_CURMUDGEONING) {
-        title = '📋 Current Plan';
-        content = planMd || 'No plan available';
-      } else if (currentState === TaskState.TASK_PLANNING && previousCurmudgeonFeedback) {
-        title = '🧐 Previous Feedback';
-        content = previousCurmudgeonFeedback;
-      } else if (currentState === TaskState.TASK_REFINING && pendingRefinement) {
-        title = '📝 Refined Task';
-        content = pendingRefinement.raw || pendingRefinement.goal;
-      } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
-        title = '📋 Original Plan';
-        content = planMd || 'No plan available';
-      } else {
-        title = '📝 Task Description';
-        content = taskToUse || 'No task description';
-      }
-    } else {
-      // Right pane logic
-      if (currentState === TaskState.TASK_EXECUTING) {
-        title = reviewerOutput ? '👀 Reviewer Feedback' : '🤖 Coder Proposal';
-        content = reviewerOutput || coderOutput || 'Processing...';
-      } else if (currentState === TaskState.TASK_CURMUDGEONING) {
-        title = '🧐 Curmudgeon Feedback';
-        content = curmudgeonFeedback || 'Reviewing plan for over-engineering...';
-      } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
-        title = '🔍 Quality Check Results';
-        const superReviewResult = taskStateMachine.getSuperReviewResult();
-        if (superReviewResult) {
-          // Format the result for fullscreen display
-          let formattedContent = superReviewResult.summary;
-          if (superReviewResult.issues && superReviewResult.issues.length > 0) {
-            formattedContent += '\n\nIssues Found:\n';
-            superReviewResult.issues.forEach(issue => {
-              formattedContent += `• ${issue}\n`;
-            });
-          }
-          formattedContent += `\nVerdict: ${superReviewResult.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review'}`;
-          content = formattedContent;
-        } else {
-          content = 'Performing final quality check...';
-        }
-      } else if (currentState === TaskState.TASK_PLANNING && previousCurmudgeonFeedback) {
-        title = '📋 New Plan';
-        content = planMd || 'Creating simplified plan...';
-      } else {
-        title = '📋 Plan Content';
-        content = planMd || 'Creating strategic plan...';
-      }
-    }
-
-    if (content) {
-      setFullscreenContent({ title, text: content });
-      setViewMode('fullscreen');
-    }
-  };
 
   // Calculate responsive layout based on terminal width
   const isWideTerminal = terminalWidth > 120;
@@ -421,22 +260,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Calculate content height for each pane in split view
   const paneContentHeight = Math.floor(availableContentHeight / 2) - 4; // Divide by 2 for two rows, subtract for borders/padding
 
-  // If in fullscreen mode, render the modal
-  if (viewMode === 'fullscreen' && fullscreenContent) {
-    return (
-      <FullscreenModal
-        title={fullscreenContent.title}
-        content={fullscreenContent.text}
-        terminalHeight={terminalHeight}
-        terminalWidth={terminalWidth}
-        onClose={() => {
-          setViewMode('split');
-          setFullscreenContent(null);
-        }}
-      />
-    );
-  }
-
   // Determine phase title and color
   const isExecuting = currentState === TaskState.TASK_EXECUTING;
   const isSuperReviewing = currentState === TaskState.TASK_SUPER_REVIEWING;
@@ -457,11 +280,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         {/* Left Panel: Dynamic content - Refined Task, Plan (during curmudgeon), or Old Feedback (during replanning) */}
         <Box
           flexDirection="column"
-          borderStyle={focusedPane === 'left' ? "double" : "single"}
+          borderStyle="single"
           borderColor={
-            focusedPane === 'left'
-              ? "cyan"
-              : (currentState === TaskState.TASK_CURMUDGEONING ? "green" : (currentState === TaskState.TASK_PLANNING && previousCurmudgeonFeedback ? "yellow" : "gray"))
+            currentState === TaskState.TASK_CURMUDGEONING ? "green" : (currentState === TaskState.TASK_PLANNING && previousCurmudgeonFeedback ? "yellow" : "gray")
           }
           padding={1}
           width={isWideTerminal ? panelWidth : undefined}
@@ -474,7 +295,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="cyan" bold>🧮 Bean Counter Chunk</Text>
-                {focusedPane === 'left' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 {beanCounterOutput ? (
@@ -489,7 +309,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="cyan" bold>📋 Original Plan</Text>
-                {focusedPane === 'left' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
@@ -508,7 +327,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>📋 Current Plan</Text>
-                {focusedPane === 'left' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
@@ -527,7 +345,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="yellow" bold>🧐 Previous Feedback</Text>
-                {focusedPane === 'left' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 <MarkdownText maxLines={paneContentHeight}>{previousCurmudgeonFeedback}</MarkdownText>
@@ -537,7 +354,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="cyan" bold>📝 Refined Task</Text>
-                {focusedPane === 'left' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
@@ -564,12 +380,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         {/* Middle Panel (Right Pane): Dynamic content based on state */}
         <Box
           flexDirection="column"
-          borderStyle={focusedPane === 'right' ? "double" : "single"}
-          borderColor={
-            focusedPane === 'right'
-              ? "cyan"
-              : (currentState === TaskState.TASK_CURMUDGEONING ? "yellow" : "gray")
-          }
+          borderStyle="single"
+          borderColor={currentState === TaskState.TASK_CURMUDGEONING ? "yellow" : "gray"}
           padding={1}
           width={isWideTerminal ? panelWidth : undefined}
           marginBottom={isWideTerminal ? 0 : 1}
@@ -582,7 +394,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 <Text color="green" bold>
                   {reviewerOutput ? '👀 Reviewer Feedback' : '🤖 Coder Proposal'}
                 </Text>
-                {focusedPane === 'right' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 {reviewerOutput || coderOutput ? (
@@ -599,7 +410,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>🔍 Quality Check Results</Text>
-                {focusedPane === 'right' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 {(() => {
@@ -630,7 +440,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="yellow" bold>🧐 Curmudgeon Feedback</Text>
-                {focusedPane === 'right' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 {curmudgeonFeedback ? (
@@ -649,7 +458,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>📋 New Plan</Text>
-                {focusedPane === 'right' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
@@ -668,7 +476,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>📋 Plan Content</Text>
-                {focusedPane === 'right' && <Text dimColor>[Enter ⤢]</Text>}
               </Box>
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING ? (
@@ -756,16 +563,23 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           </Text>
 
           {/* Interactive Instructions - Show for refinement or planning states */}
-          {currentState === TaskState.TASK_REFINING && pendingRefinement && (
+          {currentState === TaskState.TASK_REFINING && pendingRefinement && refinementResolver && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Refined Task Ready for Review</Text>
               <Box marginTop={1}>
-                <Text>
-                  Press <Text color="green" bold>[A]</Text> to approve refined task
-                </Text>
-                <Text>
-                  Press <Text color="red" bold>[R]</Text> to reject and use original
-                </Text>
+                <SelectInput
+                  items={[
+                    { label: 'Approve Refined Task', value: 'approve' },
+                    { label: 'Reject and Use Original', value: 'reject' }
+                  ]}
+                  onSelect={(item) => {
+                    if (item.value === 'approve') {
+                      handleRefinementApprove();
+                    } else if (item.value === 'reject') {
+                      handleRefinementReject();
+                    }
+                  }}
+                />
               </Box>
 
               {/* Show feedback processing state */}
@@ -777,16 +591,25 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {currentState === TaskState.TASK_PLANNING && planMd && (
+          {((currentState === TaskState.TASK_PLANNING) ||
+            (currentState === TaskState.TASK_CURMUDGEONING && onPlanFeedback)) &&
+           planMd && !isProcessingFeedback && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🎯 Plan Ready for Review</Text>
               <Box marginTop={1}>
-                <Text>
-                  Press <Text color="green" bold>[A]</Text> to approve and start coding
-                </Text>
-                <Text>
-                  Press <Text color="red" bold>[R]</Text> to reject and provide feedback
-                </Text>
+                <SelectInput
+                  items={[
+                    { label: 'Approve and Start Coding', value: 'approve' },
+                    { label: 'Reject and Provide Feedback', value: 'reject' }
+                  ]}
+                  onSelect={(item) => {
+                    if (item.value === 'approve') {
+                      handleApprove();
+                    } else if (item.value === 'reject') {
+                      handleReject();
+                    }
+                  }}
+                />
               </Box>
 
               {/* Show feedback processing state */}
@@ -798,19 +621,39 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult() && (
+          {currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult() && superReviewerResolver && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Quality Check Complete</Text>
               <Box marginTop={1}>
-                <Text>
-                  Press <Text color="green" bold>[A]</Text> to approve and complete task
-                </Text>
-                <Text>
-                  Press <Text color="yellow" bold>[R]</Text> to retry and fix issues
-                </Text>
-                <Text>
-                  Press <Text color="red" bold>[X]</Text> to abandon task
-                </Text>
+                <SelectInput
+                  items={[
+                    { label: 'Approve and Complete Task', value: 'approve' },
+                    { label: 'Retry and Fix Issues', value: 'retry' },
+                    { label: 'Abandon Task', value: 'abandon' }
+                  ]}
+                  onSelect={(item) => {
+                    if (item.value === 'approve') {
+                      superReviewerResolver({ action: 'approve' });
+                      setSuperReviewerResolver(null);
+                    } else if (item.value === 'retry') {
+                      openTextInputModal(
+                        'superreviewer',
+                        'Provide Retry Feedback',
+                        'Describe what needs to be fixed or improved...',
+                        (feedbackText: string) => {
+                          if (superReviewerResolver) {
+                            superReviewerResolver({ action: 'retry', feedback: feedbackText });
+                            setSuperReviewerResolver(null);
+                            setLastAction('Retry requested with feedback');
+                          }
+                        }
+                      );
+                    } else if (item.value === 'abandon') {
+                      superReviewerResolver({ action: 'abandon' });
+                      setSuperReviewerResolver(null);
+                    }
+                  }}
+                />
               </Box>
 
               {/* Show feedback processing state */}

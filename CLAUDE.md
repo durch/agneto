@@ -792,6 +792,7 @@ Set `DEBUG=true` to see:
 - ✅ **NPX package distribution** - No installation required
 - ✅ **State machine architecture** - Clear task and execution lifecycle
 - ✅ **Natural language protocol** - Robust agent communication
+- ✅ **Menu-based UI navigation** - Arrow key + Enter selection for all approvals, no shortcut conflicts
 
 ### Known Limitations
 - ⚠️ No parallel task execution
@@ -846,6 +847,7 @@ Set `DEBUG=true` to see:
 - **Scribe Agent** - Generates commit messages with Sonnet
 - **Enhanced Makefile** - More commands for easier operations
 - **State Machine Architecture** - Clear separation of task and execution states
+- **Menu-Based UI Navigation** - Replaced single-letter shortcuts with arrow key + Enter menus using ink-select-input
 
 ## 🖥️ Ink UI Integration (Terminal UI)
 
@@ -964,6 +966,10 @@ case TaskState.TASK_PLANNING: {
 - **Cause:** Component reading stale props instead of live state
 - **Solution:** Always read from `taskStateMachine.getCurrentState()` dynamically
 
+**Problem 5: Menu Selection Not Working**
+- **Cause:** SelectInput `onSelect` callback not properly wired to resolver functions
+- **Solution:** Ensure menu item values map correctly to handleApprove/handleReject/handleFeedback calls
+
 ### Implementation Checklist
 
 When adding UI interaction for a new phase:
@@ -981,10 +987,11 @@ When adding UI interaction for a new phase:
 ### File Organization
 
 - `src/ui/ink/App.tsx` - Main Ink app component
-- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI
-- `src/ui/ink/components/PhaseLayout.tsx` - Execution phase UI (future)
+- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval
+- `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review
 - Approval callbacks passed as props through component hierarchy
 - State read dynamically from `taskStateMachine`, not props
+- Uses `ink-select-input` for menu navigation (arrow keys + Enter)
 
 ### Testing the UI
 
@@ -993,8 +1000,9 @@ When adding UI interaction for a new phase:
 npm start -- "add a comment to the code"
 
 # Key interactions:
-# - Press A to approve refinement
-# - Press A to approve plan
+# - Use arrow keys to navigate menu options
+# - Press Enter to select highlighted menu item (approve/reject/feedback)
+# - Press Esc to close modals
 # - Watch state transitions in header
 ```
 

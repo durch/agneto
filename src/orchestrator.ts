@@ -521,6 +521,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                             if (hasApproval && !hasConcerns) {
                                 log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
 
+                                // Store curmudgeon approval feedback for UI display
+                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
                                 // Interactive mode: show plan to user for final approval
                                 if (inkInstance && !options?.nonInteractive) {
                                     let resolverFunc: ((value: PlanFeedback) => void) | null = null;
@@ -1461,8 +1464,11 @@ async function runExecutionStateMachine(
 
                     log.review(`Plan verdict: ${verdict.verdict}${verdict.feedback ? ` - ${verdict.feedback}` : ''}`);
 
-                    // Generate summary for UI (plan review)
+                    // Capture Reviewer output for UI (plan review)
                     const planReviewOutput = `Verdict: ${verdict.verdict}\n\n${verdict.feedback || "No additional feedback"}`;
+                    stateMachine.setAgentOutput('reviewer', planReviewOutput);
+
+                    // Generate summary for UI (plan review)
                     const planReviewSummary = await summarizeReviewerOutput(
                         provider,
                         planReviewOutput,

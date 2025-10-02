@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, Box, useStdout, useInput } from 'ink';
+import { Text, Box, useStdout } from 'ink';
+import SelectInput from 'ink-select-input';
 import { TaskStateMachine } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
 import { StatusIndicator } from './StatusIndicator.js';
@@ -102,30 +103,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
     }
   }, [onHumanReviewDecision, executionStateMachine?.getNeedsHumanReview()]);
 
-  // Handle keyboard input for human review decisions
-  useInput((input, key) => {
-    // Guard: only handle input when human review is needed and resolver is ready
-    if (executionStateMachine?.getNeedsHumanReview() && humanReviewResolver) {
-      if (input === 'a' || input === 'A') {
-        // Approve - continue with current implementation
-        humanReviewResolver({ decision: 'approve' });
-        setHumanReviewResolver(null);
-        executionStateMachine.clearHumanReview();
-        return;
-      } else if (input === 'r' || input === 'R') {
-        // Retry - open modal for feedback
-        setShowRetryModal(true);
-        return;
-      } else if (input === 'x' || input === 'X') {
-        // Reject - skip this chunk
-        humanReviewResolver({ decision: 'reject' });
-        setHumanReviewResolver(null);
-        executionStateMachine.clearHumanReview();
-        return;
-      }
-    }
-  });
-
   if (!executionStateMachine) {
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1}>
@@ -203,7 +180,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         <Box
           flexDirection="column"
           borderStyle="single"
-          borderColor={leftColor}
+          borderColor="gray"
           padding={1}
           width={isWideTerminal ? leftPanelWidth : undefined}
           marginRight={isWideTerminal ? 1 : 0}
@@ -221,6 +198,9 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         {/* Right Panel - Split into Coder (top) and Reviewer (bottom) */}
         <Box
           flexDirection="column"
+          borderStyle="single"
+          borderColor="gray"
+          padding={1}
           width={isWideTerminal ? rightPanelWidth : undefined}
         >
           {/* Coder Section */}
@@ -295,21 +275,32 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         <Text>{statusMessage}</Text>
         <Text dimColor>State: {currentState}</Text>
 
-        {/* Human Review Instructions */}
-        {executionStateMachine.getNeedsHumanReview() && (
+        {/* Human Review Menu */}
+        {executionStateMachine.getNeedsHumanReview() && humanReviewResolver && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="yellow" bold>⚠ Human Review Required</Text>
             <Text>{executionStateMachine.getHumanReviewContext()}</Text>
             <Box marginTop={1}>
-              <Text>
-                Press <Text color="green" bold>[A]</Text> to approve
-              </Text>
-              <Text>
-                Press <Text color="yellow" bold>[R]</Text> to retry with feedback
-              </Text>
-              <Text>
-                Press <Text color="red" bold>[X]</Text> to reject
-              </Text>
+              <SelectInput
+                items={[
+                  { label: 'Approve - Continue with implementation', value: 'approve' },
+                  { label: 'Retry - Provide feedback for revision', value: 'retry' },
+                  { label: 'Reject - Skip this chunk', value: 'reject' }
+                ]}
+                onSelect={(item) => {
+                  if (item.value === 'approve') {
+                    humanReviewResolver({ decision: 'approve' });
+                    executionStateMachine.clearHumanReview();
+                    setHumanReviewResolver(null);
+                  } else if (item.value === 'retry') {
+                    setShowRetryModal(true);
+                  } else if (item.value === 'reject') {
+                    humanReviewResolver({ decision: 'reject' });
+                    executionStateMachine.clearHumanReview();
+                    setHumanReviewResolver(null);
+                  }
+                }}
+              />
             </Box>
           </Box>
         )}

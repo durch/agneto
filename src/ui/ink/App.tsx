@@ -93,32 +93,42 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       return;
     }
 
-    // Handle 'p' or 'P' to toggle plan modal
-    if (input === 'p' || input === 'P') {
+    // Handle Ctrl+P to toggle plan modal
+    if (key.ctrl && (input === 'p' || input === 'P')) {
       const planMd = taskStateMachine.getPlanMd();
       if (planMd) {
         setIsPlanModalOpen(true);
       }
-      // Silently ignore if no plan exists yet
       return;
     }
 
-    // Handle 't' or 'T' to toggle task description modal
-    if (input === 't' || input === 'T') {
+    // Handle Ctrl+T to toggle task description modal
+    if (key.ctrl && (input === 't' || input === 'T')) {
       const taskInfo = getTaskInfo();
       if (taskInfo.description && taskInfo.description !== 'No description available') {
         setIsTaskModalOpen(true);
       }
-      // Silently ignore if no task description exists yet
       return;
     }
 
-    // Handle execution phase keyboard shortcuts (C/R for Coder/Reviewer)
+    // Handle execution phase keyboard shortcuts (Ctrl+C/Ctrl+R for Coder/Reviewer)
     const currentState = taskStateMachine.getCurrentState();
     if (currentState === TaskState.TASK_EXECUTING) {
       const executionStateMachine = taskStateMachine.getExecutionStateMachine();
 
-      if (input === 'c' || input === 'C') {
+      if (key.ctrl && (input === 'b' || input === 'B')) {
+        const beanOutput = executionStateMachine?.getAgentOutput('bean');
+        if (beanOutput) {
+          setFullscreenContent({
+            title: '🧮 Bean Counter Chunk',
+            text: beanOutput
+          });
+          setViewMode('fullscreen');
+        }
+        return;
+      }
+
+      if (key.ctrl && (input === 'o' || input === 'O')) {
         const coderOutput = executionStateMachine?.getAgentOutput('coder');
         if (coderOutput) {
           setFullscreenContent({
@@ -130,7 +140,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         return;
       }
 
-      if (input === 'r' || input === 'R') {
+      if (key.ctrl && (input === 'r' || input === 'R')) {
         const reviewerOutput = executionStateMachine?.getAgentOutput('reviewer');
         if (reviewerOutput) {
           setFullscreenContent({
@@ -295,25 +305,11 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       {/* Keyboard Shortcuts Footer */}
       <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
         <Text dimColor>
-          [P]lan View  [T]ask Description
-          {(phase.state === TaskState.TASK_REFINING ||
-            phase.state === TaskState.TASK_PLANNING ||
-            phase.state === TaskState.TASK_CURMUDGEONING ||
-            phase.state === TaskState.TASK_SUPER_REVIEWING ||
-            phase.state === TaskState.TASK_EXECUTING) && (
-            <>  [←/→] Navigate  [Tab] Cycle  [Enter] Expand  [Esc] Close</>
-          )}
-          {(phase.state === TaskState.TASK_REFINING ||
-            phase.state === TaskState.TASK_PLANNING ||
-            phase.state === TaskState.TASK_CURMUDGEONING) && (
-            <>  [A]pprove  [R]eject</>
-          )}
-          {phase.state === TaskState.TASK_SUPER_REVIEWING && (
-            <>  [A]pprove  [R]etry  [X]abandon</>
-          )}
+          [Ctrl+P] Plan  [Ctrl+T] Task
           {phase.state === TaskState.TASK_EXECUTING && (
-            <>  [C]oder Output  [R]eviewer Feedback</>
+            <>  [Ctrl+B] Bean  [Ctrl+O] Coder  [Ctrl+R] Reviewer</>
           )}
+          {' '} [Esc] Close
         </Text>
       </Box>
     </Box>
