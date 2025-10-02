@@ -9,7 +9,7 @@ import type { SuperReviewerDecision } from '../../../types.js';
 import { FullscreenModal } from './FullscreenModal.js';
 import { TextInputModal } from './TextInputModal.js';
 import { MarkdownText } from './MarkdownText.js';
-import { useSpinner } from '../hooks/useSpinner.js';
+import { Spinner } from './Spinner.js';
 
 // TypeScript interface for PlanningLayout props
 interface PlanningLayoutProps {
@@ -82,9 +82,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Get live activity to determine if spinner should animate
   const liveActivity = taskStateMachine.getLiveActivityMessage();
-
-  // Animated activity indicator (spinner when activity is present)
-  const activityIndicator = useSpinner(!!liveActivity);
 
   // Store curmudgeon feedback when it becomes available
   React.useEffect(() => {
@@ -520,7 +517,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               return (
                 <Box marginBottom={1}>
                   <Text color="cyan">
-                    {activityIndicator} {liveActivity.agent}: {liveActivity.message}
+                    <Spinner isActive={!!liveActivity} /> {liveActivity.agent}: {liveActivity.message}
                   </Text>
                 </Box>
               );

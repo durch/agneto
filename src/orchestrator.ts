@@ -534,11 +534,17 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     try {
                         log.orchestrator("🧐 Curmudgeon reviewing plan...");
 
+                        // Set live activity message for curmudgeon
+                        taskStateMachine.setLiveActivityMessage('Curmudgeon', 'Reviewing plan complexity...');
+
                         // Get the task description to pass to Curmudgeon
                         // This could be the refined task or the original task
                         const taskDescription = taskStateMachine.getContext().taskToUse || humanTask;
 
                         const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription, taskStateMachine);
+
+                        // Clear live activity message after curmudgeon completes
+                        taskStateMachine.clearLiveActivityMessage();
 
                         if (!result || !result.feedback) {
                             // No feedback or error - proceed with plan as-is
@@ -622,6 +628,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         }
                     } catch (error) {
                         log.warn(`Curmudgeon review failed: ${error}`);
+                        // Clear live activity message on error
+                        taskStateMachine.clearLiveActivityMessage();
                         // On error, proceed without curmudgeon review
                         taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                     }
@@ -1021,11 +1029,17 @@ async function runRestoredTask(
                         try {
                             log.orchestrator("🧐 Curmudgeon reviewing plan...");
 
+                            // Set live activity message for curmudgeon
+                            taskStateMachine.setLiveActivityMessage('Curmudgeon', 'Reviewing plan complexity...');
+
                             // Get the task description to pass to Curmudgeon
                             // This could be the refined task or the original task
                             const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
 
                             const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription, taskStateMachine);
+
+                            // Clear live activity message after curmudgeon completes
+                            taskStateMachine.clearLiveActivityMessage();
 
                             if (!result || !result.feedback) {
                                 // No feedback or error - proceed with plan as-is
