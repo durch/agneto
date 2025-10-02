@@ -4,7 +4,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with Ag
 
 ## ⚠️ GOLDEN RULES - READ FIRST
 1. **ALWAYS run `npm run build` before making any changes** - TypeScript must compile
-2. **NEVER modify files directly** - Use Agneto to make changes to itself
 3. **DEBUG=true is your friend** - Use it whenever something seems wrong
 4. **Interactive mode is DEFAULT** - The system will ask for your input on plans
 5. **Worktrees are isolated** - Changes happen in `.worktrees/<task-id>`, not main branch
@@ -35,53 +34,6 @@ make test      # Run all tests
 make provider  # Test Claude provider connection
 ```
 
-### If you're here to...
-
-**Fix a bug in Agneto:**
-```bash
-# STEP 1: Verify the build
-npm run build
-
-# STEP 2: Test with debug output (auto-generates task ID!)
-DEBUG=true npm start -- "describe the fix" --non-interactive
-
-# STEP 3: If empty responses, check provider
-DEBUG=true npx tsx test-provider.ts
-```
-
-**Add a new feature to Agneto:**
-```bash
-# STEP 1: Start interactive planning (ID auto-generated!)
-npm start -- "Add feature X"
-
-# STEP 2: Refine task description if prompted (NEW: Task Refiner!)
-# STEP 3: Refine plan when prompted (use 'simplify' if too complex)
-# STEP 4: System executes all steps automatically
-# STEP 5: SuperReviewer performs final quality check
-# STEP 6: Review in worktree before merging
-cd .worktrees/task-<generated-id> && git diff master
-```
-
-**Debug empty planner responses:**
-```bash
-# Test in this exact order:
-echo "Say OK" | claude -p --permission-mode plan  # Test CLI directly
-DEBUG=true npx tsx test-provider.ts               # Test provider wrapper
-DEBUG=true npm start -- debug-1 "simple task" --non-interactive  # Test full flow
-```
-
-**Work on an existing task:**
-```bash
-# IMPORTANT: Check what's been done first
-cd .worktrees/<task-id>
-git log --oneline -5
-git status
-git diff master
-
-# Then continue
-npm start -- <task-id> "continue work"
-```
-
 ## 🎯 How Agneto Works (Essential Understanding)
 
 Agneto is a **human-in-the-loop AI development system** with seven main personas and one utility agent acting as an **Agile AI Development Team**:
@@ -93,7 +45,8 @@ Agneto is a **human-in-the-loop AI development system** with seven main personas
 5. **Coder** → Pure implementation executor - implements pre-defined chunks from Bean Counter
 6. **Reviewer** → Validates chunk implementations against requirements
 7. **SuperReviewer** → Final quality gate checking acceptance criteria and tests
-8. **Scribe** (utility) → Generates commit messages using fast Sonnet model
+8. **Gardener** → Maintaines CLAUDE.md
+9. **Scribe** (utility) → Generates commit messages using fast Sonnet model
 
 **Key Concept:** Everything happens in isolated git worktrees (`.worktrees/<task-id>`), so the main branch is never at risk.
 
@@ -115,26 +68,9 @@ Bean Counter: Task complete → SuperReviewer final check → Review in worktree
 
 ## 🔧 Common Tasks
 
-### Running a Task (Most Common)
-```bash
-# NEW: Using npx (no installation needed!)
-npx agneto "implement user authentication"
-
-# With custom ID (still supported)
-npx agneto auth-1 "implement user authentication"
-
-# If working on Agneto itself, use npm start
-npm start -- "implement user authentication"
-
-# For CI/automation - skip interactive planning
-npm start -- "fix typo in README" --non-interactive
-
-# Auto-merge when complete (use with caution)
-npm start -- "update dependencies" --auto-merge
-```
-
 ### Understanding the Output
 ```
+🔍 Refiner: Clarifying question asked...      # Gathering missing information (if vague)
 📝 Planner: Planning "your task"...           # Creating high-level plan
 🧮 Bean Counter: Determining work chunk...    # Breaking down into small chunks
 🤖 Coder: Proposing implementation...         # Planning how to implement chunk
@@ -142,22 +78,6 @@ npm start -- "update dependencies" --auto-merge
 🧮 Bean Counter: Next chunk - feature Y...    # Coordinating next sprint
 🙋 Orchestrator: ✅ Change applied successfully # System applying changes
 ```
-
-### Working with Plans
-
-**Plan gets generated empty?**
-- The system prompt might be too complex
-- Try simpler task descriptions
-- Use DEBUG=true to see what's being sent
-
-**Want to change the plan?**
-Interactive mode offers these options:
-- **Simplify** - Reduce complexity
-- **Add Detail** - Be more specific
-- **Wrong Approach** - Suggest alternative
-- **Edit Steps** - Modify specific parts
-- **Add Constraints** - "Must not break X"
-- **Start Over** - New description
 
 ### Managing Worktrees
 ```bash
@@ -200,27 +120,6 @@ Every task creates an audit trail:
 │   └── ...
 ├── metadata.json         # Task metadata and summary
 └── summary.md           # Human-readable execution summary
-```
-
-### Environment Variables
-
-Control audit system behavior:
-
-```bash
-# Disable audit logging entirely
-DISABLE_AUDIT=true npm start -- "your task"
-
-# Disable checkpoint creation
-DISABLE_CHECKPOINTS=true npm start -- "your task"
-
-# Control checkpoint limits (default: 10)
-MAX_CHECKPOINTS=5 npm start -- "your task"
-
-# Enable checkpoint compression
-CHECKPOINT_COMPRESSION=true npm start -- "your task"
-
-# Set checkpoint naming format (hybrid, timestamp, sequential)
-CHECKPOINT_NAMING=timestamp npm start -- "your task"
 ```
 
 ### Checkpoint & Recovery System
@@ -290,18 +189,6 @@ Agneto includes a real-time web dashboard for monitoring task execution, providi
 - **Event Storage**: In-memory storage for up to 1000 events per task
 - **Cross-Platform**: Works in any modern web browser
 
-### Starting the Dashboard
-
-Launch the dashboard server alongside your tasks:
-
-```bash
-# Start dashboard server (runs on port 3000)
-npm run dashboard
-
-# Or use the direct command
-npx tsx dashboard/server.ts
-```
-
 ### Dashboard Architecture
 
 The dashboard integrates seamlessly with Agneto's audit system:
@@ -343,28 +230,6 @@ The dashboard provides HTTP and WebSocket APIs:
 - `tool_usage` - Tool execution event
 - `phase_transition` - Execution phase change
 - `task_completed` - Task finished successfully
-
-### Usage Examples
-
-**Monitor a task in real-time:**
-```bash
-# Terminal 1: Start dashboard
-npm run dashboard
-
-# Terminal 2: Run task with dashboard integration
-npm start -- "implement new feature"
-
-# Browser: Open http://localhost:3000
-```
-
-**Custom dashboard endpoint:**
-```bash
-# Start dashboard on different port
-PORT=8080 npm run dashboard
-
-# Point Agneto to custom endpoint
-AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start -- "your task"
-```
 
 ### Dashboard Benefits
 
@@ -463,110 +328,6 @@ Environment variables can be set in multiple ways:
 3. **`.envrc` file** (if using direnv): `echo "export DEBUG=true" > .envrc`
 4. **System defaults** (lowest precedence): Built-in defaults
 
-### Terminal Bell Notifications
-
-Agneto includes cross-platform terminal bell notifications to alert you when tasks complete or encounter errors.
-
-**Features:**
-- **Cross-platform compatibility**: Works on macOS, Windows, and Linux terminal emulators
-- **ASCII BEL character**: Uses standard `\x07` control character for maximum compatibility
-- **Silent failure**: Never breaks application flow if audio is unavailable
-- **Zero configuration**: Enabled by default, works out of the box
-
-**Supported terminals:**
-- **macOS**: Terminal.app, iTerm2, Hyper
-- **Windows**: Command Prompt, PowerShell, Windows Terminal
-- **Linux**: gnome-terminal, konsole, xterm, alacritty, kitty
-
-**How it works:**
-```typescript
-// Automatic notifications triggered by Agneto during:
-// - Task completion (success)
-// - Task failure (errors)
-// - Human intervention required
-// - Long-running operation milestones
-```
-
-**Terminal configuration:**
-Most terminals have bell notifications enabled by default. If you don't hear notifications:
-- **macOS Terminal**: Preferences → Profiles → Advanced → "Audible bell"
-- **iTerm2**: Preferences → Profiles → Terminal → "Flash visual bell" / "Ring terminal bell"
-- **Windows Terminal**: Settings → Profiles → Advanced → "Use acrylic" (system sound)
-- **Linux**: Check terminal emulator preferences for "Terminal bell" or "Audible bell"
-
-This feature helps you stay productive by providing immediate audio feedback when tasks require attention or complete execution.
-
-## 🚨 Troubleshooting
-
-### Empty Planner Output
-**Symptom:** Plan comes back empty or just a title
-
-**Note:** The Curmudgeon agent now helps prevent this by reviewing and simplifying overly complex plans
-
-**Root Causes & Solutions (in order of likelihood):**
-
-1. **Claude CLI not responding properly**
-   ```bash
-   # Test CLI directly first
-   echo "Say OK" | claude -p --permission-mode plan
-   # Should return "OK" - if not, Claude CLI is the issue
-   ```
-
-2. **Provider message formatting issue**
-   ```bash
-   # Test provider wrapper
-   DEBUG=true npx tsx test-provider.ts
-   # Look for "Result 3" - should show a plan
-   ```
-
-3. **Task description too complex**
-   - Simplify to basic terms
-   - Avoid special characters
-   - Keep under 100 words
-
-4. **Check actual file content**
-   ```bash
-   cat .worktrees/<task-id>/.plans/<task-id>/plan.md
-   # Sometimes plan exists but display is broken
-   ```
-
-### Coder Can't Find Files
-**Symptom:** Coder proposes creating files that already exist
-
-**Solution:** Coder only has ReadFile, ListDir, Grep tools. It's working from the worktree directory. Check:
-```bash
-ls .worktrees/<task-id>/src/  # Is the structure there?
-```
-
-### Reviewer Always Rejects
-**Symptom:** Reviewer keeps saying "revise" or "needs-human"
-
-**Solutions:**
-- Check the plan is specific enough
-- Reviewer is conservative by design - this is normal
-- After 3 attempts, it stops - review the feedback
-
-### Coder Completion Signals
-**Coder signals completion naturally:**
-- "All the planned features have been implemented successfully."
-- "I've completed all the required changes."
-- The interpreter converts this to: `{"action": "complete"}`
-
-**This triggers:**
-- System recognizes all plan work is done
-- Logs show clear completion status
-- SuperReviewer runs final quality check
-
-### Git Worktree Issues
-**Symptom:** "fatal: branch already exists" or worktree errors
-
-**Solutions:**
-```bash
-git worktree prune           # Clean up stale worktrees
-git branch -D sandbox/task-1  # Delete branch if needed
-rm -rf .worktrees/task-1     # Remove directory
-```
-
 ## 🏗️ Architecture Reference
 
 ### State Machine Architecture
@@ -656,6 +417,7 @@ Agent Response (Natural Language) → Interpreter (Stateless Sonnet) → Structu
 ```
 
 **Interpreter Output (Internal):**
+- Refiner: `{type: "question|refinement", question?: string, content?: string}`
 - Coder: `{action: "continue|complete|implemented", description, steps, files}`
 - Reviewer: `{verdict: "approve|revise|reject|needs_human", feedback, continueNext}`
 
@@ -775,6 +537,7 @@ Set `DEBUG=true` to see:
 ### What Works Well
 - ✅ Interactive planning with feedback loop
 - ✅ **Streamlined approval flow** - Automatic Planner ↔ Curmudgeon cycles, single user approval
+- ✅ **Task Refiner clarifying questions** - Interactive Q&A loop for vague task descriptions with promise-based resolver pattern
 - ✅ Safe sandbox execution with git worktrees
 - ✅ Bean Counter coordinated work breakdown (prevents loops!)
 - ✅ Small chunk implementation with frequent review cycles
@@ -794,14 +557,12 @@ Set `DEBUG=true` to see:
 - ✅ **Natural language protocol** - Robust agent communication
 - ✅ **Menu-based UI navigation** - Arrow key + Enter selection for all approvals, no shortcut conflicts
 
-### Known Limitations
-- ⚠️ No parallel task execution
-- ⚠️ Limited to Claude CLI capabilities
-- ⚠️ Test suite exists but needs expansion (see test/ directory)
 
 ### Common Gotchas
+- **Refiner Q&A has hard limit** - Maximum 3 clarifying questions before forcing final refinement
+- **Refiner maintains session** - Context persists across question/answer iterations
 - **Bean Counter drives all work chunking** - Coder no longer decides what to work on
-- **Four separate sessions** - Bean Counter, Coder, Reviewer, and SuperReviewer each have their own context
+- **Five separate sessions** - Refiner, Bean Counter, Coder, Reviewer, and SuperReviewer each have their own context
 - **Bean Counter maintains progress memory** - Its session accumulates all completed work
 - **Coder is now pure executor** - Receives pre-defined chunks, focuses only on implementation
 - **Small chunks are the goal** - Bean Counter breaks work into frequent review cycles
@@ -809,45 +570,6 @@ Set `DEBUG=true` to see:
 - System prompt sent only once per session, subsequent calls use conversation continuity
 - Multi-file changes supported but Bean Counter prefers focused chunks
 - Interpreter uses additional Sonnet calls (minimal cost) for decision extraction
-
-## 🗺️ Roadmap
-
-### ✅ Completed (Recently!)
-- **Streamlined Planning Approval** - Automatic Planner ↔ Curmudgeon cycles until approved, single user approval point eliminates approval fatigue
-- **Bean Counter Agent** - "Scrum Master" coordinates work breakdown and prevents loops
-- **Small Chunk Work Cycles** - Frequent review cycles with focused implementations
-- **Session-Based Progress Memory** - Bean Counter maintains persistent progress ledger
-- **Agile AI Team Structure** - Clear role separation: strategy vs. chunking vs. execution
-- **Natural Language Protocol** - Agents respond naturally, interpreter extracts decisions
-- **Stateless Interpreter** - Fast Sonnet calls convert language to structured data
-- **No More JSON Failures** - Robust handling of any response format
-- **Enhanced Logging** - Shows both raw responses and interpreted decisions
-- **Multi-file Support** - Coder can modify multiple files via MultiEdit
-- **Task Refiner** - Pre-processes vague task descriptions
-- **SuperReviewer** - Final quality gate after all steps
-- **Auto-generated IDs** - No friction, just provide description
-- **No-op handling** - Gracefully handles "already implemented" cases
-- **Non-interactive merge** - Automatic merge and cleanup
-- **Independent sessions** - Bean Counter, Coder and Reviewer have separate sessions
-- Human interaction for needs-human verdict
-- Reject handling with retry and enhanced feedback
-- Bash tool for Coder (testing/verification)
-- Squash merge tooling
-- Makefile for easier operations
-- AI playbook integration in prompts
-
-### Next: Enhanced Testing
-- Expand existing test suite (test/ directory has fixtures and basic tests)
-- Add integration tests for the full flow
-- Add unit tests for individual agents
-- Add CI/CD pipeline for automated testing
-
-### ✅ Recently Completed (Phase 3)
-- **Curmudgeon Agent** - Implemented! Reviews plans for over-engineering
-- **Scribe Agent** - Generates commit messages with Sonnet
-- **Enhanced Makefile** - More commands for easier operations
-- **State Machine Architecture** - Clear separation of task and execution states
-- **Menu-Based UI Navigation** - Replaced single-letter shortcuts with arrow key + Enter menus using ink-select-input
 
 ## 🖥️ Ink UI Integration (Terminal UI)
 
@@ -870,7 +592,7 @@ if (state === TASK_PLANNING) {
 
 ### Promise-Based Approval Pattern
 
-Both refinement and planning approvals use the same promise-based pattern for user interaction:
+Refinement, clarifying questions, and planning approvals all use the same promise-based pattern for user interaction:
 
 ```typescript
 // 1. Orchestrator creates a promise and its resolver
@@ -931,10 +653,12 @@ case TaskState.TASK_PLANNING: {
 ### State and Data Management
 
 **Key Concepts:**
+- `currentQuestion`: Current clarifying question from Refiner (if any)
 - `pendingRefinement`: Temporary storage for refinement awaiting approval
 - `plan`: Directly stored (no "pending" state)
 - State transitions only occur AFTER user approval
 - `setRefinedTask()` automatically clears `pendingRefinement`
+- `clearCurrentQuestion()` clears question after answer received
 
 **UI Display Logic:**
 ```typescript
@@ -993,44 +717,10 @@ When adding UI interaction for a new phase:
 - State read dynamically from `taskStateMachine`, not props
 - Uses `ink-select-input` for menu navigation (arrow keys + Enter)
 
-### Testing the UI
 
-```bash
-# Test with simple task to see all phases
-npm start -- "add a comment to the code"
+## 📦 NPX Usage
 
-# Key interactions:
-# - Use arrow keys to navigate menu options
-# - Press Enter to select highlighted menu item (approve/reject/feedback)
-# - Press Esc to close modals
-# - Watch state transitions in header
-```
-
-### Future Enhancements
-
-**Curmudgeon Review Visualization:**
-- During TASK_CURMUDGEONING: Show plan (left), feedback (right)
-- During replanning: Show feedback (left), new plan (right)
-
-**Execution Phase:**
-- Bean Counter chunks in left panel
-- Coder implementation in middle
-- Reviewer feedback in right panel
-
-**Live Activity Stream:**
-- Buffer log messages during operations
-- Display in scrollable panel
-- Clear between phases
-
-### Long-term: Enhanced UX
-- Full three-pane view for all phases
-- Real-time execution monitoring
-- Parallel task execution
-- Memory between retries (context passing)
-
-## 📦 NPX Usage (NEW!)
-
-Agneto is now available as an NPM package! You can use it without installation:
+Agneto is available as an NPM package! You can use it without installation:
 
 ```bash
 # Use directly with npx (no installation needed)
@@ -1041,60 +731,11 @@ npm install -g agneto
 agneto "your task description"
 ```
 
-**Current version**: 0.2.1
 **Repository**: https://github.com/durch/agneto.git
 **NPM Package**: https://www.npmjs.com/package/agneto
-
-## 🎯 Pro Tips (From Experience)
-
-1. **Just provide the description** - IDs are auto-generated now!
-2. **Review worktrees before merging** - `cd .worktrees/<id> && git diff master --stat`
-3. **Merge is now automatic** - `npm run merge-task <id>` does everything
-4. **When in doubt, simplify the plan** - Choose "simplify" in interactive mode
-5. **Empty responses = check provider first** - `DEBUG=true npx tsx test-provider.ts`
-6. **Coder proposals fail? Check the plan specificity** - Vague plans = bad proposals
-7. **Always `git diff master` before merging** - See exactly what changed
-8. **Break large tasks into multiple small ones** - Better success rate
-9. **If reviewer keeps rejecting, the plan needs more detail** - Not a code problem
-10. **Rebase old worktrees before continuing** - They may lack critical fixes
-11. **Use `make` commands** - Shorter and validated parameters
-12. **Claude CLI tools are built-in** - Don't create custom tools, use Bash
-13. **Completion signals work well** - Coder clearly states when task is finished
-14. **Sessions are efficient** - System prompts sent only once, saves tokens
-15. **Natural execution** - No forced step ordering, Coder works plan organically
-
-### What Actually Works Best
-- Task descriptions under 50 words (Bean Counter handles the breakdown)
-- High-level plans with clear goals (Bean Counter creates the steps)
-- Trust the Bean Counter's chunking strategy - it prevents loops and ensures progress
-- Focused changes happen automatically through Bean Counter coordination
-- Clear verification criteria in plans help Bean Counter create better chunks
-- Using 'simplify' when plan is over 10 steps (Bean Counter will still break it down)
-- Bean Counter's session memory prevents getting stuck or repeating work
-
-## 🆘 Getting Help
-
-### Quick Diagnosis Checklist
-```bash
-# Run these in order when something's wrong:
-make check                        # Run all health checks at once
-# OR manually:
-make build                        # 1. Does it compile?
-echo "OK" | claude -p              # 2. Is Claude CLI working?
-make provider                     # 3. Is provider working?
-make status                       # 4. Check git status
-git worktree list                 # 5. Any stuck worktrees?
-```
-
-### If All Else Fails
-1. **Start fresh**: `rm -rf .worktrees/<task-id> && git branch -D sandbox/<task-id>`
-2. **Use simplest possible task**: "Add a comment"
-3. **Check the actual prompts**: `cat src/prompts/planner.md`
-4. **Verify your changes compile**: `npm run build`
 
 ### Remember
 - **Conservative is GOOD** - Prevents breaking changes
 - **"needs-human" is NORMAL** - Not an error
-- **Empty plans mean provider issues** - Not prompt issues
 - **Retry mechanism exists** - 3 attempts is intentional
 - **Worktrees protect you** - Main branch is always safe

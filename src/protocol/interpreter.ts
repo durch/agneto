@@ -39,6 +39,10 @@ export interface SuperReviewerInterpretation {
   issues?: string[];
 }
 
+export type RefinerInterpretation =
+  | { type: "question"; question: string }
+  | { type: "refinement"; content: string };
+
 /**
  * Stateless interpreter for Coder responses
  */
@@ -194,6 +198,46 @@ export async function interpretSuperReviewerResponse(
     return parseSuperReviewerKeywords(response, rawResponse);
   } catch (error) {
     console.error("Interpreter failed to parse SuperReviewer response:", error);
+    console.error("Raw response was:", rawResponse);
+    return null;
+  }
+}
+
+/**
+ * Stateless interpreter for Refiner responses
+ */
+export async function interpretRefinerResponse(
+  provider: LLMProvider,
+  rawResponse: string | undefined,
+  cwd: string
+): Promise<RefinerInterpretation | null> {
+  // Load interpreter prompt
+  const template = readFileSync(
+    new URL("../prompts/interpreter-refiner.md", import.meta.url),
+    "utf8"
+  );
+
+  const messages: Msg[] = [
+    { role: "system", content: template },
+    {
+      role: "user",
+      content: `Extract the decision from this Refiner response:\n\n${rawResponse}`,
+    },
+  ];
+
+  try {
+    const response = await provider.query({
+      cwd,
+      mode: "default", // Use default mode for consistent streaming
+      allowedTools: [],
+      model: "sonnet",
+      messages,
+    });
+
+    // Parse interpreter's simple keyword response
+    return parseRefinerKeywords(response, rawResponse);
+  } catch (error) {
+    console.error("Interpreter failed to parse Refiner response:", error);
     console.error("Raw response was:", rawResponse);
     return null;
   }
@@ -544,7 +588,80 @@ function extractContext(response: string | undefined): string {
  */
 // parseCurmudgeonKeywords removed - Curmudgeon now returns raw feedback directly
 
+/**
+ * Parse Refiner interpreter keywords
+ */
+function parseRefinerKeywords(
+  response: string | undefined,
+  originalResponse: string | undefined
+): RefinerInterpretation | null {
+  const lowerResponse = response?.toLowerCase().trim();
 
+  // Check if interpreter detected a question
+  if (lowerResponse?.includes("question")) {
+    // Extract the question from original response
+    const question = extractQuestion(originalResponse);
+
+    // Validate question is non-empty before returning
+    if (!question || question.trim().length === 0) {
+      console.warn("Detected question type but could not extract question text");
+      return null;
+    }
+
+    return {
+      type: "question",
+      question: question.trim(),
+    };
+  }
+
+  // Default to refinement - return full response as content
+  return {
+    type: "refinement",
+    content: originalResponse?.trim() || "",
+  };
+}
+
+/**
+ * Extract question from refiner response
+ */
+function extractQuestion(response: string | undefined): string {
+  if (!response) return "";
+
+  const lines = response.split("\n");
+
+  // Look for explicit question markers
+  for (const line of lines) {
+    if (
+      line.toLowerCase().includes("i need to clarify") ||
+      line.toLowerCase().includes("could you specify") ||
+      line.toLowerCase().includes("could you clarify")
+    ) {
+      // Return the line after the marker, or the full line if it contains the question
+      const colonIndex = line.indexOf(":");
+      if (colonIndex !== -1) {
+        return line.substring(colonIndex + 1).trim();
+      }
+      return line.trim();
+    }
+  }
+
+  // Look for question marks in early sentences (first 2 sentences)
+  const sentences = response.split(/[.!?]/);
+  for (let i = 0; i < Math.min(2, sentences.length); i++) {
+    if (sentences[i].includes("?")) {
+      return sentences[i].trim() + "?";
+    }
+  }
+
+  // Fallback: return first meaningful sentence
+  for (const sentence of sentences) {
+    if (sentence.trim().length > 10) {
+      return sentence.trim();
+    }
+  }
+
+  return "";
+}
 
 /**
  * Extract issues from SuperReviewer response text

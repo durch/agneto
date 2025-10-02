@@ -12,6 +12,7 @@ import { RefinerAgent } from "./agents/refiner.js";
 import { interactiveRefinement, type RefinementFeedback } from "./ui/refinement-interface.js";
 import { App } from './ui/ink/App.js';
 import { getPlanFeedback, type PlanFeedback } from './ui/planning-interface.js';
+import { interpretRefinerResponse, type RefinerInterpretation } from "./protocol/interpreter.js";
 import { proposePlan, implementPlan } from "./agents/coder.js";
 import { reviewPlan, reviewCode } from "./agents/reviewer.js";
 import { getNextChunk } from "./agents/bean-counter.js";
@@ -304,10 +305,83 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         log.info("🔍 Refining task description...");
                         const refinerAgent = new RefinerAgent(provider);
 
-                        // Generate refinement
-                        const refinedTask = await refinerAgent.refine(cwd, humanTask, taskId, taskStateMachine);
+                        // Generate initial refinement
+                        const initialRefinedTask = await refinerAgent.refine(cwd, humanTask, taskId, taskStateMachine);
 
-                        // Store as pending for UI approval
+                        // Q&A Loop: Handle clarifying questions
+                        let currentResponse = initialRefinedTask.raw;
+                        let interpretation: RefinerInterpretation | null = null;
+                        const MAX_QUESTIONS = 3;
+                        let questionCount = 0;
+
+                        for (questionCount = 0; questionCount <= MAX_QUESTIONS; questionCount++) {
+                            // Interpret the refiner's response
+                            interpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
+
+                            if (interpretation?.type === "question" && questionCount < MAX_QUESTIONS) {
+                                // Store question in state machine
+                                taskStateMachine.setCurrentQuestion(interpretation.question);
+
+                                // Re-render UI to show question modal
+                                inkInstance.rerender(React.createElement(App, {
+                                    taskStateMachine,
+                                    onPlanFeedback: undefined,
+                                    onRefinementFeedback: undefined
+                                }));
+
+                                // Create promise for user answer
+                                let answerResolver: ((value: string) => void) | null = null;
+                                const answerPromise = new Promise<string>((resolve) => {
+                                    answerResolver = resolve;
+                                });
+                                // Attach the resolver to the promise object for the UI to access
+                                (answerPromise as any).resolve = answerResolver;
+
+                                // Create callback for UI to wire up the resolver
+                                const answerCallback = (promise: Promise<string>) => {
+                                    (promise as any).resolve = answerResolver;
+                                };
+
+                                // Re-render UI with answer callback
+                                inkInstance.rerender(React.createElement(App, {
+                                    taskStateMachine,
+                                    onAnswerCallback: answerCallback,
+                                    onPlanFeedback: undefined,
+                                    onRefinementFeedback: undefined
+                                }));
+
+                                // Wait for user to provide answer
+                                const answer = await answerPromise;
+
+                                // Clear question from state
+                                taskStateMachine.clearCurrentQuestion();
+
+                                // Get next response from refiner based on answer
+                                currentResponse = await refinerAgent.askFollowup(answer);
+                            } else {
+                                // Got refinement OR hit question limit - exit loop
+                                break;
+                            }
+                        }
+
+                        // Safety failsafe: ensure we didn't exceed question limit
+                        if (questionCount > MAX_QUESTIONS) {
+                            throw new Error("Safety limit exceeded: Too many clarifying questions");
+                        }
+
+                        // Extract final refinement content
+                        const finalContent = interpretation?.type === "refinement"
+                            ? interpretation.content
+                            : currentResponse;
+
+                        // Create final refined task with updated content
+                        const refinedTask = {
+                            ...initialRefinedTask,
+                            raw: finalContent
+                        };
+
+                        // Clear any remaining question state and store as pending for UI approval
+                        taskStateMachine.clearCurrentQuestion();
                         taskStateMachine.setPendingRefinement(refinedTask);
 
                         // Create promise for UI feedback

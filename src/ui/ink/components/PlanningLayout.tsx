@@ -17,6 +17,7 @@ interface PlanningLayoutProps {
   taskStateMachine: TaskStateMachine;
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
+  onAnswerCallback?: (promise: Promise<string>) => void;
   onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
   onFullscreen?: (paneNum: number) => void;
   terminalHeight: number;
@@ -30,6 +31,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   taskStateMachine,
   onPlanFeedback,
   onRefinementFeedback,
+  onAnswerCallback,
   onSuperReviewerDecision,
   onFullscreen,
   terminalHeight,
@@ -50,6 +52,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const [isProcessingFeedback, setIsProcessingFeedback] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [refinementResolver, setRefinementResolver] = useState<((value: RefinementFeedback) => void) | null>(null);
+  const [answerResolver, setAnswerResolver] = useState<((answer: string) => void) | null>(null);
   const [superReviewerResolver, setSuperReviewerResolver] = useState<((value: SuperReviewerDecision) => void) | null>(null);
 
   // Structured modal state
@@ -121,6 +124,25 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       }
     }
   }, [onRefinementFeedback, currentState]);
+
+  // Wire up answer callback when a question is asked
+  React.useEffect(() => {
+    if (onAnswerCallback && currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion()) {
+      // Create a dummy promise to get the resolver attached by orchestrator
+      const dummyPromise = new Promise<string>((resolve) => {
+        // This resolve will be replaced by the orchestrator
+      });
+
+      // Call the callback which will attach the real resolver
+      onAnswerCallback(dummyPromise);
+
+      // Extract the resolver that was attached by orchestrator
+      const resolver = (dummyPromise as any).resolve;
+      if (resolver) {
+        setAnswerResolver(() => resolver);
+      }
+    }
+  }, [onAnswerCallback, currentState, taskStateMachine]);
 
   // Wire up SuperReviewer decision when callback is provided
   React.useEffect(() => {
@@ -685,6 +707,26 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           )}
         </Box>
       </Box>
+
+      {/* Question Modal - for clarifying questions during refinement */}
+      {currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion() && answerResolver && (
+        <TextInputModal
+          title={`Clarifying Question: ${taskStateMachine.getCurrentQuestion()}`}
+          placeholder="Enter your answer (Ctrl+Enter to submit)"
+          onSubmit={(answer) => {
+            if (answerResolver) {
+              answerResolver(answer);
+              setAnswerResolver(null);
+            }
+          }}
+          onCancel={() => {
+            if (answerResolver) {
+              answerResolver('');
+              setAnswerResolver(null);
+            }
+          }}
+        />
+      )}
 
       {/* TextInputModal - unified for all rejection contexts */}
       {modalState.isOpen && (

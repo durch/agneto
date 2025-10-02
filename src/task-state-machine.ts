@@ -136,6 +136,7 @@ export class TaskStateMachine {
   private auditLogger?: AuditLogger;
   private liveActivityMessage: LiveActivityMessage | null = null;
   private toolStatus: ToolStatus | null = null;
+  private currentQuestion: string | null = null;
 
   constructor(
     taskId: string,
@@ -223,6 +224,18 @@ export class TaskStateMachine {
 
   getPendingRefinement(): RefinedTask | undefined {
     return this.context.pendingRefinement;
+  }
+
+  getCurrentQuestion(): string | null {
+    return this.currentQuestion;
+  }
+
+  setCurrentQuestion(question: string | null): void {
+    this.currentQuestion = question;
+  }
+
+  clearCurrentQuestion(): void {
+    this.currentQuestion = null;
   }
 
   setRefinedTask(refinedTask: RefinedTask, taskToUse: string) {

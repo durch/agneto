@@ -4,10 +4,12 @@ import type { RefinedTask } from "../types.js";
 import { log } from "../ui/log.js";
 import { summarizeToolParams } from "../utils/tool-summary.js";
 import type { TaskStateMachine } from "../task-state-machine.js";
+import { generateUUID } from "../utils/id-generator.js";
 
 export class RefinerAgent {
     private provider: LLMProvider;
     private systemPrompt: string;
+    private sessionId: string | undefined;
 
     constructor(provider: LLMProvider) {
         this.provider = provider;
@@ -22,10 +24,15 @@ export class RefinerAgent {
     ): Promise<RefinedTask> {
         log.startStreaming("Task Refiner");
 
+        // Initialize session for potential followup questions
+        this.sessionId = generateUUID();
+
         const refinedOutput = await this.provider.query({
             cwd,
             mode: "default", // Use default mode for consistent streaming
             allowedTools: ["ReadFile", "Grep", "Bash"], // Read tools for context
+            sessionId: this.sessionId,
+            isInitialized: false, // First call in this session
             messages: [
                 { role: "system", content: this.systemPrompt },
                 { role: "user", content: `Task: ${rawTask}\n\nAnalyze and refine this task description.` }
@@ -55,6 +62,34 @@ export class RefinerAgent {
 
         // Parse the structured output from the refiner
         return this.parseRefinedTask(refinedOutput?.trim());
+    }
+
+    async askFollowup(previousAnswer: string): Promise<string> {
+        // Validate session exists
+        if (!this.sessionId) {
+            throw new Error(
+                "Cannot ask followup: session not initialized. Call refine() first."
+            );
+        }
+
+        // Call provider with existing session - NO tools needed for clarifying questions
+        const response = await this.provider.query({
+            cwd: "", // No cwd needed for followup
+            mode: "default",
+            allowedTools: [], // Followup questions are clarifications, not codebase exploration
+            sessionId: this.sessionId,
+            isInitialized: true, // Session already initialized by refine()
+            messages: [
+                { role: "system", content: this.systemPrompt }, // Include system prompt for context
+                { role: "user", content: previousAnswer }
+            ],
+            callbacks: {
+                onProgress: log.streamProgress,
+                onComplete: (cost, duration) => log.complete("Task Refiner", cost, duration)
+            }
+        });
+
+        return response?.trim() || "";
     }
 
     private parseRefinedTask(output: string | undefined): RefinedTask {
