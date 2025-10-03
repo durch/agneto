@@ -1,6 +1,6 @@
 import { log } from "./ui/log.js";
 import { CoderReviewerStateMachine } from "./state-machine.js";
-import type { RefinedTask, SuperReviewerResult } from "./types.js";
+import type { RefinedTask, SuperReviewerResult, GardenerResult } from "./types.js";
 import type { TaskStateCheckpoint } from "./audit/types.js";
 import type { AuditLogger } from "./audit/audit-logger.js";
 
@@ -137,6 +137,7 @@ export class TaskStateMachine {
   private liveActivityMessage: LiveActivityMessage | null = null;
   private toolStatus: ToolStatus | null = null;
   private currentQuestion: string | null = null;
+  private gardenerResult: GardenerResult | null = null;
 
   constructor(
     taskId: string,
@@ -189,6 +190,14 @@ export class TaskStateMachine {
 
   getLastError(): Error | undefined {
     return this.context.lastError;
+  }
+
+  getGardenerResult(): GardenerResult | null {
+    return this.gardenerResult;
+  }
+
+  setGardenerResult(result: GardenerResult): void {
+    this.gardenerResult = result;
   }
 
   // Live activity message management

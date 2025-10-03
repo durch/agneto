@@ -5,7 +5,7 @@ import { TaskStateMachine, TaskState } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
 import { getPlanFeedback, type PlanFeedback } from '../../planning-interface.js';
 import type { RefinementFeedback } from '../../refinement-interface.js';
-import type { SuperReviewerDecision } from '../../../types.js';
+import type { SuperReviewerDecision, GardenerResult } from '../../../types.js';
 import { FullscreenModal } from './FullscreenModal.js';
 import { TextInputModal } from './TextInputModal.js';
 import { MarkdownText } from './MarkdownText.js';
@@ -23,6 +23,7 @@ interface PlanningLayoutProps {
   terminalHeight: number;
   terminalWidth: number;
   availableContentHeight: number;
+  gardenerResult?: GardenerResult | null;
 }
 
 // Planning Layout Component - handles TASK_PLANNING, TASK_REFINING, TASK_CURMUDGEONING
@@ -36,7 +37,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   onFullscreen,
   terminalHeight,
   terminalWidth,
-  availableContentHeight
+  availableContentHeight,
+  gardenerResult
 }) => {
   const { stdout } = useStdout();
 
@@ -342,23 +344,35 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
             </>
           ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
-            // SuperReviewer: Show original plan on left
+            // SuperReviewer: Show quality check results on left
             <>
               <Box justifyContent="space-between">
-                <Text color="cyan" bold>📋 Original Plan</Text>
+                <Text color="green" bold>🔍 Quality Check Results</Text>
                 <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
-                {planMd ? (
-                  <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
-                    {planPath && (
-                      <Text dimColor color="gray">Saved to: {planPath}</Text>
-                    )}
-                  </Box>
-                ) : (
-                  <Text dimColor>No plan available</Text>
-                )}
+                {(() => {
+                  const superReviewResult = taskStateMachine.getSuperReviewResult();
+                  if (superReviewResult) {
+                    return (
+                      <Box flexDirection="column">
+                        <MarkdownText maxLines={paneContentHeight - 5}>{superReviewResult.summary}</MarkdownText>
+                        {superReviewResult.issues && superReviewResult.issues.length > 0 && (
+                          <Box marginTop={1} flexDirection="column">
+                            <Text color="yellow" bold>Issues Found:</Text>
+                            {superReviewResult.issues.map((issue, idx) => (
+                              <Text key={idx} color="yellow">• {issue}</Text>
+                            ))}
+                          </Box>
+                        )}
+                        <Box marginTop={1}>
+                          <Text dimColor>Verdict: {superReviewResult.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review'}</Text>
+                        </Box>
+                      </Box>
+                    );
+                  }
+                  return <Text dimColor>Performing final quality check...</Text>;
+                })()}
               </Box>
             </>
           ) : currentState === TaskState.TASK_CURMUDGEONING ? (
@@ -443,35 +457,41 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
             </>
           ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
-            // SuperReviewer: Show results on right
+            // SuperReviewer: Show Gardener documentation update status on right
             <>
               <Box justifyContent="space-between">
-                <Text color="green" bold>🔍 Quality Check Results</Text>
+                <Text color="cyan" bold>📝 Documentation Update Status</Text>
                 <Text dimColor>[W]</Text>
               </Box>
               <Box marginTop={1}>
-                {(() => {
-                  const superReviewResult = taskStateMachine.getSuperReviewResult();
-                  if (superReviewResult) {
-                    return (
-                      <Box flexDirection="column">
-                        <MarkdownText maxLines={paneContentHeight - 5}>{superReviewResult.summary}</MarkdownText>
-                        {superReviewResult.issues && superReviewResult.issues.length > 0 && (
-                          <Box marginTop={1} flexDirection="column">
-                            <Text color="yellow" bold>Issues Found:</Text>
-                            {superReviewResult.issues.map((issue, idx) => (
-                              <Text key={idx} color="yellow">• {issue}</Text>
-                            ))}
-                          </Box>
-                        )}
-                        <Box marginTop={1}>
-                          <Text dimColor>Verdict: {superReviewResult.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review'}</Text>
-                        </Box>
+                {!gardenerResult ? (
+                  <Box flexDirection="column">
+                    <Text color="yellow">
+                      <Spinner isActive={true} /> Processing documentation updates...
+                    </Text>
+                  </Box>
+                ) : gardenerResult.success ? (
+                  <Box flexDirection="column">
+                    <Text color="green" bold>✅ {gardenerResult.message}</Text>
+                    {gardenerResult.sectionsUpdated.length > 0 && (
+                      <Box marginTop={1} flexDirection="column">
+                        <Text color="cyan" bold>Sections Updated:</Text>
+                        {gardenerResult.sectionsUpdated.map((section, idx) => (
+                          <Text key={idx} color="green">• {section}</Text>
+                        ))}
                       </Box>
-                    );
-                  }
-                  return <Text dimColor>Performing final quality check...</Text>;
-                })()}
+                    )}
+                  </Box>
+                ) : (
+                  <Box flexDirection="column">
+                    <Text color="red" bold>❌ Documentation update failed</Text>
+                    {gardenerResult.error && (
+                      <Box marginTop={1}>
+                        <Text color="red">{gardenerResult.error}</Text>
+                      </Box>
+                    )}
+                  </Box>
+                )}
               </Box>
             </>
           ) : currentState === TaskState.TASK_CURMUDGEONING ? (

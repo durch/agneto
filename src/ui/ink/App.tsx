@@ -322,6 +322,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
           terminalHeight={terminalHeight}
           terminalWidth={terminalWidth}
           availableContentHeight={availableContentHeight}
+          gardenerResult={taskStateMachine.getGardenerResult()}
         />
       ) : phase.state === TaskState.TASK_EXECUTING ? (
         <ExecutionLayout

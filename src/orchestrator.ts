@@ -1007,6 +1007,16 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 );
                             }
 
+                            // Store Gardener result in task state machine
+                            if (gardenerResult) {
+                                taskStateMachine.setGardenerResult(gardenerResult);
+                                inkInstance?.rerender(React.createElement(App, {
+                                    taskStateMachine,
+                                    onPlanFeedback: undefined,
+                                    onRefinementFeedback: undefined
+                                }));
+                            }
+
                             taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
                         } else if (humanDecision.action === "retry") {
                             log.orchestrator("Human requested a new development cycle to address issues.");
@@ -1036,6 +1046,16 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 cwd,
                                 "docs: Update CLAUDE.md documentation"
                             );
+                        }
+
+                        // Store Gardener result in task state machine
+                        if (gardenerResult) {
+                            taskStateMachine.setGardenerResult(gardenerResult);
+                            inkInstance?.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined
+                            }));
                         }
 
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
