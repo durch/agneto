@@ -602,7 +602,35 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     // Check if we've exceeded the simplification limit
                     if (simplificationCount >= maxSimplifications) {
                         log.orchestrator(`Reached maximum simplification attempts (${maxSimplifications}). Proceeding with current plan.`);
-                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+
+                        // Interactive mode: show plan to user for approval
+                        if (inkInstance && !options?.nonInteractive) {
+                            // Create NEW promise and set the global resolver for UI to use
+                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                planFeedbackResolver = resolve;
+                            });
+
+                            // Rerender UI - it will use the existing handlePlanFeedback callback
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: handlePlanFeedback,
+                                onRefinementFeedback: undefined
+                            }));
+
+                            const feedback = await feedbackPromise;
+
+                            if (feedback.type === "approve") {
+                                log.orchestrator("Plan approved by user after max simplification attempts.");
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                            } else {
+                                // User rejected - but we've hit max attempts, so abandon
+                                log.orchestrator("User rejected plan after max simplification attempts. Abandoning task.");
+                                taskStateMachine.transition(TaskEvent.HUMAN_ABANDON);
+                            }
+                        } else {
+                            // Non-interactive: proceed automatically
+                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                        }
                         break;
                     }
 
@@ -624,7 +652,36 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         if (!result || !result.feedback) {
                             // No feedback or error - proceed with plan as-is
                             log.orchestrator("✅ Curmudgeon has no concerns - proceeding with plan");
-                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+
+                            // Interactive mode: show plan to user for approval
+                            if (inkInstance && !options?.nonInteractive) {
+                                // Create NEW promise and set the global resolver for UI to use
+                                const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                    planFeedbackResolver = resolve;
+                                });
+
+                                // Rerender UI - it will use the existing handlePlanFeedback callback
+                                inkInstance.rerender(React.createElement(App, {
+                                    taskStateMachine,
+                                    onPlanFeedback: handlePlanFeedback,
+                                    onRefinementFeedback: undefined
+                                }));
+
+                                const feedback = await feedbackPromise;
+
+                                if (feedback.type === "approve") {
+                                    log.orchestrator("Plan approved by user (Curmudgeon had no concerns).");
+                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                } else {
+                                    // User rejected - go back to planning with feedback
+                                    const rejectionFeedback = feedback.details || "User requested plan revision";
+                                    taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
+                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                }
+                            } else {
+                                // Non-interactive: proceed automatically
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                            }
                         } else {
                             // Curmudgeon provided feedback - check if we should replan
                             // Simple heuristic: if feedback contains approval language, proceed
@@ -680,7 +737,35 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                             } else if (simplificationCount >= maxSimplifications) {
                                 // Hit the limit - proceed anyway
                                 log.orchestrator(`⚠️ Curmudgeon has feedback but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
-                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+
+                                // Interactive mode: show plan to user for approval
+                                if (inkInstance && !options?.nonInteractive) {
+                                    // Create NEW promise and set the global resolver for UI to use
+                                    const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                        planFeedbackResolver = resolve;
+                                    });
+
+                                    // Rerender UI - it will use the existing handlePlanFeedback callback
+                                    inkInstance.rerender(React.createElement(App, {
+                                        taskStateMachine,
+                                        onPlanFeedback: handlePlanFeedback,
+                                        onRefinementFeedback: undefined
+                                    }));
+
+                                    const feedback = await feedbackPromise;
+
+                                    if (feedback.type === "approve") {
+                                        log.orchestrator("Plan approved by user after max simplification attempts with Curmudgeon feedback.");
+                                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                    } else {
+                                        // User rejected - but we've hit max attempts, so abandon
+                                        log.orchestrator("User rejected plan after max simplification attempts with Curmudgeon feedback. Abandoning task.");
+                                        taskStateMachine.transition(TaskEvent.HUMAN_ABANDON);
+                                    }
+                                } else {
+                                    // Non-interactive: proceed automatically
+                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                }
                             } else {
                                 // Store feedback and replan
                                 log.orchestrator(`🔄 Curmudgeon feedback (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
@@ -702,8 +787,38 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         log.warn(`Curmudgeon review failed: ${error}`);
                         // Clear live activity message on error
                         taskStateMachine.clearLiveActivityMessage();
-                        // On error, proceed without curmudgeon review
-                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+
+                        // Interactive mode: show plan to user for approval even if Curmudgeon failed
+                        if (inkInstance && !options?.nonInteractive) {
+                            log.orchestrator("Curmudgeon review failed. Requesting user approval for plan.");
+
+                            // Create NEW promise and set the global resolver for UI to use
+                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                planFeedbackResolver = resolve;
+                            });
+
+                            // Rerender UI - it will use the existing handlePlanFeedback callback
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: handlePlanFeedback,
+                                onRefinementFeedback: undefined
+                            }));
+
+                            const feedback = await feedbackPromise;
+
+                            if (feedback.type === "approve") {
+                                log.orchestrator("Plan approved by user (Curmudgeon review failed).");
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                            } else {
+                                // User rejected - go back to planning with feedback
+                                const rejectionFeedback = feedback.details || "User requested plan revision";
+                                taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                            }
+                        } else {
+                            // Non-interactive: proceed automatically on error
+                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                        }
                     }
                     break;
                 }
