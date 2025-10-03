@@ -398,14 +398,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
-                  <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight - 2}>
-                      {pendingRefinement.raw || pendingRefinement.goal}
-                    </MarkdownText>
-                    <Box marginTop={1}>
-                      <Text color="yellow" bold>⏳ Awaiting Approval</Text>
-                    </Box>
-                  </Box>
+                  <MarkdownText maxLines={paneContentHeight}>
+                    {pendingRefinement.raw || pendingRefinement.goal}
+                  </MarkdownText>
                 ) : currentState === TaskState.TASK_REFINING ? (
                   <Text dimColor>Refining task description...</Text>
                 ) : taskToUse ? (
@@ -548,7 +543,14 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       <Box
         flexDirection="column"
         borderStyle="single"
-        borderColor="yellow"
+        borderColor={
+          (pendingRefinement && refinementResolver) ||
+          (planMd && onPlanFeedback && currentState === TaskState.TASK_CURMUDGEONING && !isProcessingFeedback) ||
+          (taskStateMachine.getCurrentQuestion() && answerResolver) ||
+          (taskStateMachine.getSuperReviewResult()?.verdict === 'needs-human' && superReviewerResolver)
+            ? "yellow"
+            : "blue"
+        }
         paddingX={1}
       >
         <Box flexDirection="column">
@@ -570,39 +572,47 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             return null;
           })()}
 
-          {/* Display tool status from state machine */}
+          {/* Combined status message with tool status */}
           {(() => {
             // Check execution state machine first (if in execution phase)
             const executionStateMachine = taskStateMachine.getExecutionStateMachine();
             const toolStatus = executionStateMachine?.getToolStatus() || taskStateMachine.getToolStatus();
 
-            if (toolStatus) {
-              return (
-                <Box marginBottom={1}>
-                  <Text color="cyan">
-                    ⚙️ [{toolStatus.agent}] → {toolStatus.tool}: {toolStatus.summary}
-                  </Text>
-                </Box>
-              );
+            // Base status message without redundant agent names
+            let baseStatus = '';
+            if (currentState === TaskState.TASK_REFINING) {
+              baseStatus = 'Refining task description...';
+            } else if (currentState === TaskState.TASK_PLANNING) {
+              baseStatus = 'Creating strategic plan...';
+            } else if (currentState === TaskState.TASK_CURMUDGEONING) {
+              baseStatus = 'Reviewing plan complexity...';
+            } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+              baseStatus = 'Performing final quality check...';
+            } else if (currentState === TaskState.TASK_EXECUTING) {
+              baseStatus = executionState === State.BEAN_COUNTING ? 'Determining work chunk...' :
+                          executionState === State.PLANNING ? 'Proposing implementation...' :
+                          executionState === State.PLAN_REVIEW ? 'Evaluating approach...' :
+                          executionState === State.IMPLEMENTING ? 'Applying changes to codebase...' :
+                          executionState === State.CODE_REVIEW ? 'Validating implementation...' :
+                          'Executing task...';
             }
-            return null;
-          })()}
 
-          <Text dimColor>
-            <Spinner isActive={isQueryInProgress} /> Current Stage: {' '}
-            {currentState === TaskState.TASK_REFINING && 'Refining task description...'}
-            {currentState === TaskState.TASK_PLANNING && 'Creating strategic plan...'}
-            {currentState === TaskState.TASK_CURMUDGEONING && 'Reviewing plan complexity...'}
-            {currentState === TaskState.TASK_SUPER_REVIEWING && 'SuperReviewer performing final quality check...'}
-            {currentState === TaskState.TASK_EXECUTING && (
-              executionState === State.BEAN_COUNTING ? 'Bean Counter determining work chunk...' :
-              executionState === State.PLANNING ? 'Coder proposing implementation...' :
-              executionState === State.PLAN_REVIEW ? 'Reviewer evaluating approach...' :
-              executionState === State.IMPLEMENTING ? 'Applying changes to codebase...' :
-              executionState === State.CODE_REVIEW ? 'Reviewer validating implementation...' :
-              'Executing task...'
-            )}
-          </Text>
+            // Merge tool status into message when active
+            const statusMessage = toolStatus ?
+              `${baseStatus} → ${toolStatus.tool}: ${toolStatus.summary}` :
+              baseStatus;
+
+            // Only show spinner when there's actual activity
+            const showSpinner = !!(toolStatus || isQueryInProgress);
+
+            return (
+              <Text color={toolStatus ? "cyan" : undefined} dimColor={!toolStatus}>
+                {showSpinner && <Spinner isActive={true} />}
+                {showSpinner && " "}
+                {statusMessage}
+              </Text>
+            );
+          })()}
 
           {/* Interactive Instructions - Show for refinement or planning states */}
           {currentState === TaskState.TASK_REFINING && pendingRefinement && refinementResolver && (

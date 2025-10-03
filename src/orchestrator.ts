@@ -913,6 +913,16 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         throw new Error("No plan available for super review");
                     }
 
+                    // Update UI to show we're entering super review phase
+                    if (inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined,
+                            onSuperReviewerDecision: undefined
+                        }));
+                    }
+
                     log.orchestrator("🔍 Running SuperReviewer for final quality check...");
                     const superReviewResult = await runSuperReviewer(
                         provider,
@@ -930,6 +940,16 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         superReviewResult.issues.forEach(issue => {
                             log.review(`Issue: ${issue}`);
                         });
+                    }
+
+                    // Update UI to show SuperReviewer results regardless of verdict
+                    if (inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined,
+                            onSuperReviewerDecision: undefined
+                        }));
                     }
 
                     if (superReviewResult.verdict === "needs-human") {
@@ -1013,7 +1033,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                         if (gardenerResult?.success) {
                             await commitChanges(
-                                taskStateMachine.getContext().taskId,
+                                cwd,
                                 "docs: Update CLAUDE.md documentation"
                             );
                         }
@@ -1362,6 +1382,16 @@ async function runRestoredTask(
                             throw new Error("No plan available for super review");
                         }
 
+                        // Update UI to show we're entering super review phase
+                        if (inkInstance) {
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined,
+                                onSuperReviewerDecision: undefined
+                            }));
+                        }
+
                         log.orchestrator("🔍 Running SuperReviewer for final quality check...");
                         const superReviewResult = await runSuperReviewer(
                             provider,
@@ -1379,6 +1409,16 @@ async function runRestoredTask(
                             superReviewResult.issues.forEach(issue => {
                                 log.review(`Issue: ${issue}`);
                             });
+                        }
+
+                        // Update UI to show SuperReviewer results regardless of verdict
+                        if (inkInstance) {
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined,
+                                onSuperReviewerDecision: undefined
+                            }));
                         }
 
                         if (superReviewResult.verdict === "needs-human") {
@@ -1431,7 +1471,7 @@ async function runRestoredTask(
 
                                 if (gardenerResult?.success) {
                                     await commitChanges(
-                                        taskStateMachine.getContext().taskId,
+                                        cwd,
                                         "docs: Update CLAUDE.md documentation"
                                     );
                                 }

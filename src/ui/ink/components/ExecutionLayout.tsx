@@ -152,28 +152,31 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   leftContent = currentState === State.BEAN_COUNTING ? 'Bean Counting!' : (beanCounterOutput || 'Determining work chunk...');
   leftColor = 'cyan';
 
-  // Status message based on execution state
-  switch (currentState) {
-    case State.BEAN_COUNTING:
-      statusMessage = 'Bean Counter is breaking down work into implementable chunks';
-      break;
-    case State.PLANNING:
-      statusMessage = 'Coder is proposing implementation approach';
-      break;
-    case State.PLAN_REVIEW:
-      statusMessage = 'Reviewer is evaluating the proposed approach';
-      break;
-    case State.IMPLEMENTING:
-      statusMessage = 'Coder is implementing the approved plan';
-      break;
-    case State.CODE_REVIEW:
-      statusMessage = 'Reviewer is validating the implementation';
-      break;
-    case State.TASK_COMPLETE:
-      statusMessage = 'All chunks implemented and approved';
-      break;
-    default:
-      statusMessage = 'Processing...';
+  // Status message based on execution state - includes tool status when active
+  const baseStatusMessage = (() => {
+    switch (currentState) {
+      case State.BEAN_COUNTING:
+        return 'Bean Counter is breaking down work into implementable chunks';
+      case State.PLANNING:
+        return 'Coder is proposing implementation approach';
+      case State.PLAN_REVIEW:
+        return 'Reviewer is evaluating the proposed approach';
+      case State.IMPLEMENTING:
+        return 'Coder is implementing the approved plan';
+      case State.CODE_REVIEW:
+        return 'Reviewer is validating the implementation';
+      case State.TASK_COMPLETE:
+        return 'All chunks implemented and approved';
+      default:
+        return 'Processing...';
+    }
+  })();
+
+  // Merge tool status into status message when active
+  if (toolStatus) {
+    statusMessage = `${baseStatusMessage} → ${toolStatus.tool}: ${toolStatus.summary}`;
+  } else {
+    statusMessage = baseStatusMessage;
   }
 
   return (
@@ -230,11 +233,13 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               </Box>
               <Text dimColor>[W]</Text>
             </Box>
-            <Box marginTop={1}>
-              <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
-            </Box>
-            {getActiveAgent(currentState) !== 'coder' && (
-              <Text wrap="wrap">{executionStateMachine.getSummary('coder') || 'Generating summary...'}</Text>
+            {getActiveAgent(currentState) === 'coder' && (
+              <Box marginTop={1}>
+                <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
+              </Box>
+            )}
+            {getActiveAgent(currentState) !== 'coder' && executionStateMachine.getSummary('coder') && (
+              <Text wrap="wrap">{executionStateMachine.getSummary('coder')}</Text>
             )}
           </Box>
 
@@ -254,11 +259,13 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               </Box>
               <Text dimColor>[E]</Text>
             </Box>
-            <Box marginTop={1}>
-              <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
-            </Box>
-            {getActiveAgent(currentState) !== 'reviewer' && (
-              <Text wrap="wrap">{executionStateMachine.getSummary('reviewer') || 'Generating summary...'}</Text>
+            {getActiveAgent(currentState) === 'reviewer' && (
+              <Box marginTop={1}>
+                <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
+              </Box>
+            )}
+            {getActiveAgent(currentState) !== 'reviewer' && executionStateMachine.getSummary('reviewer') && (
+              <Text wrap="wrap">{executionStateMachine.getSummary('reviewer')}</Text>
             )}
           </Box>
         </Box>
@@ -268,20 +275,14 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       <Box
         flexDirection="column"
         borderStyle="single"
-        borderColor="blue"
+        borderColor={executionStateMachine.getNeedsHumanReview() ? "yellow" : "blue"}
         paddingX={1}
       >
-        {/* Tool status display */}
-        {toolStatus && (
-          <Box marginBottom={1}>
-            <Text color="cyan">
-              <Spinner isActive={!!toolStatus} /> [{toolStatus.agent}] → {toolStatus.tool}: {toolStatus.summary}
-            </Text>
-          </Box>
-        )}
-
-        <Text>{statusMessage}</Text>
-        <Text dimColor>State: {currentState}</Text>
+        <Text color={toolStatus ? "cyan" : undefined}>
+          {toolStatus && <Spinner isActive={true} />}
+          {toolStatus && " "}
+          {statusMessage}
+        </Text>
 
         {/* Human Review Menu */}
         {executionStateMachine.getNeedsHumanReview() && humanReviewResolver && (
