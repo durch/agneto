@@ -12,12 +12,11 @@ export interface TextInputModalProps {
 /**
  * TextInputModal Component
  *
- * A fullscreen modal for multi-line text input using ink-text-input.
+ * A modal for text input using ink-text-input.
  *
  * Keyboard shortcuts:
- * - Enter: New line (handled by TextInput)
+ * - Enter: Submit text
  * - Escape: Cancel input
- * - Ctrl+Enter or Cmd+Enter: Submit text
  */
 export const TextInputModal: React.FC<TextInputModalProps> = ({
   title,
@@ -27,14 +26,8 @@ export const TextInputModal: React.FC<TextInputModalProps> = ({
 }) => {
   const [text, setText] = useState<string>('');
 
-  // Handle submission and cancellation
+  // Handle cancellation only - let TextInput handle submission
   useInput((input, key) => {
-    // Ctrl+Enter or Meta+Enter (Cmd on Mac): Submit
-    if (key.return && (key.ctrl || key.meta)) {
-      onSubmit(text);
-      return;
-    }
-
     // Escape: Cancel
     if (key.escape) {
       onCancel();
@@ -77,13 +70,15 @@ export const TextInputModal: React.FC<TextInputModalProps> = ({
           value={text}
           onChange={setText}
           placeholder={placeholder}
+          onSubmit={() => onSubmit(text)}
+          focus={true}
         />
       </Box>
 
       {/* Footer with character count and keyboard hints */}
       <Box justifyContent="space-between" marginTop={1}>
         <Text dimColor>
-          [Enter] New line  |  [Ctrl+Enter/⌘+Enter] Submit
+          [Enter] Submit  |  [Esc] Cancel
         </Text>
         <Text dimColor>{text.length} chars</Text>
       </Box>

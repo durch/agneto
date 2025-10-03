@@ -722,7 +722,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       {currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion() && answerResolver && (
         <TextInputModal
           title={`Clarifying Question: ${taskStateMachine.getCurrentQuestion()}`}
-          placeholder="Enter your answer (Ctrl+Enter to submit)"
+          placeholder="Type your answer and press Enter to submit"
           onSubmit={(answer) => {
             if (answerResolver) {
               answerResolver(answer);
