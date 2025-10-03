@@ -6,7 +6,6 @@ import { State } from '../../../state-machine.js';
 import { StatusIndicator } from './StatusIndicator.js';
 import type { HumanInteractionResult } from '../../../types.js';
 import { TextInputModal } from './TextInputModal.js';
-import { Spinner } from './Spinner.js';
 
 // TypeScript interface for ExecutionLayout props
 interface ExecutionLayoutProps {
@@ -85,9 +84,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
   // Get execution state machine
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
-
-  // Get tool status to determine if spinner should animate
-  const toolStatus = executionStateMachine?.getToolStatus();
 
   // Intercept Ctrl+Q/W/E for fullscreen panes
   useInput((input, key) => {
@@ -271,15 +267,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         borderColor="blue"
         paddingX={1}
       >
-        {/* Tool status display */}
-        {toolStatus && (
-          <Box marginBottom={1}>
-            <Text color="cyan">
-              <Spinner isActive={!!toolStatus} /> [{toolStatus.agent}] → {toolStatus.tool}: {toolStatus.summary}
-            </Text>
-          </Box>
-        )}
-
         <Text>{statusMessage}</Text>
         <Text dimColor>State: {currentState}</Text>
 
