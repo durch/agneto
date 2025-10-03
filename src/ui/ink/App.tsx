@@ -308,7 +308,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       </Box>
 
       {/* Status Section - Ready for future phase-based content */}
-<<<<<<< HEAD
       {(phase.state === TaskState.TASK_REFINING ||
         phase.state === TaskState.TASK_PLANNING ||
         phase.state === TaskState.TASK_CURMUDGEONING ||
@@ -335,37 +334,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
           Phase-specific content will be displayed here...
         </Text>
       )}
-=======
-      <Box borderStyle="round" borderColor="gray" padding={1}>
-        <Box flexDirection="column">
-          {/* Phase-specific content */}
-          <Box>
-            {(phase.state === TaskState.TASK_REFINING ||
-              phase.state === TaskState.TASK_PLANNING ||
-              phase.state === TaskState.TASK_CURMUDGEONING ||
-              phase.state === TaskState.TASK_SUPER_REVIEWING) ? (
-              <PlanningLayout
-                currentState={phase.state}
-                taskStateMachine={taskStateMachine}
-                onPlanFeedback={onPlanFeedback}
-                onRefinementFeedback={onRefinementFeedback}
-                onAnswerCallback={onAnswerCallback}
-                onSuperReviewerDecision={onSuperReviewerDecision}
-                terminalHeight={terminalHeight}
-                terminalWidth={terminalWidth}
-                availableContentHeight={availableContentHeight}
-              />
-            ) : phase.state === TaskState.TASK_EXECUTING ? (
-              <ExecutionLayout taskStateMachine={taskStateMachine} onHumanReviewDecision={onHumanReviewDecision} />
-            ) : (
-              <Text dimColor italic>
-                Phase-specific content will be displayed here...
-              </Text>
-            )}
-          </Box>
-        </Box>
-      </Box>
->>>>>>> sandbox/refiner-questions
 
       {/* Keyboard Shortcuts Footer */}
       <Box marginTop={1} paddingX={1}>
