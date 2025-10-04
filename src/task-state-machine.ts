@@ -19,6 +19,7 @@ export enum TaskState {
 
   // Post-execution phases
   TASK_SUPER_REVIEWING = "TASK_SUPER_REVIEWING",
+  TASK_GARDENING = "TASK_GARDENING",
   TASK_FINALIZING = "TASK_FINALIZING",
 
   // Terminal states
@@ -65,6 +66,7 @@ export enum TaskEvent {
   // Super review events
   SUPER_REVIEW_PASSED = "SUPER_REVIEW_PASSED",
   SUPER_REVIEW_NEEDS_HUMAN = "SUPER_REVIEW_NEEDS_HUMAN",
+  GARDENING_COMPLETE = "GARDENING_COMPLETE",
 
   // Human decision events
   HUMAN_APPROVED = "HUMAN_APPROVED",
@@ -493,13 +495,13 @@ export class TaskStateMachine {
 
       case TaskState.TASK_SUPER_REVIEWING:
         if (event === TaskEvent.SUPER_REVIEW_PASSED) {
-          this.state = TaskState.TASK_FINALIZING;
+          this.state = TaskState.TASK_GARDENING;
           return true;
         } else if (event === TaskEvent.SUPER_REVIEW_NEEDS_HUMAN) {
           // Stay in super review state, waiting for human decision
           return true;
         } else if (event === TaskEvent.HUMAN_APPROVED) {
-          this.state = TaskState.TASK_FINALIZING;
+          this.state = TaskState.TASK_GARDENING;
           return true;
         } else if (event === TaskEvent.HUMAN_RETRY) {
           // Go back to planning for a new cycle
@@ -508,6 +510,16 @@ export class TaskStateMachine {
           return true;
         } else if (event === TaskEvent.HUMAN_ABANDON) {
           this.state = TaskState.TASK_ABANDONED;
+          return true;
+        } else if (event === TaskEvent.ERROR_OCCURRED) {
+          this.handleError(data);
+          return true;
+        }
+        break;
+
+      case TaskState.TASK_GARDENING:
+        if (event === TaskEvent.GARDENING_COMPLETE) {
+          this.state = TaskState.TASK_FINALIZING;
           return true;
         } else if (event === TaskEvent.ERROR_OCCURRED) {
           this.handleError(data);

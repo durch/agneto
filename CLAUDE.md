@@ -336,7 +336,7 @@ Agneto uses a two-level state machine architecture:
 
 1. **Task State Machine** (`task-state-machine.ts`):
    - Manages the overall task lifecycle
-   - States: INIT → REFINING → PLANNING → CURMUDGEONING → EXECUTING → SUPER_REVIEWING → COMPLETE
+   - States: INIT → REFINING → PLANNING → CURMUDGEONING → EXECUTING → SUPER_REVIEWING → GARDENING → COMPLETE
    - Handles high-level task flow and agent coordination
 
 2. **Execution State Machine** (`state-machine.ts`):
@@ -557,7 +557,7 @@ Set `DEBUG=true` to see:
 - ✅ **State machine architecture** - Clear task and execution lifecycle
 - ✅ **Natural language protocol** - Robust agent communication
 - ✅ **Menu-based UI navigation** - Arrow key + Enter selection for all approvals, no shortcut conflicts
-- ✅ **SuperReviewer + Gardener split view** - Left pane shows quality check results, right pane shows documentation update status
+- ✅ **Separate SuperReviewer and Gardener states** - Independent `TASK_GARDENING` state ensures documentation update results are visible before task finalization; split-pane UI shows SuperReviewer (left) and Gardener (right) results
 - ✅ **Dynamic prompt injection** - Ctrl+I keyboard shortcut enables real-time agent behavior modification during execution
 - ✅ **Curmudgeon interpreter pattern** - Structured verdict extraction prevents approval loop bugs
 
@@ -747,7 +747,7 @@ Agneto supports real-time agent behavior modification via the Ctrl+I keyboard sh
 ### File Organization
 
 - `src/ui/ink/App.tsx` - Main Ink app component
-- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval; also displays SuperReviewer results (left pane) and Gardener status (right pane) during TASK_SUPER_REVIEWING state
+- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval; displays SuperReviewer results (left pane) during `TASK_SUPER_REVIEWING`, then shows both SuperReviewer + Gardener results (split view) during `TASK_GARDENING` state
 - `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review; injection modal integration
 - Approval callbacks passed as props through component hierarchy
 - State read dynamically from `taskStateMachine`, not props

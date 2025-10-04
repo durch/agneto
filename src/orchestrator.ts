@@ -1105,33 +1105,12 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         if (humanDecision.action === "approve") {
                             log.orchestrator("Human accepted work despite identified issues.");
 
-                            // Update CLAUDE.md documentation with task completion (even for incomplete acceptance)
-                            log.orchestrator("📝 Updating CLAUDE.md with task documentation (incomplete acceptance)...");
-                            const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
-                            const gardenerResult = await documentTaskCompletion(
-                                provider,
-                                cwd,
-                                taskStateMachine.getContext().taskId,
-                                taskDescription,
-                                planMd
-                            );
-
-                            if (gardenerResult?.success) {
-                                await commitChanges(
-                                    cwd,
-                                    "docs: Update CLAUDE.md documentation"
-                                );
-                            }
-
-                            // Store Gardener result in task state machine
-                            if (gardenerResult) {
-                                taskStateMachine.setGardenerResult(gardenerResult);
-                                inkInstance?.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    onPlanFeedback: undefined,
-                                    onRefinementFeedback: undefined
-                                }));
-                            }
+                            // Rerender UI before transition
+                            inkInstance?.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                onPlanFeedback: undefined,
+                                onRefinementFeedback: undefined
+                            }));
 
                             taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
                         } else if (humanDecision.action === "retry") {
@@ -1146,36 +1125,68 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     } else {
                         log.orchestrator("✅ SuperReviewer approved - implementation ready for merge!");
 
-                        // Update CLAUDE.md documentation with task completion
-                        log.orchestrator("📝 Updating CLAUDE.md with task documentation...");
-                        const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
+                        // Rerender UI before transition
+                        inkInstance?.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+
+                        taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
+                    }
+                    break;
+                }
+
+                case TaskState.TASK_GARDENING: {
+                    log.orchestrator("📝 Updating documentation...");
+
+                    // Rerender UI to show gardening phase
+                    if (inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+                    }
+
+                    try {
+                        // Execute Gardener to update CLAUDE.md
+                        const description = taskStateMachine.getContext().taskToUse || humanTask;
+                        const planContent = taskStateMachine.getPlanMd() || "";
+
                         const gardenerResult = await documentTaskCompletion(
                             provider,
                             cwd,
-                            taskStateMachine.getContext().taskId,
-                            taskDescription,
-                            planMd
+                            taskId,
+                            description,
+                            planContent
                         );
 
-                        if (gardenerResult?.success) {
-                            await commitChanges(
-                                cwd,
-                                "docs: Update CLAUDE.md documentation"
-                            );
-                        }
-
-                        // Store Gardener result in task state machine
+                        // Store result for UI display (even if null)
                         if (gardenerResult) {
                             taskStateMachine.setGardenerResult(gardenerResult);
-                            inkInstance?.rerender(React.createElement(App, {
+                            log.orchestrator("✅ Documentation updated successfully");
+                        } else {
+                            log.orchestrator("⚠️ Documentation update skipped or failed (non-blocking)");
+                        }
+
+                        // Rerender UI to show Gardener results
+                        if (inkInstance) {
+                            inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
                                 onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined
                             }));
                         }
 
-                        taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
+                        // Transition to finalization regardless of Gardener success
+                        taskStateMachine.transition(TaskEvent.GARDENING_COMPLETE);
+                    } catch (error) {
+                        // Log error but continue - documentation updates never block completion
+                        log.warn(`Gardening phase error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                        taskStateMachine.transition(TaskEvent.GARDENING_COMPLETE);
                     }
+
                     break;
                 }
 
