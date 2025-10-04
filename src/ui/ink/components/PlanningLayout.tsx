@@ -99,9 +99,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   });
 
-  // Get live activity to determine if spinner should animate
-  const liveActivity = taskStateMachine.getLiveActivityMessage();
-
   // Store curmudgeon feedback when it becomes available
   React.useEffect(() => {
     const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
@@ -340,14 +337,18 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const isQueryInProgress =
     (currentState === TaskState.TASK_REFINING && !pendingRefinement) ||
     (currentState === TaskState.TASK_PLANNING && !planMd) ||
-    (currentState === TaskState.TASK_CURMUDGEONING && !curmudgeonFeedback) ||
-    !!liveActivity;
+    (currentState === TaskState.TASK_CURMUDGEONING && !curmudgeonFeedback);
 
   // Determine phase title and color
   const isExecuting = currentState === TaskState.TASK_EXECUTING;
   const isSuperReviewing = currentState === TaskState.TASK_SUPER_REVIEWING;
-  const phaseTitle = isSuperReviewing ? '🔍 Final Quality Check' : (isExecuting ? '⚡ Execution Phase' : '📋 Planning Phase');
-  const phaseColor = isSuperReviewing ? 'green' : (isExecuting ? 'yellow' : 'blue');
+  const isGardening = currentState === TaskState.TASK_GARDENING;
+  const phaseTitle = isSuperReviewing ? '🔍 Final Quality Check' :
+                     isGardening ? '📚 Documentation Update Phase' :
+                     (isExecuting ? '⚡ Execution Phase' : '📋 Planning Phase');
+  const phaseColor = isSuperReviewing ? 'green' :
+                     isGardening ? 'cyan' :
+                     (isExecuting ? 'yellow' : 'blue');
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={phaseColor} padding={1} flexGrow={1}>
@@ -384,8 +385,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 )}
               </Box>
             </>
-          ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
-            // SuperReviewer: Show quality check results on left
+          ) : (currentState === TaskState.TASK_SUPER_REVIEWING || currentState === TaskState.TASK_GARDENING) ? (
+            // SuperReviewer/Gardening: Show quality check results on left
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>🔍 Quality Check Results</Text>
@@ -500,8 +501,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 )}
               </Box>
             </>
-          ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
-            // SuperReviewer: Show Gardener documentation update status on right
+          ) : (currentState === TaskState.TASK_SUPER_REVIEWING || currentState === TaskState.TASK_GARDENING) ? (
+            // SuperReviewer/Gardening: Show Gardener documentation update status on right
             <>
               <Box justifyContent="space-between">
                 <Text color="cyan" bold>📝 Documentation Update Status</Text>
@@ -511,7 +512,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 {!gardenerResult ? (
                   <Box flexDirection="column">
                     <Text color="yellow">
-                      <Spinner isActive={true} /> Processing documentation updates...
+                      <Spinner isActive={true} /> {currentState === TaskState.TASK_GARDENING ? 'Updating documentation...' : 'Awaiting documentation update...'}
                     </Text>
                   </Box>
                 ) : gardenerResult.success ? (
@@ -549,7 +550,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   <Box flexDirection="column">
                     <MarkdownText maxLines={paneContentHeight - 2}>{curmudgeonFeedback}</MarkdownText>
                     <Box marginTop={1}>
-                      <Text dimColor>Simplification attempt {simplificationCount + 1}/2</Text>
+                      <Text dimColor>Simplification attempt {simplificationCount + 1}/4</Text>
                     </Box>
                   </Box>
                 ) : (
@@ -625,15 +626,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {/* Display live activity message from task state machine */}
-          {liveActivity && (
-            <Box marginBottom={1}>
-              <Text color="cyan">
-                {liveActivity.agent}: {liveActivity.message}
-              </Text>
-            </Box>
-          )}
-
           {/* Combined status message with tool status */}
           {(() => {
             // Check execution state machine first (if in execution phase)
@@ -650,6 +642,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               baseStatus = 'Reviewing plan complexity...';
             } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
               baseStatus = 'Performing final quality check...';
+            } else if (currentState === TaskState.TASK_GARDENING) {
+              baseStatus = 'Updating documentation...';
             } else if (currentState === TaskState.TASK_EXECUTING) {
               baseStatus = executionState === State.BEAN_COUNTING ? 'Determining work chunk...' :
                           executionState === State.PLANNING ? 'Proposing implementation...' :

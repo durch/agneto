@@ -34,6 +34,8 @@ const getPhaseDisplayName = (state: TaskState): string => {
       return 'Executing';
     case TaskState.TASK_SUPER_REVIEWING:
       return 'Final Review';
+    case TaskState.TASK_GARDENING:
+      return 'Updating Documentation';
     case TaskState.TASK_FINALIZING:
       return 'Finalizing';
     case TaskState.TASK_COMPLETE:
@@ -57,6 +59,8 @@ const getPhaseColor = (state: TaskState): string => {
     case TaskState.TASK_SUPER_REVIEWING:
     case TaskState.TASK_FINALIZING:
       return 'yellow';
+    case TaskState.TASK_GARDENING:
+      return 'cyan';
     case TaskState.TASK_COMPLETE:
       return 'green';
     case TaskState.TASK_ABANDONED:
@@ -334,7 +338,8 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       {(phase.state === TaskState.TASK_REFINING ||
         phase.state === TaskState.TASK_PLANNING ||
         phase.state === TaskState.TASK_CURMUDGEONING ||
-        phase.state === TaskState.TASK_SUPER_REVIEWING) ? (
+        phase.state === TaskState.TASK_SUPER_REVIEWING ||
+        phase.state === TaskState.TASK_GARDENING) ? (
         <PlanningLayout
           currentState={phase.state}
           taskStateMachine={taskStateMachine}
