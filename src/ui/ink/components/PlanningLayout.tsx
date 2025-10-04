@@ -626,22 +626,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           )}
 
           {/* Display live activity message from task state machine */}
-          {liveActivity && (() => {
-            // Filter out multiline content (likely full plan output) from live activity
-            // Only show brief status updates (single line or short messages)
-            const isLongContent = liveActivity.message.includes('\n') || liveActivity.message.length > 150;
-
-            if (!isLongContent) {
-              return (
-                <Box marginBottom={1}>
-                  <Text color="cyan">
-                    {liveActivity.agent}: {liveActivity.message}
-                  </Text>
-                </Box>
-              );
-            }
-            return null;
-          })()}
+          {liveActivity && (
+            <Box marginBottom={1}>
+              <Text color="cyan">
+                {liveActivity.agent}: {liveActivity.message}
+              </Text>
+            </Box>
+          )}
 
           {/* Combined status message with tool status */}
           {(() => {
