@@ -71,6 +71,20 @@ function getAgentStatusText(agent: 'coder' | 'reviewer', currentState: State): s
   }
 }
 
+// Helper function to determine current agent for injection modal
+function getCurrentAgentForInjection(currentState: State): string {
+  // Bean Counter is active during BEAN_COUNTING, or just finished if in PLANNING
+  if (currentState === State.BEAN_COUNTING || currentState === State.PLANNING) {
+    return 'Bean Counter';
+  }
+  // Coder is active during PLANNING/IMPLEMENTING, or just finished if in CODE_REVIEW
+  if (currentState === State.IMPLEMENTING || currentState === State.CODE_REVIEW) {
+    return 'Coder';
+  }
+  // Reviewer is active during PLAN_REVIEW/CODE_REVIEW
+  return 'Reviewer';
+}
+
 // Execution Layout Component - handles TASK_EXECUTING with dynamic two-pane view
 export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine, onHumanReviewDecision, onFullscreen }) => {
   const { stdout } = useStdout();
@@ -83,6 +97,9 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   // Retry modal state
   const [showRetryModal, setShowRetryModal] = React.useState(false);
   const [retryFeedback, setRetryFeedback] = React.useState("");
+
+  // Injection modal state
+  const [showInjectionModal, setShowInjectionModal] = React.useState(false);
 
   // Get execution state machine
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
@@ -117,6 +134,35 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       }
     }
   }, [onHumanReviewDecision, executionStateMachine?.getNeedsHumanReview()]);
+
+  // Monitor injection pause and show modal when chunk operation completes
+  React.useEffect(() => {
+    if (!executionStateMachine) return;
+
+    const pauseRequested = taskStateMachine.isInjectionPauseRequested();
+    const currentState = executionStateMachine.getCurrentState();
+    const beanCounterOutput = executionStateMachine.getAgentOutput('bean');
+    const coderOutput = executionStateMachine.getAgentOutput('coder');
+    const reviewerOutput = executionStateMachine.getAgentOutput('reviewer');
+
+    // Detect operation completion (agent has finished current work)
+    // Exclude TASK_COMPLETE state from triggering injection modal
+    const isOperationComplete =
+      (currentState === State.PLANNING && beanCounterOutput) ||
+      (currentState === State.CODE_REVIEW && coderOutput) ||
+      (currentState === State.BEAN_COUNTING && reviewerOutput);
+
+    const isTaskComplete = currentState === State.TASK_COMPLETE;
+
+    // Check for conflicting modals
+    const isHumanReviewActive = executionStateMachine.getNeedsHumanReview();
+    const isRetryModalActive = showRetryModal;
+
+    if (pauseRequested && isOperationComplete && !isTaskComplete && !isHumanReviewActive && !isRetryModalActive) {
+      setShowInjectionModal(true);
+      taskStateMachine.clearInjectionPause();
+    }
+  }, [executionStateMachine, taskStateMachine, showRetryModal]);
 
   if (!executionStateMachine) {
     return (
@@ -179,6 +225,17 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   } else {
     statusMessage = baseStatusMessage;
   }
+
+  // Handle injection modal submit
+  const handleInjectionSubmit = (content: string) => {
+    taskStateMachine.setPendingInjection(content);
+    setShowInjectionModal(false);
+  };
+
+  // Handle injection modal cancel
+  const handleInjectionCancel = () => {
+    setShowInjectionModal(false);
+  };
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1}>
@@ -279,11 +336,22 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         borderColor={executionStateMachine.getNeedsHumanReview() ? "yellow" : "blue"}
         paddingX={1}
       >
-        <Text color={toolStatus ? "cyan" : undefined}>
-          {toolStatus && <Spinner isActive={true} />}
-          {toolStatus && " "}
-          {statusMessage}
-        </Text>
+        {/* Tool status display */}
+        {toolStatus && (
+          <Box marginBottom={1}>
+            <Text color="cyan">
+              <Spinner isActive={!!toolStatus} /> [{toolStatus.agent}] → {toolStatus.tool}: {toolStatus.summary}
+            </Text>
+          </Box>
+        )}
+
+        <Text>{statusMessage}</Text>
+        <Box>
+          <Text dimColor>State: {currentState}</Text>
+          {taskStateMachine.hasPendingInjection() && (
+            <Text dimColor> | 🎯 Injection Pending (Next Agent)</Text>
+          )}
+        </Box>
 
         {/* Human Review Menu */}
         {executionStateMachine.getNeedsHumanReview() && humanReviewResolver && (
@@ -336,6 +404,24 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
           }}
         />
       )}
+
+      {/* Injection Modal - for dynamic prompt injection */}
+      {showInjectionModal && (() => {
+        const currentChunk = executionStateMachine.getCurrentChunk();
+        const agentType = getCurrentAgentForInjection(currentState);
+        const chunkDesc = currentChunk?.description || 'Coordinating work chunks';
+        const modalTitle = `Dynamic Prompt Injection → ${agentType}`;
+        const contextInfo = `Chunk: ${chunkDesc.substring(0, 60)}${chunkDesc.length > 60 ? '...' : ''}`;
+
+        return (
+          <TextInputModal
+            title={modalTitle}
+            placeholder={contextInfo}
+            onSubmit={handleInjectionSubmit}
+            onCancel={handleInjectionCancel}
+          />
+        );
+      })()}
     </Box>
   );
 };

@@ -352,7 +352,7 @@ Agneto uses a two-level state machine architecture:
 | `src/orchestrator.ts` | Main control flow | Changing the task flow |
 | `src/orchestrator-helpers.ts` | Helper functions for orchestration | Utility functions |
 | `src/state-machine.ts` | Bean Counter execution state machine | Chunk execution flow |
-| `src/task-state-machine.ts` | Parent task state machine | Overall task lifecycle; stores Gardener results for UI display |
+| `src/task-state-machine.ts` | Parent task state machine | Overall task lifecycle; stores injection state for Ctrl+I prompt modifications |
 | **Agents** |
 | `src/agents/planner.ts` | High-level planning logic | Improving strategic plan generation |
 | `src/agents/bean-counter.ts` | Work chunking & progress tracking | Adjusting chunking strategy |
@@ -557,6 +557,7 @@ Set `DEBUG=true` to see:
 - ✅ **Natural language protocol** - Robust agent communication
 - ✅ **Menu-based UI navigation** - Arrow key + Enter selection for all approvals, no shortcut conflicts
 - ✅ **SuperReviewer + Gardener split view** - Left pane shows quality check results, right pane shows documentation update status
+- ✅ **Dynamic prompt injection** - Ctrl+I keyboard shortcut enables real-time agent behavior modification during execution
 
 
 ### Common Gotchas
@@ -571,6 +572,8 @@ Set `DEBUG=true` to see:
 - System prompt sent only once per session, subsequent calls use conversation continuity
 - Multi-file changes supported but Bean Counter prefers focused chunks
 - Interpreter uses additional Sonnet calls (minimal cost) for decision extraction
+- **Ctrl+I injections are single-use only** - Automatically cleared after next agent call
+- **Injection pause is graceful** - Current agent operation completes before modal appears
 
 ## 🖥️ Ink UI Integration (Terminal UI)
 
@@ -709,11 +712,41 @@ When adding UI interaction for a new phase:
 - [ ] Clear pending data after approval
 - [ ] Re-render UI after state transition
 
+### Dynamic Prompt Injection (Ctrl+I)
+
+Agneto supports real-time agent behavior modification via the Ctrl+I keyboard shortcut. This allows users to inject custom instructions during execution without interrupting current operations.
+
+**How It Works:**
+1. User presses Ctrl+I during any execution phase
+2. System registers pause request in TaskStateMachine
+3. Current agent operation completes gracefully
+4. TextInputModal appears with execution context (agent, phase, chunk info)
+5. User enters custom instructions via multi-line text input
+6. Injection is stored and displayed in UI status indicator ("🎯 Injection Pending")
+7. When next agent runs, provider appends injection to system prompt
+8. Injection automatically clears after single use (no persistence)
+
+**Override Pattern:**
+- Pressing Ctrl+I while injection is pending immediately shows modal
+- New content replaces previous pending injection
+
+**Integration Points:**
+- `App.tsx`: Global `useInput` hook captures Ctrl+I keypresses
+- `TaskStateMachine`: Stores injection state with methods `setPendingInjection()`, `getPendingInjection()`, `clearPendingInjection()`
+- `PlanningLayout` and `ExecutionLayout`: Display injection modal and status indicators
+- `providers/anthropic.ts`: Appends injection to system prompt before agent calls
+- Checkpoint system: Injection state is serialized for recovery
+
+**Visual Feedback:**
+- Status indicator shows "🎯 Injection Pending (Next Agent)" when active
+- Context display shows current agent type, phase, and chunk information
+- Modal uses existing TextInputModal component for consistent UX
+
 ### File Organization
 
 - `src/ui/ink/App.tsx` - Main Ink app component
 - `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval; also displays SuperReviewer results (left pane) and Gardener status (right pane) during TASK_SUPER_REVIEWING state
-- `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review
+- `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review; injection modal integration
 - Approval callbacks passed as props through component hierarchy
 - State read dynamically from `taskStateMachine`, not props
 - Uses `ink-select-input` for menu navigation (arrow keys + Enter)

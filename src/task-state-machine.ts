@@ -138,6 +138,8 @@ export class TaskStateMachine {
   private toolStatus: ToolStatus | null = null;
   private currentQuestion: string | null = null;
   private gardenerResult: GardenerResult | null = null;
+  private injectionPauseRequested: boolean = false;
+  private pendingInjection: string | null = null;
 
   constructor(
     taskId: string,
@@ -327,6 +329,35 @@ export class TaskStateMachine {
 
   getBaselineCommit(): string | undefined {
     return this.context.baselineCommit;
+  }
+
+  // Dynamic prompt injection state management
+  requestInjectionPause(): void {
+    this.injectionPauseRequested = true;
+  }
+
+  isInjectionPauseRequested(): boolean {
+    return this.injectionPauseRequested;
+  }
+
+  clearInjectionPause(): void {
+    this.injectionPauseRequested = false;
+  }
+
+  setPendingInjection(content: string): void {
+    this.pendingInjection = content;
+  }
+
+  getPendingInjection(): string | null {
+    return this.pendingInjection;
+  }
+
+  clearPendingInjection(): void {
+    this.pendingInjection = null;
+  }
+
+  hasPendingInjection(): boolean {
+    return this.pendingInjection !== null;
   }
 
   // Check if we can continue processing
@@ -620,6 +651,11 @@ export class TaskStateMachine {
 
       // Restore user review tracking
       this.context.userHasReviewedPlan = checkpoint.userHasReviewedPlan || false;
+
+      // Restore dynamic prompt injection state (Ctrl+I override mechanism)
+      // These fields ensure pending user input isn't lost during checkpoint recovery
+      this.injectionPauseRequested = checkpoint.injectionPauseRequested || false;
+      this.pendingInjection = checkpoint.pendingInjection || null;
 
       // Restore super review result if available
       if (checkpoint.superReviewResult) {

@@ -56,6 +56,7 @@ export async function runSuperReviewer(
       onComplete: (cost, duration) =>
         log.complete("Super-Reviewer", cost, duration),
     },
+    taskStateMachine,
   });
 
   // Use interpreter to extract verdict and details from response

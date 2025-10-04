@@ -71,6 +71,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Track previous curmudgeon feedback to enable swap pattern when replanning
   const [previousCurmudgeonFeedback, setPreviousCurmudgeonFeedback] = useState<string | null>(null);
 
+  // Injection modal state
+  const [showInjectionModal, setShowInjectionModal] = useState(false);
+
   // Unified helper to open text input modal with context
   const openTextInputModal = (
     context: 'refinement' | 'plan' | 'superreviewer',
@@ -271,6 +274,17 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     setActiveResolver(null);
   };
 
+  // Handle injection modal submit
+  const handleInjectionSubmit = (content: string) => {
+    taskStateMachine.setPendingInjection(content);
+    setShowInjectionModal(false);
+  };
+
+  // Handle injection modal cancel
+  const handleInjectionCancel = () => {
+    setShowInjectionModal(false);
+  };
+
 
   // Calculate responsive layout based on terminal width
   const isWideTerminal = terminalWidth > 120;
@@ -284,6 +298,33 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const planPath = taskStateMachine.getPlanPath();
   const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
   const simplificationCount = taskStateMachine.getSimplificationCount();
+
+  // Monitor injection pause and show modal when appropriate
+  React.useEffect(() => {
+    const pauseRequested = taskStateMachine.isInjectionPauseRequested();
+
+    // Determine if current phase is complete
+    const isPlanningComplete = planMd !== null && !isProcessingFeedback;
+    const isCurmudgeoningComplete = curmudgeonFeedback !== null && !isProcessingFeedback;
+
+    const isPhaseComplete =
+      (currentState === TaskState.TASK_PLANNING && isPlanningComplete) ||
+      (currentState === TaskState.TASK_CURMUDGEONING && isCurmudgeoningComplete);
+
+    // Detect if other modals are active
+    const isQuestionModalActive =
+      currentState === TaskState.TASK_REFINING &&
+      taskStateMachine.getCurrentQuestion() &&
+      answerResolver;
+
+    const isAnyModalActive = isQuestionModalActive || modalState.isOpen;
+
+    // Show injection modal when pause requested, phase complete, and no conflicts
+    if (pauseRequested && isPhaseComplete && !isAnyModalActive) {
+      setShowInjectionModal(true);
+      taskStateMachine.clearInjectionPause();
+    }
+  }, [planMd, curmudgeonFeedback, isProcessingFeedback, modalState.isOpen, answerResolver, currentState]);
 
   // Get execution state machine data if in TASK_EXECUTING
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
@@ -577,6 +618,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         paddingX={1}
       >
         <Box flexDirection="column">
+          {/* Injection pending indicator */}
+          {taskStateMachine.hasPendingInjection() && (
+            <Box marginBottom={1}>
+              <Text dimColor>🎯 Injection Pending (Next Agent)</Text>
+            </Box>
+          )}
+
           {/* Display live activity message from task state machine */}
           {liveActivity && (() => {
             // Filter out multiline content (likely full plan output) from live activity
@@ -770,6 +818,23 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           onCancel={handleModalCancel}
         />
       )}
+
+      {/* Injection Modal - for dynamic prompt injection */}
+      {showInjectionModal && (() => {
+        const agentType = currentState === TaskState.TASK_PLANNING ? 'Planner' : 'Curmudgeon';
+        const modalTitle = `Dynamic Prompt Injection → ${agentType}`;
+        const taskDesc = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
+        const contextInfo = `Task: ${taskDesc.substring(0, 60)}${taskDesc.length > 60 ? '...' : ''}`;
+
+        return (
+          <TextInputModal
+            title={modalTitle}
+            placeholder={contextInfo}
+            onSubmit={handleInjectionSubmit}
+            onCancel={handleInjectionCancel}
+          />
+        );
+      })()}
     </Box>
   );
 };

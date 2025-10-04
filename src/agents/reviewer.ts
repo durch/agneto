@@ -16,7 +16,8 @@ export async function reviewPlan(
     proposal: CoderPlanProposal,
     sessionId?: string,
     isInitialized?: boolean,
-    stateMachine?: CoderReviewerStateMachine
+    stateMachine?: CoderReviewerStateMachine,
+    taskStateMachine?: any
 ): Promise<ReviewerPlanVerdict> {
     // Load the natural language prompt (no schema injection)
     const template = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
@@ -60,7 +61,8 @@ export async function reviewPlan(
                 }
             },
             onComplete: (cost, duration) => log.complete("Reviewer", cost, duration)
-        }
+        },
+        taskStateMachine,
     });
 
     // Always display the full plan review response (will be pretty printed)
@@ -121,7 +123,8 @@ export async function reviewCode(
     changeDescription: string,
     sessionId?: string,
     isInitialized?: boolean,
-    stateMachine?: CoderReviewerStateMachine
+    stateMachine?: CoderReviewerStateMachine,
+    taskStateMachine?: any
 ): Promise<ReviewerCodeVerdict> {
     // Load the natural language prompt (no schema injection)
     const template = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
@@ -165,7 +168,8 @@ export async function reviewCode(
                 }
             },
             onComplete: (cost, duration) => log.complete("Reviewer", cost, duration)
-        }
+        },
+        taskStateMachine,
     });
 
     // Always display the full code review response (will be pretty printed)

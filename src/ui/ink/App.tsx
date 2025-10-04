@@ -83,6 +83,9 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
   const [viewMode, setViewMode] = useState<'split' | 'fullscreen'>('split');
   const [fullscreenContent, setFullscreenContent] = useState<{title: string, text: string} | null>(null);
 
+  // Force re-render trigger for state propagation to child components
+  const [, forceUpdate] = useState({});
+
   // Global keyboard handler for plan modal and execution phase modals
   useInput((input, key) => {
     // If in fullscreen mode, only allow Esc to close
@@ -100,6 +103,26 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       if (planMd) {
         setIsPlanModalOpen(true);
       }
+      return;
+    }
+
+    // Handle Ctrl+I to trigger dynamic prompt injection pause
+    // This sets a pause flag that allows user to inject additional context mid-execution
+    if (key.ctrl && (input === 'i' || input === 'I')) {
+      // Check if there's already a pending injection
+      if (taskStateMachine.hasPendingInjection()) {
+        // Override pattern: user wants to replace the pending injection
+        if (process.env.DEBUG) {
+          console.log('Injection override: replacing pending injection');
+        }
+        // Clear and re-trigger the pause flag to immediately show modal in layouts
+        taskStateMachine.clearInjectionPause();
+        taskStateMachine.requestInjectionPause();
+      } else {
+        // Normal case: first injection request
+        taskStateMachine.requestInjectionPause();
+      }
+      forceUpdate({}); // Trigger re-render to propagate state to child components
       return;
     }
 
@@ -339,7 +362,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       {/* Keyboard Shortcuts Footer */}
       <Box marginTop={1} paddingX={1}>
         <Text dimColor>
-          [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+Q/W/E] Fullscreen  [Esc] Close
+          [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+I] Inject  [Ctrl+Q/W/E] Fullscreen  [Esc] Close
         </Text>
       </Box>
     </Box>

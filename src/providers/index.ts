@@ -20,6 +20,7 @@ export interface LLMProvider {
         model?: string;                // Optional model name, e.g., "claude-2", "claude-instant-100k"
         isInitialized?: boolean;      // Optional flag to indicate if the session is initialized
         callbacks?: StreamCallbacks;  // Streaming progress callbacks
+        taskStateMachine?: any;       // Optional TaskStateMachine reference for dynamic prompt injection
     }): Promise<string | undefined>;
 }
 

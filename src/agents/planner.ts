@@ -88,6 +88,7 @@ export async function runPlanner(
           onComplete: (cost, duration) =>
             log.complete("Planner", cost, duration),
         },
+        taskStateMachine,
       })
     )?.trim();
 
@@ -185,6 +186,7 @@ async function interactivePlanning(
             onComplete: (cost, duration) =>
               log.complete("Planner", cost, duration),
           },
+          taskStateMachine,
         })
       )?.trim();
     } else {
@@ -233,6 +235,7 @@ async function interactivePlanning(
             onComplete: (cost, duration) =>
               log.complete("Planner", cost, duration),
           },
+          taskStateMachine,
         })
       )?.trim();
     }

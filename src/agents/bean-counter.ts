@@ -25,7 +25,8 @@ export async function getNextChunk(
   sessionId: string,
   isInitialized: boolean,
   previousApproval?: string,
-  stateMachine?: CoderReviewerStateMachine
+  stateMachine?: CoderReviewerStateMachine,
+  taskStateMachine?: any
 ): Promise<BeanCounterChunk | null> {
   const template = readFileSync(
     new URL("../prompts/bean-counter.md", import.meta.url),
@@ -81,6 +82,7 @@ export async function getNextChunk(
         onComplete: (cost, duration) =>
           log.complete("Bean Counter", cost, duration),
       },
+      taskStateMachine,
     });
 
     // Display the Bean Counter response
