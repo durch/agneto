@@ -288,13 +288,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const panelWidth = Math.floor(terminalWidth * 0.49);
 
   // Get data from TaskStateMachine
-  const context = taskStateMachine.getContext();
+  const context = React.useMemo(() => taskStateMachine.getContext(), [currentState]);
   const taskToUse = context.taskToUse || context.humanTask;
-  const pendingRefinement = taskStateMachine.getPendingRefinement();
-  const planMd = taskStateMachine.getPlanMd();
-  const planPath = taskStateMachine.getPlanPath();
-  const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
-  const simplificationCount = taskStateMachine.getSimplificationCount();
+  const pendingRefinement = React.useMemo(() => taskStateMachine.getPendingRefinement(), [currentState]);
+  const planMd = React.useMemo(() => taskStateMachine.getPlanMd(), [currentState]);
+  const planPath = React.useMemo(() => taskStateMachine.getPlanPath(), [currentState]);
+  const curmudgeonFeedback = React.useMemo(() => taskStateMachine.getCurmudgeonFeedback(), [currentState]);
+  const simplificationCount = React.useMemo(() => taskStateMachine.getSimplificationCount(), [currentState]);
 
   // Monitor injection pause and show modal when appropriate
   React.useEffect(() => {
