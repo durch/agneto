@@ -39,6 +39,11 @@ export interface SuperReviewerInterpretation {
   issues?: string[];
 }
 
+export interface CurmudgeonInterpretation {
+  verdict: "APPROVE" | "SIMPLIFY" | "REJECT" | "NEEDS_HUMAN";
+  feedback: string;
+}
+
 export type RefinerInterpretation =
   | { type: "question"; question: string }
   | { type: "refinement"; content: string };
@@ -246,7 +251,42 @@ export async function interpretRefinerResponse(
 /**
  * Stateless interpreter for Curmudgeon responses
  */
-// Curmudgeon no longer uses interpreter - returns raw natural language feedback directly
+export async function interpretCurmudgeonResponse(
+  provider: LLMProvider,
+  rawResponse: string | undefined,
+  cwd: string
+): Promise<CurmudgeonInterpretation | null> {
+  // Load interpreter prompt
+  const template = readFileSync(
+    new URL("../prompts/interpreter-curmudgeon.md", import.meta.url),
+    "utf8"
+  );
+
+  const messages: Msg[] = [
+    { role: "system", content: template },
+    {
+      role: "user",
+      content: `Extract the decision from this Curmudgeon response:\n\n${rawResponse}`,
+    },
+  ];
+
+  try {
+    const response = await provider.query({
+      cwd,
+      mode: "default", // Use default mode for consistent streaming
+      allowedTools: [],
+      model: "sonnet",
+      messages,
+    });
+
+    // Parse interpreter's simple keyword response
+    return parseCurmudgeonKeywords(response, rawResponse);
+  } catch (error) {
+    console.error("Interpreter failed to parse Curmudgeon response:", error);
+    console.error("Raw response was:", rawResponse);
+    return null;
+  }
+}
 
 /**
  * Convert interpreted Coder response to legacy format for orchestrator compatibility
@@ -586,7 +626,31 @@ function extractContext(response: string | undefined): string {
 /**
  * Parse Curmudgeon interpreter keywords
  */
-// parseCurmudgeonKeywords removed - Curmudgeon now returns raw feedback directly
+function parseCurmudgeonKeywords(
+  response: string | undefined,
+  originalResponse: string | undefined
+): CurmudgeonInterpretation | null {
+  const lowerResponse = response?.toLowerCase().trim();
+
+  // Determine verdict based on keywords from interpreter
+  let verdict: "APPROVE" | "SIMPLIFY" | "REJECT" | "NEEDS_HUMAN" = "NEEDS_HUMAN";
+
+  if (lowerResponse?.includes("approve")) {
+    verdict = "APPROVE";
+  } else if (lowerResponse?.includes("simplify")) {
+    verdict = "SIMPLIFY";
+  } else if (lowerResponse?.includes("reject")) {
+    verdict = "REJECT";
+  } else if (lowerResponse?.includes("needs_human")) {
+    verdict = "NEEDS_HUMAN";
+  }
+  // Default to NEEDS_HUMAN for safety
+
+  return {
+    verdict,
+    feedback: originalResponse?.trim() || "",
+  };
+}
 
 /**
  * Parse Refiner interpreter keywords

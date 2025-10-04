@@ -420,6 +420,7 @@ Agent Response (Natural Language) → Interpreter (Stateless Sonnet) → Structu
 - Refiner: `{type: "question|refinement", question?: string, content?: string}`
 - Coder: `{action: "continue|complete|implemented", description, steps, files}`
 - Reviewer: `{verdict: "approve|revise|reject|needs_human", feedback, continueNext}`
+- Curmudgeon: `{verdict: "APPROVE|SIMPLIFY|REJECT|NEEDS_HUMAN", feedback: string}`
 
 **Key Features:**
 - Natural language responses from agents (no JSON requirements)
@@ -432,7 +433,7 @@ Agent Response (Natural Language) → Interpreter (Stateless Sonnet) → Structu
 
 The system uses Claude CLI in headless mode with natural language interpretation:
 - **JSON output**: All calls use `--output-format json` for structured metadata
-- **plan mode**: Read-only for Planner, Task Refiner, and Interpreter
+- **plan mode**: Read-only for Planner, Curmudgeon, Task Refiner, and Interpreter
 - **default mode**: With tools for Coder, Reviewer, and SuperReviewer
   - Coder tools: ReadFile, ListDir, Grep, Bash, Write, Edit, MultiEdit
   - Reviewer tools: ReadFile, Grep, Bash (to verify file state)
@@ -558,6 +559,7 @@ Set `DEBUG=true` to see:
 - ✅ **Menu-based UI navigation** - Arrow key + Enter selection for all approvals, no shortcut conflicts
 - ✅ **SuperReviewer + Gardener split view** - Left pane shows quality check results, right pane shows documentation update status
 - ✅ **Dynamic prompt injection** - Ctrl+I keyboard shortcut enables real-time agent behavior modification during execution
+- ✅ **Curmudgeon interpreter pattern** - Structured verdict extraction prevents approval loop bugs
 
 
 ### Common Gotchas

@@ -12,7 +12,7 @@ import { RefinerAgent } from "./agents/refiner.js";
 import { interactiveRefinement, type RefinementFeedback } from "./ui/refinement-interface.js";
 import { App } from './ui/ink/App.js';
 import { getPlanFeedback, type PlanFeedback } from './ui/planning-interface.js';
-import { interpretRefinerResponse, type RefinerInterpretation } from "./protocol/interpreter.js";
+import { interpretRefinerResponse, interpretCurmudgeonResponse, type RefinerInterpretation } from "./protocol/interpreter.js";
 import { proposePlan, implementPlan } from "./agents/coder.js";
 import { reviewPlan, reviewCode } from "./agents/reviewer.js";
 import { getNextChunk } from "./agents/bean-counter.js";
@@ -726,104 +726,176 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                             }
                         } else {
-                            // Curmudgeon provided feedback - check if we should replan
-                            // Simple heuristic: if feedback contains approval language, proceed
-                            const feedbackLower = result.feedback.toLowerCase();
-                            const hasApproval = feedbackLower.includes('looks good') ||
-                                              feedbackLower.includes('this is good') ||
-                                              feedbackLower.includes('proceed') ||
-                                              feedbackLower.includes('appropriate');
-                            const hasConcerns = feedbackLower.includes('too complex') ||
-                                              feedbackLower.includes('simplif') ||
-                                              feedbackLower.includes('over-engineered') ||
-                                              feedbackLower.includes('missing') ||
-                                              feedbackLower.includes('incomplete');
+                            // Curmudgeon provided feedback - use interpreter for structured decision
+                            log.orchestrator("🔍 Interpreting Curmudgeon response...");
+                            const interpretation = await interpretCurmudgeonResponse(provider, result.feedback, cwd);
 
-                            if (hasApproval && !hasConcerns) {
-                                log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
-
-                                // Store curmudgeon approval feedback for UI display
-                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
-
-                                // Interactive mode: show plan to user for final approval
-                                if (inkInstance && !options?.nonInteractive) {
-                                    // Create NEW promise and set the global resolver for UI to use
-                                    const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                        planFeedbackResolver = resolve;
-                                    });
-
-                                    // Rerender UI - it will use the existing handlePlanFeedback callback
-                                    // which will call planFeedbackResolver when user interacts
-                                    inkInstance.rerender(React.createElement(App, {
-                                        taskStateMachine,
-                                        onPlanFeedback: handlePlanFeedback,
-                                        onRefinementFeedback: undefined
-                                    }));
-
-                                    const feedback = await feedbackPromise;
-
-                                    if (feedback.type === "approve") {
-                                        log.orchestrator("Plan approved by user.");
-                                        taskStateMachine.setUserHasReviewedPlan(true);
-                                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                    } else {
-                                        // User rejected - treat as Curmudgeon simplify request
-                                        const rejectionFeedback = feedback.details || "User requested plan revision";
-                                        taskStateMachine.setUserHasReviewedPlan(true);
-                                        taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
-                                        taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
-                                    }
-                                } else {
-                                    // Non-interactive: proceed automatically
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                }
-                            } else if (simplificationCount >= maxSimplifications) {
-                                // Hit the limit - proceed anyway
-                                log.orchestrator(`⚠️ Curmudgeon has feedback but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
-
-                                // Interactive mode: show plan to user for approval
-                                if (inkInstance && !options?.nonInteractive) {
-                                    // Create NEW promise and set the global resolver for UI to use
-                                    const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                        planFeedbackResolver = resolve;
-                                    });
-
-                                    // Rerender UI - it will use the existing handlePlanFeedback callback
-                                    inkInstance.rerender(React.createElement(App, {
-                                        taskStateMachine,
-                                        onPlanFeedback: handlePlanFeedback,
-                                        onRefinementFeedback: undefined
-                                    }));
-
-                                    const feedback = await feedbackPromise;
-
-                                    if (feedback.type === "approve") {
-                                        log.orchestrator("Plan approved by user after max simplification attempts with Curmudgeon feedback.");
-                                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                    } else {
-                                        // User rejected - but we've hit max attempts, so abandon
-                                        log.orchestrator("User rejected plan after max simplification attempts with Curmudgeon feedback. Abandoning task.");
-                                        taskStateMachine.transition(TaskEvent.HUMAN_ABANDON);
-                                    }
-                                } else {
-                                    // Non-interactive: proceed automatically
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                }
+                            if (!interpretation) {
+                                log.warn("Failed to interpret Curmudgeon response - proceeding with plan");
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                             } else {
-                                // Store feedback and replan
-                                log.orchestrator(`🔄 Curmudgeon feedback (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
-                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
+                                log.orchestrator(`📊 Curmudgeon verdict: ${interpretation.verdict}`);
 
-                                // Update UI to show feedback before transitioning
-                                if (inkInstance) {
-                                    inkInstance.rerender(React.createElement(App, {
-                                        taskStateMachine,
-                                        onPlanFeedback: undefined,
-                                        onRefinementFeedback: undefined
-                                    }));
+                                switch (interpretation.verdict) {
+                                    case "APPROVE":
+                                        log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
+
+                                        // Store curmudgeon approval feedback for UI display
+                                        taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
+                                        // Interactive mode: show plan to user for final approval
+                                        if (inkInstance && !options?.nonInteractive) {
+                                            // Create NEW promise and set the global resolver for UI to use
+                                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                                planFeedbackResolver = resolve;
+                                            });
+
+                                            // Rerender UI - it will use the existing handlePlanFeedback callback
+                                            inkInstance.rerender(React.createElement(App, {
+                                                taskStateMachine,
+                                                onPlanFeedback: handlePlanFeedback,
+                                                onRefinementFeedback: undefined
+                                            }));
+
+                                            const feedback = await feedbackPromise;
+
+                                            if (feedback.type === "approve") {
+                                                log.orchestrator("Plan approved by user.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                // User rejected - treat as simplify request
+                                                const rejectionFeedback = feedback.details || "User requested plan revision";
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                        } else {
+                                            // Non-interactive: proceed automatically
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                        }
+                                        break;
+
+                                    case "SIMPLIFY":
+                                        if (simplificationCount >= maxSimplifications) {
+                                            // Hit the limit - proceed anyway
+                                            log.orchestrator(`⚠️ Curmudgeon requested simplification but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
+
+                                            // Interactive mode: show plan to user for approval
+                                            if (inkInstance && !options?.nonInteractive) {
+                                                // Create NEW promise and set the global resolver for UI to use
+                                                const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                                    planFeedbackResolver = resolve;
+                                                });
+
+                                                // Rerender UI - it will use the existing handlePlanFeedback callback
+                                                inkInstance.rerender(React.createElement(App, {
+                                                    taskStateMachine,
+                                                    onPlanFeedback: handlePlanFeedback,
+                                                    onRefinementFeedback: undefined
+                                                }));
+
+                                                const feedback = await feedbackPromise;
+
+                                                if (feedback.type === "approve") {
+                                                    log.orchestrator("Plan approved by user after max simplification attempts.");
+                                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                                } else {
+                                                    // User rejected - but we've hit max attempts, so abandon
+                                                    log.orchestrator("User rejected plan after max simplification attempts. Abandoning task.");
+                                                    taskStateMachine.transition(TaskEvent.HUMAN_ABANDON);
+                                                }
+                                            } else {
+                                                // Non-interactive: proceed automatically
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            }
+                                        } else {
+                                            // Store feedback and replan
+                                            log.orchestrator(`🔄 Curmudgeon requests simplification (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
+                                            taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
+                                            // Update UI to show feedback before transitioning
+                                            if (inkInstance) {
+                                                inkInstance.rerender(React.createElement(App, {
+                                                    taskStateMachine,
+                                                    onPlanFeedback: undefined,
+                                                    onRefinementFeedback: undefined
+                                                }));
+                                            }
+
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                        }
+                                        break;
+
+                                    case "REJECT":
+                                        log.orchestrator(`❌ Curmudgeon rejected plan: ${result.feedback.substring(0, 100)}...`);
+                                        taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
+                                        // Interactive mode: show to user for decision
+                                        if (inkInstance && !options?.nonInteractive) {
+                                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                                planFeedbackResolver = resolve;
+                                            });
+
+                                            inkInstance.rerender(React.createElement(App, {
+                                                taskStateMachine,
+                                                onPlanFeedback: handlePlanFeedback,
+                                                onRefinementFeedback: undefined
+                                            }));
+
+                                            const feedback = await feedbackPromise;
+
+                                            if (feedback.type === "approve") {
+                                                log.orchestrator("User overrode Curmudgeon rejection.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                log.orchestrator("User confirmed rejection - replanning.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.setCurmudgeonFeedback(feedback.details || result.feedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                        } else {
+                                            // Non-interactive: treat reject as simplify
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                        }
+                                        break;
+
+                                    case "NEEDS_HUMAN":
+                                        log.orchestrator(`🙋 Curmudgeon needs human review: ${result.feedback.substring(0, 100)}...`);
+                                        taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
+                                        // Always show to user when human review needed
+                                        if (inkInstance && !options?.nonInteractive) {
+                                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
+                                                planFeedbackResolver = resolve;
+                                            });
+
+                                            inkInstance.rerender(React.createElement(App, {
+                                                taskStateMachine,
+                                                onPlanFeedback: handlePlanFeedback,
+                                                onRefinementFeedback: undefined
+                                            }));
+
+                                            const feedback = await feedbackPromise;
+
+                                            if (feedback.type === "approve") {
+                                                log.orchestrator("Human approved plan.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                log.orchestrator("Human requested revision.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.setCurmudgeonFeedback(feedback.details || result.feedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                        } else {
+                                            // Non-interactive: default to approval
+                                            log.orchestrator("Non-interactive mode - proceeding despite NEEDS_HUMAN verdict");
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                        }
+                                        break;
                                 }
-
-                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                             }
                         }
                     } catch (error) {
@@ -1333,31 +1405,51 @@ async function runRestoredTask(
                                 log.orchestrator("✅ Curmudgeon has no concerns - proceeding with plan");
                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                             } else {
-                                // Curmudgeon provided feedback - check if we should replan
-                                // Simple heuristic: if feedback contains approval language, proceed
-                                const feedbackLower = result.feedback.toLowerCase();
-                                const hasApproval = feedbackLower.includes('looks good') ||
-                                                  feedbackLower.includes('this is good') ||
-                                                  feedbackLower.includes('proceed') ||
-                                                  feedbackLower.includes('appropriate');
-                                const hasConcerns = feedbackLower.includes('too complex') ||
-                                                  feedbackLower.includes('simplif') ||
-                                                  feedbackLower.includes('over-engineered') ||
-                                                  feedbackLower.includes('missing') ||
-                                                  feedbackLower.includes('incomplete');
+                                // Curmudgeon provided feedback - use interpreter for structured decision
+                                log.orchestrator("🔍 Interpreting Curmudgeon response...");
+                                const interpretation = await interpretCurmudgeonResponse(provider, result.feedback, cwd);
 
-                                if (hasApproval && !hasConcerns) {
-                                    log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                } else if (simplificationCount >= maxSimplifications) {
-                                    // Hit the limit - proceed anyway
-                                    log.orchestrator(`⚠️ Curmudgeon has feedback but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
+                                if (!interpretation) {
+                                    log.warn("Failed to interpret Curmudgeon response - proceeding with plan");
                                     taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                                 } else {
-                                    // Store feedback and replan
-                                    log.orchestrator(`🔄 Curmudgeon feedback (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
-                                    taskStateMachine.setCurmudgeonFeedback(result.feedback);
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                    log.orchestrator(`📊 Curmudgeon verdict: ${interpretation.verdict}`);
+
+                                    switch (interpretation.verdict) {
+                                        case "APPROVE":
+                                            log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            break;
+
+                                        case "SIMPLIFY":
+                                            if (simplificationCount >= maxSimplifications) {
+                                                log.orchestrator(`⚠️ Curmudgeon requested simplification but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                log.orchestrator(`🔄 Curmudgeon requests simplification (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
+                                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                            break;
+
+                                        case "REJECT":
+                                            log.orchestrator(`❌ Curmudgeon rejected plan: ${result.feedback.substring(0, 100)}...`);
+                                            if (simplificationCount >= maxSimplifications) {
+                                                log.orchestrator(`⚠️ Max simplification attempts reached - proceeding with current plan despite rejection.`);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                            break;
+
+                                        case "NEEDS_HUMAN":
+                                            log.orchestrator(`🙋 Curmudgeon needs human review: ${result.feedback.substring(0, 100)}...`);
+                                            // In non-interactive/restored task path, default to approval
+                                            log.orchestrator("Non-interactive/restored task mode - proceeding despite NEEDS_HUMAN verdict");
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            break;
+                                    }
                                 }
                             }
                         } catch (error) {
