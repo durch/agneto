@@ -7,6 +7,7 @@ import { StatusIndicator } from './StatusIndicator.js';
 import type { HumanInteractionResult } from '../../../types.js';
 import { TextInputModal } from './TextInputModal.js';
 import { Spinner } from './Spinner.js';
+import { MarkdownText } from './MarkdownText.js';
 
 // TypeScript interface for ExecutionLayout props
 interface ExecutionLayoutProps {
@@ -239,7 +240,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               </Box>
             )}
             {getActiveAgent(currentState) !== 'coder' && executionStateMachine.getSummary('coder') && (
-              <Text wrap="wrap">{executionStateMachine.getSummary('coder')}</Text>
+              <MarkdownText>{executionStateMachine.getSummary('coder') || ''}</MarkdownText>
             )}
           </Box>
 
@@ -265,7 +266,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               </Box>
             )}
             {getActiveAgent(currentState) !== 'reviewer' && executionStateMachine.getSummary('reviewer') && (
-              <Text wrap="wrap">{executionStateMachine.getSummary('reviewer')}</Text>
+              <MarkdownText>{executionStateMachine.getSummary('reviewer') || ''}</MarkdownText>
             )}
           </Box>
         </Box>
@@ -288,7 +289,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         {executionStateMachine.getNeedsHumanReview() && humanReviewResolver && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="yellow" bold>⚠ Human Review Required</Text>
-            <Text>{executionStateMachine.getHumanReviewContext()}</Text>
+            <MarkdownText>{executionStateMachine.getHumanReviewContext() || ''}</MarkdownText>
             <Box marginTop={1}>
               <SelectInput
                 items={[

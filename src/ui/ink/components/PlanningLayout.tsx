@@ -361,7 +361,10 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                           <Box marginTop={1} flexDirection="column">
                             <Text color="yellow" bold>Issues Found:</Text>
                             {superReviewResult.issues.map((issue, idx) => (
-                              <Text key={idx} color="yellow">• {issue}</Text>
+                              <Box key={idx}>
+                                <Text color="yellow">• </Text>
+                                <MarkdownText>{issue}</MarkdownText>
+                              </Box>
                             ))}
                           </Box>
                         )}

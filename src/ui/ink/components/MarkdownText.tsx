@@ -169,11 +169,13 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }
         const color = level === 1 ? 'cyan' : level === 2 ? 'yellow' : level === 3 ? 'blue' : 'white';
         elements.push(
           <Box key={key} marginTop={level === 1 ? 1 : 0}>
-            {segments.map((seg, sIdx) => (
-              <Text key={`seg-${sIdx}`} color={color} bold italic={seg.italic}>
-                {seg.text}
-              </Text>
-            ))}
+            <Text>
+              {segments.map((seg, sIdx) => (
+                <Text key={`seg-${sIdx}`} color={color} bold italic={seg.italic}>
+                  {seg.text}
+                </Text>
+              ))}
+            </Text>
           </Box>
         );
       }

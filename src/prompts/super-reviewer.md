@@ -57,3 +57,6 @@ ISSUE: <another issue if applicable>
 - Provide specific, actionable feedback for issues found
 - Reference specific files and line numbers when identifying problems
 - Express your confidence level in the final verdict. If you're not highly confident the implementation is production-ready, choose needs-human over approve
+
+## Output Format
+Use **markdown**: bold for emphasis, bullets for lists, backticks for code, clear headers for detailed feedback.
