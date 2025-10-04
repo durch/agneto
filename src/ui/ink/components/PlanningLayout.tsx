@@ -5,7 +5,7 @@ import { TaskStateMachine, TaskState } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
 import { getPlanFeedback, type PlanFeedback } from '../../planning-interface.js';
 import type { RefinementFeedback } from '../../refinement-interface.js';
-import type { SuperReviewerDecision, GardenerResult } from '../../../types.js';
+import type { SuperReviewerDecision, GardenerResult, MergeApprovalDecision } from '../../../types.js';
 import { FullscreenModal } from './FullscreenModal.js';
 import { TextInputModal } from './TextInputModal.js';
 import { MarkdownText } from './MarkdownText.js';
@@ -19,6 +19,7 @@ interface PlanningLayoutProps {
   onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
   onAnswerCallback?: (promise: Promise<string>) => void;
   onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
+  onMergeApprovalCallback?: (decision: Promise<MergeApprovalDecision>) => void;
   onFullscreen?: (paneNum: number) => void;
   terminalHeight: number;
   terminalWidth: number;
@@ -34,6 +35,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   onRefinementFeedback,
   onAnswerCallback,
   onSuperReviewerDecision,
+  onMergeApprovalCallback,
   onFullscreen,
   terminalHeight,
   terminalWidth,
@@ -56,6 +58,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const [refinementResolver, setRefinementResolver] = useState<((value: RefinementFeedback) => void) | null>(null);
   const [answerResolver, setAnswerResolver] = useState<((answer: string) => void) | null>(null);
   const [superReviewerResolver, setSuperReviewerResolver] = useState<((value: SuperReviewerDecision) => void) | null>(null);
+  const [mergeApprovalResolver, setMergeApprovalResolver] = useState<((value: MergeApprovalDecision) => void) | null>(null);
 
   // Structured modal state
   const [modalState, setModalState] = useState<ModalState>({
@@ -164,6 +167,25 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       }
     }
   }, [onSuperReviewerDecision, currentState, taskStateMachine]);
+
+  // Wire up Merge Approval decision when callback is provided
+  React.useEffect(() => {
+    if (onMergeApprovalCallback && currentState === TaskState.TASK_FINALIZING && taskStateMachine.getMergeInstructions()) {
+      // Create a dummy promise to get the resolver attached by orchestrator
+      const dummyPromise = new Promise<MergeApprovalDecision>((resolve) => {
+        // This resolve will be replaced by the orchestrator
+      });
+
+      // Call the callback which will attach the real resolver
+      onMergeApprovalCallback(dummyPromise);
+
+      // Extract the resolver that was attached by orchestrator
+      const resolver = (dummyPromise as any).resolve;
+      if (resolver) {
+        setMergeApprovalResolver(() => resolver);
+      }
+    }
+  }, [onMergeApprovalCallback, currentState, taskStateMachine]);
 
 
   // Handle approve action
@@ -420,6 +442,24 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 })()}
               </Box>
             </>
+          ) : currentState === TaskState.TASK_FINALIZING ? (
+            // Finalizing: Show merge instructions on left
+            <>
+              <Box justifyContent="space-between">
+                <Text color="green" bold>📋 Merge Instructions</Text>
+                <Text dimColor>[Q]</Text>
+              </Box>
+              <Box marginTop={1}>
+                {(() => {
+                  const instructions = taskStateMachine.getMergeInstructions();
+                  return instructions ? (
+                    <MarkdownText maxLines={paneContentHeight}>{instructions}</MarkdownText>
+                  ) : (
+                    <Text dimColor>Preparing merge instructions...</Text>
+                  );
+                })()}
+              </Box>
+            </>
           ) : currentState === TaskState.TASK_CURMUDGEONING ? (
             <>
               <Box justifyContent="space-between">
@@ -539,6 +579,28 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 )}
               </Box>
             </>
+          ) : currentState === TaskState.TASK_FINALIZING ? (
+            // Finalizing: Show clipboard status on right
+            <>
+              <Box justifyContent="space-between">
+                <Text color="cyan" bold>📋 Clipboard Status</Text>
+                <Text dimColor>[W]</Text>
+              </Box>
+              <Box marginTop={1}>
+                {(() => {
+                  const clipboardStatus = taskStateMachine.getClipboardStatus();
+                  return (
+                    <Box flexDirection="column">
+                      <Text color={clipboardStatus === 'success' ? 'green' : 'yellow'}>
+                        {clipboardStatus === 'success'
+                          ? '✅ Instructions copied to clipboard'
+                          : '⚠️ Could not copy to clipboard - please copy manually'}
+                      </Text>
+                    </Box>
+                  );
+                })()}
+              </Box>
+            </>
           ) : currentState === TaskState.TASK_CURMUDGEONING ? (
             <>
               <Box justifyContent="space-between">
@@ -644,6 +706,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               baseStatus = 'Performing final quality check...';
             } else if (currentState === TaskState.TASK_GARDENING) {
               baseStatus = 'Updating documentation...';
+            } else if (currentState === TaskState.TASK_FINALIZING) {
+              baseStatus = 'Awaiting merge approval...';
             } else if (currentState === TaskState.TASK_EXECUTING) {
               baseStatus = executionState === State.BEAN_COUNTING ? 'Determining work chunk...' :
                           executionState === State.PLANNING ? 'Proposing implementation...' :
@@ -769,6 +833,29 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   <Text color="blue">⏳ Processing your decision...</Text>
                 </Box>
               )}
+            </Box>
+          )}
+
+          {currentState === TaskState.TASK_FINALIZING && taskStateMachine.getMergeInstructions() && mergeApprovalResolver && (
+            <Box marginTop={1} flexDirection="column">
+              <Text color="green" bold>📋 Ready to Merge</Text>
+              <Box marginTop={1}>
+                <SelectInput
+                  items={[
+                    { label: 'Proceed with Merge', value: 'proceed' },
+                    { label: 'Cancel', value: 'cancel' }
+                  ]}
+                  onSelect={(item) => {
+                    if (item.value === 'proceed') {
+                      mergeApprovalResolver({ action: 'proceed' });
+                      setMergeApprovalResolver(null);
+                    } else if (item.value === 'cancel') {
+                      mergeApprovalResolver({ action: 'cancel' });
+                      setMergeApprovalResolver(null);
+                    }
+                  }}
+                />
+              </Box>
             </Box>
           )}
         </Box>

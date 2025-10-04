@@ -7,7 +7,7 @@ import { FullscreenModal } from './components/FullscreenModal.js';
 import { TaskView } from './components/TaskView.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
-import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.js';
+import type { SuperReviewerDecision, HumanInteractionResult, MergeApprovalDecision } from '../../types.js';
 
 // TypeScript interface for component props
 interface AppProps {
@@ -17,6 +17,7 @@ interface AppProps {
   onAnswerCallback?: (promise: Promise<string>) => void;
   onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
   onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
+  onMergeApprovalCallback?: (decision: Promise<MergeApprovalDecision>) => void;
 }
 
 // Helper function to convert TaskState enum to human-readable format
@@ -71,7 +72,7 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onSuperReviewerDecision, onHumanReviewDecision }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onSuperReviewerDecision, onHumanReviewDecision, onMergeApprovalCallback }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
@@ -339,13 +340,16 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         phase.state === TaskState.TASK_PLANNING ||
         phase.state === TaskState.TASK_CURMUDGEONING ||
         phase.state === TaskState.TASK_SUPER_REVIEWING ||
-        phase.state === TaskState.TASK_GARDENING) ? (
+        phase.state === TaskState.TASK_GARDENING ||
+        phase.state === TaskState.TASK_FINALIZING) ? (
         <PlanningLayout
           currentState={phase.state}
           taskStateMachine={taskStateMachine}
           onPlanFeedback={onPlanFeedback}
           onRefinementFeedback={onRefinementFeedback}
+          onAnswerCallback={onAnswerCallback}
           onSuperReviewerDecision={onSuperReviewerDecision}
+          onMergeApprovalCallback={onMergeApprovalCallback}
           onFullscreen={handleFullscreen}
           terminalHeight={terminalHeight}
           terminalWidth={terminalWidth}

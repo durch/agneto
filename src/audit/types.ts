@@ -173,6 +173,12 @@ export interface TaskStateCheckpoint {
    */
   injectionPauseRequested?: boolean;
   pendingInjection?: string | null;
+
+  /** Merge instructions generated after task completion */
+  mergeInstructions?: string | null;
+
+  /** Clipboard copy status for merge instructions */
+  clipboardStatus?: 'success' | 'failed' | null;
 }
 
 /** Execution State Machine checkpoint data - captures Bean Counter/Coder/Reviewer loop state */

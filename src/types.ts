@@ -20,6 +20,11 @@ export interface SuperReviewerDecision {
   feedback?: string;
 }
 
+// Merge approval types
+export interface MergeApprovalDecision {
+  action: 'proceed' | 'cancel';
+}
+
 // Curmudgeon types
 export interface CurmudgeonResult {
   feedback: string;

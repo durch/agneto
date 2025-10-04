@@ -142,6 +142,8 @@ export class TaskStateMachine {
   private gardenerResult: GardenerResult | null = null;
   private injectionPauseRequested: boolean = false;
   private pendingInjection: string | null = null;
+  private mergeInstructions: string | null = null;
+  private clipboardStatus: 'success' | 'failed' | null = null;
 
   constructor(
     taskId: string,
@@ -360,6 +362,20 @@ export class TaskStateMachine {
 
   hasPendingInjection(): boolean {
     return this.pendingInjection !== null;
+  }
+
+  // Merge instructions management
+  setMergeInstructions(instructions: string, status: 'success' | 'failed'): void {
+    this.mergeInstructions = instructions;
+    this.clipboardStatus = status;
+  }
+
+  getMergeInstructions(): string | null {
+    return this.mergeInstructions;
+  }
+
+  getClipboardStatus(): 'success' | 'failed' | null {
+    return this.clipboardStatus;
   }
 
   // Check if we can continue processing
@@ -668,6 +684,10 @@ export class TaskStateMachine {
       // These fields ensure pending user input isn't lost during checkpoint recovery
       this.injectionPauseRequested = checkpoint.injectionPauseRequested || false;
       this.pendingInjection = checkpoint.pendingInjection || null;
+
+      // Restore merge instructions if available
+      this.mergeInstructions = checkpoint.mergeInstructions || null;
+      this.clipboardStatus = checkpoint.clipboardStatus || null;
 
       // Restore super review result if available
       if (checkpoint.superReviewResult) {
