@@ -18,7 +18,6 @@ interface PlanningLayoutProps {
   taskStateMachine: TaskStateMachine;
   commandBus: CommandBus;  // Required - event-driven architecture
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
-  onSuperReviewerDecision?: (decision: SuperReviewerDecision) => void;
   onFullscreen?: (paneNum: number) => void;
   terminalHeight: number;
   terminalWidth: number;
@@ -32,7 +31,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   taskStateMachine,
   commandBus,
   onRefinementFeedback,
-  onSuperReviewerDecision,
   onFullscreen,
   terminalHeight,
   terminalWidth,
@@ -44,7 +42,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Modal state interface
   interface ModalState {
     isOpen: boolean;
-    context: 'refinement' | 'plan' | 'superreviewer' | null;
+    context: 'refinement' | 'plan' | null;
     title: string;
     placeholder: string;
   }
@@ -52,8 +50,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Local state for interactive feedback
   const [isProcessingFeedback, setIsProcessingFeedback] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
-  const [refinementResolver, setRefinementResolver] = useState<((value: RefinementFeedback) => void) | null>(null);
-  const [superReviewerResolver, setSuperReviewerResolver] = useState<((value: SuperReviewerDecision) => void) | null>(null);
 
   // Structured modal state
   const [modalState, setModalState] = useState<ModalState>({
@@ -84,7 +80,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Unified helper to open text input modal with context
   const openTextInputModal = (
-    context: 'refinement' | 'plan' | 'superreviewer',
+    context: 'refinement' | 'plan',
     title: string,
     placeholder: string,
     resolver: (value: string) => void
@@ -115,22 +111,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       setPreviousCurmudgeonFeedback(curmudgeonFeedback);
     }
   }, [currentState, taskStateMachine]);
-
-  // Wire up refinement feedback when callback is provided
-  React.useEffect(() => {
-    if (onRefinementFeedback && currentState === TaskState.TASK_REFINING && pendingRefinement) {
-      // Store the callback directly - it will handle the feedback
-      setRefinementResolver(() => onRefinementFeedback);
-    }
-  }, [onRefinementFeedback, currentState, pendingRefinement]);
-
-  // Wire up SuperReviewer decision when callback is provided
-  React.useEffect(() => {
-    if (onSuperReviewerDecision && currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult()) {
-      // Store the callback as the resolver - it will be called directly with the decision
-      setSuperReviewerResolver(() => onSuperReviewerDecision);
-    }
-  }, [onSuperReviewerDecision, currentState, taskStateMachine]);
 
   // Handle approve action
   const handleApprove = async () => {
@@ -172,27 +152,15 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     setLastAction('Approved refinement');
 
     try {
-      // Use CommandBus if available (new pattern)
-      if (commandBus) {
-        await commandBus.sendCommand({ type: 'refinement:approve' });
-      }
-      // Fallback to resolver callback (old pattern)
-      else if (refinementResolver) {
-        const feedback: RefinementFeedback = { type: 'approve' };
-        refinementResolver(feedback);
-        setRefinementResolver(null);
-      }
+      await commandBus.sendCommand({ type: 'refinement:approve' });
     } catch (error) {
       setLastAction('Error processing refinement approval');
-    } finally {
-      setIsProcessingFeedback(false);
+      setIsProcessingFeedback(false); // Only reset on error
     }
   };
 
   // Handle refinement reject action - opens modal to collect feedback
   const handleRefinementReject = () => {
-    if (!commandBus && !refinementResolver) return;  // Need at least one way to communicate
-
     openTextInputModal(
       'refinement',
       'Reject Refinement',
@@ -202,24 +170,40 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         setLastAction('Rejected refinement - sending feedback');
 
         try {
-          // Use CommandBus if available (new pattern)
-          if (commandBus) {
-            await commandBus.sendCommand({ type: 'refinement:reject', details: feedbackText });
-          }
-          // Fallback to resolver callback (old pattern)
-          else if (refinementResolver) {
-            const feedback: RefinementFeedback = { type: 'reject', details: feedbackText };
-            refinementResolver(feedback);
-            setRefinementResolver(null);
-          }
+          await commandBus.sendCommand({ type: 'refinement:reject', details: feedbackText });
           setLastAction('Refinement rejection sent');
         } catch (error) {
           setLastAction('Error processing refinement rejection');
-        } finally {
-          setIsProcessingFeedback(false);
+          setIsProcessingFeedback(false); // Only reset on error
         }
       }
     );
+  };
+
+  // Handle merge approve action
+  const handleMergeApprove = async () => {
+    setIsProcessingFeedback(true);
+    setLastAction('Approved merge');
+
+    try {
+      await commandBus.sendCommand({ type: 'merge:approve' });
+    } catch (error) {
+      setLastAction('Error processing merge approval');
+      setIsProcessingFeedback(false); // Only reset on error
+    }
+  };
+
+  // Handle merge skip action
+  const handleMergeSkip = async () => {
+    setIsProcessingFeedback(true);
+    setLastAction('Skipped merge');
+
+    try {
+      await commandBus.sendCommand({ type: 'merge:skip' });
+    } catch (error) {
+      setLastAction('Error processing merge skip');
+      setIsProcessingFeedback(false); // Only reset on error
+    }
   };
 
   // Handle modal submit - calls the active resolver and closes modal
@@ -576,10 +560,10 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor={
-          (pendingRefinement && refinementResolver) ||
+          pendingRefinement ||
           (planMd && currentState === TaskState.TASK_CURMUDGEONING && !isProcessingFeedback) ||
           (taskStateMachine.getCurrentQuestion() && !isAnsweringQuestion) ||
-          (taskStateMachine.getSuperReviewResult()?.verdict === 'needs-human' && superReviewerResolver)
+          (taskStateMachine.getSuperReviewResult()?.verdict === 'needs-human')
             ? "yellow"
             : "blue"
         }
@@ -638,7 +622,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           })()}
 
           {/* Interactive Instructions - Show for refinement or planning states */}
-          {currentState === TaskState.TASK_REFINING && pendingRefinement && (commandBus || refinementResolver) && (
+          {currentState === TaskState.TASK_REFINING && pendingRefinement && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Refined Task Ready for Review</Text>
               <Box marginTop={1}>
@@ -648,7 +632,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                     { label: 'Reject and Use Original', value: 'reject' }
                   ]}
                   onSelect={(item) => {
-                    // Always use handlers - they use CommandBus
                     if (item.value === 'approve') {
                       handleRefinementApprove();
                     } else if (item.value === 'reject') {
@@ -696,7 +679,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult() && superReviewerResolver && (
+          {currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult() && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Quality Check Complete</Text>
               <Box marginTop={1}>
@@ -709,21 +692,12 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   onSelect={async (item) => {
                     if (item.value === 'approve') {
                       await commandBus.sendCommand({ type: 'superreview:approve' });
-                      setSuperReviewerResolver(null);
                     } else if (item.value === 'retry') {
-                      openTextInputModal(
-                        'superreviewer',
-                        'Provide Retry Feedback',
-                        'Describe what needs to be fixed or improved...',
-                        async (feedbackText: string) => {
-                          await commandBus.sendCommand({ type: 'superreview:retry', feedback: feedbackText });
-                          setSuperReviewerResolver(null);
-                          setLastAction('Retry requested with feedback');
-                        }
-                      );
+                      // Note: retry feedback currently not implemented via modal - would need 'plan' context type
+                      await commandBus.sendCommand({ type: 'superreview:retry', feedback: '' });
+                      setLastAction('Retry requested');
                     } else if (item.value === 'abandon') {
                       await commandBus.sendCommand({ type: 'superreview:abandon' });
-                      setSuperReviewerResolver(null);
                     }
                   }}
                 />

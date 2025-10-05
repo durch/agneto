@@ -986,6 +986,56 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     break;
                 }
 
+<<<<<<< HEAD
+=======
+                case TaskState.TASK_FINALIZING: {
+                    // Finalization phase - merge or manual review
+
+                    // Build merge instructions string
+                    const instructions = `Next steps:
+1. Review changes in worktree: ${cwd}
+2. Run tests to verify
+3. Merge to master:
+   git checkout master
+   git merge sandbox/${taskId} --squash
+   git commit -m "Task ${taskId} completed"
+4. Clean up:
+   git worktree remove .worktrees/${taskId}
+   git branch -D sandbox/${taskId}`;
+
+                    // Copy to clipboard and store result
+                    let clipboardStatus: 'success' | 'failed';
+                    try {
+                        await clipboardy.write(instructions);
+                        clipboardStatus = 'success';
+                    } catch (error) {
+                        clipboardStatus = 'failed';
+                    }
+                    taskStateMachine.setMergeInstructions(instructions, clipboardStatus);
+
+                    // Conditional flow: auto-merge vs interactive
+                    if (options?.autoMerge) {
+                        // Preserve existing auto-merge behavior
+                        log.orchestrator("📦 Auto-merging to master...");
+                        mergeToMaster(taskId, cwd);
+                        cleanupWorktree(taskId, cwd);
+                        taskStateMachine.transition(TaskEvent.AUTO_MERGE);
+                    } else {
+                        // Interactive approval flow via CommandBus (following SuperReviewer pattern)
+                        // Wait for UI decision via CommandBus
+                        const userDecision = await commandBus.waitForCommand<MergeApprovalDecision>('merge:approve');
+
+                        if (userDecision.action === 'proceed') {
+                            taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
+                        } else {
+                            // User cancelled - still transition to manual merge state
+                            taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
+                        }
+                    }
+                    break;
+                }
+
+>>>>>>> 39dd2fb (Cleanup superreviewer)
                 case TaskState.TASK_COMPLETE:
                     bell();
                     log.orchestrator("🎉 Task completed successfully!");
