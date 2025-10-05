@@ -16,7 +16,6 @@ interface AppProps {
   taskStateMachine: TaskStateMachine;
   commandBus: CommandBus;  // Required - event-driven architecture
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
-  onSuperReviewerDecision?: (decision: SuperReviewerDecision) => void;
   onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
 }
 
@@ -69,7 +68,7 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefinementFeedback, onSuperReviewerDecision, onHumanReviewDecision, onMergeApprovalCallback }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefinementFeedback, onHumanReviewDecision, onMergeApprovalCallback }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
@@ -399,7 +398,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
             taskStateMachine={taskStateMachine}
             commandBus={commandBus}
             onRefinementFeedback={onRefinementFeedback}
-            onSuperReviewerDecision={onSuperReviewerDecision}
             onMergeApprovalCallback={onMergeApprovalCallback}
             onFullscreen={handleFullscreen}
             terminalHeight={terminalHeight}

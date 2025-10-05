@@ -865,8 +865,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
                             commandBus,
-                            onRefinementFeedback: undefined,
-                            onSuperReviewerDecision: undefined
+                            onRefinementFeedback: undefined
                         }));
                     }
 
@@ -895,8 +894,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
                             commandBus,
-                            onRefinementFeedback: undefined,
-                            onSuperReviewerDecision: undefined
+                            onRefinementFeedback: undefined
                         }));
                     }
 
@@ -904,43 +902,11 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
 
-                        // Create promise for UI-based decision (following refinement pattern)
-                        let superReviewerResolverFunc: ((value: SuperReviewerDecision) => void) | null = null;
-                        const superReviewerDecisionPromise = new Promise<SuperReviewerDecision>((resolve) => {
-                            superReviewerResolverFunc = resolve;
-                        });
-
-                        // Create callback for UI to handle decision directly
-                        const superReviewerCallback = (decision: SuperReviewerDecision) => {
-                            if (superReviewerResolverFunc) {
-                                superReviewerResolverFunc(decision);
-                                superReviewerResolverFunc = null; // Clean up resolver
-                            }
-                        };
-
-                        // Update UI to show SuperReviewer results with decision callback
-                        if (inkInstance) {
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                commandBus,
-                                onRefinementFeedback: undefined,
-                                onSuperReviewerDecision: superReviewerCallback
-                            }));
-                        }
-
-                        // Wait for UI decision
-                        const humanDecision = await superReviewerDecisionPromise;
+                        // Wait for UI decision via CommandBus
+                        const humanDecision = await commandBus.waitForCommand<SuperReviewerDecision>('superreview:approve');
 
                         if (humanDecision.action === "approve") {
                             log.orchestrator("Human accepted work despite identified issues.");
-
-                            // Rerender UI before transition
-                            inkInstance?.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                commandBus,
-                                onRefinementFeedback: undefined
-                            }));
-
                             taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
                         } else if (humanDecision.action === "retry") {
                             log.orchestrator("Human requested a new development cycle to address issues.");
@@ -953,14 +919,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         }
                     } else {
                         log.orchestrator("✅ SuperReviewer approved - implementation ready for merge!");
-
-                        // Rerender UI before transition
-                        inkInstance?.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus,
-                            onRefinementFeedback: undefined
-                        }));
-
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
                     }
                     break;
@@ -1417,32 +1375,8 @@ async function runRestoredTask(
                             log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
                             taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
 
-                            // Create promise for UI-based decision (following refinement pattern)
-                            let superReviewerResolverFunc: ((value: SuperReviewerDecision) => void) | null = null;
-                            const superReviewerDecisionPromise = new Promise<SuperReviewerDecision>((resolve) => {
-                                superReviewerResolverFunc = resolve;
-                            });
-
-                            // Create callback for UI to handle decision directly
-                            const superReviewerCallback = (decision: SuperReviewerDecision) => {
-                                if (superReviewerResolverFunc) {
-                                    superReviewerResolverFunc(decision);
-                                    superReviewerResolverFunc = null; // Clean up resolver
-                                }
-                            };
-
-                            // Update UI to show SuperReviewer results with decision callback
-                            if (inkInstance) {
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    commandBus,
-                                    onRefinementFeedback: undefined,
-                                    onSuperReviewerDecision: superReviewerCallback
-                                }));
-                            }
-
-                            // Wait for UI decision
-                            const humanDecision = await superReviewerDecisionPromise;
+                            // Wait for UI decision via CommandBus (event-driven pattern)
+                            const humanDecision = await commandBus.waitForCommand<SuperReviewerDecision>('superreview:approve', 'superreview:retry', 'superreview:abandon');
 
                             if (humanDecision.action === "approve") {
                                 log.orchestrator("Human accepted work despite identified issues.");
@@ -1500,7 +1434,6 @@ async function runRestoredTask(
                         }
                         break;
                     }
-
 
                     case TaskState.TASK_COMPLETE:
                         log.orchestrator("🎉 Task completed successfully!");

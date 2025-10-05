@@ -1,0 +1,9 @@
++ [ ] Approve plan menu shows up too early, it should show up only after the conversation between planner and curmudgeon is done
++ [ ] Kicking off a new cycle from superreviewer is broken, bean counter has stale state, and just calls the task completed
++ [ ] There should be no text input on human superreviewer new task, the SR feedback should be fed to planner, and the loop resets
++ [ ] Clean up all remanants of resolver hell
++ [ ] Prompt injection is broken
++ [x] Merge commands should just be dropped into the terminal, no need for a separate merge flow, we exit the UI after Gardener is done, and plain log the commands to terminal
++ [ ] There are a bunch of place where the flow gets stuck, ultrathink review for these. Transition to ExecutionLayout also gets stuck. I believe these are remanants from the commandbus migration
++ [ ] npm run merge should merge to active branch
++ [ ] Terrible rendering of text input modals

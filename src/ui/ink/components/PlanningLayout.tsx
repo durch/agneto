@@ -132,7 +132,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   }, [onSuperReviewerDecision, currentState, taskStateMachine]);
 
-
   // Handle approve action
   const handleApprove = async () => {
     setIsProcessingFeedback(true);
@@ -707,25 +706,23 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                     { label: 'Retry and Fix Issues', value: 'retry' },
                     { label: 'Abandon Task', value: 'abandon' }
                   ]}
-                  onSelect={(item) => {
+                  onSelect={async (item) => {
                     if (item.value === 'approve') {
-                      superReviewerResolver({ action: 'approve' });
+                      await commandBus.sendCommand({ type: 'superreview:approve' });
                       setSuperReviewerResolver(null);
                     } else if (item.value === 'retry') {
                       openTextInputModal(
                         'superreviewer',
                         'Provide Retry Feedback',
                         'Describe what needs to be fixed or improved...',
-                        (feedbackText: string) => {
-                          if (superReviewerResolver) {
-                            superReviewerResolver({ action: 'retry', feedback: feedbackText });
-                            setSuperReviewerResolver(null);
-                            setLastAction('Retry requested with feedback');
-                          }
+                        async (feedbackText: string) => {
+                          await commandBus.sendCommand({ type: 'superreview:retry', feedback: feedbackText });
+                          setSuperReviewerResolver(null);
+                          setLastAction('Retry requested with feedback');
                         }
                       );
                     } else if (item.value === 'abandon') {
-                      superReviewerResolver({ action: 'abandon' });
+                      await commandBus.sendCommand({ type: 'superreview:abandon' });
                       setSuperReviewerResolver(null);
                     }
                   }}
