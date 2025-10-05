@@ -4,8 +4,8 @@ import SelectInput from 'ink-select-input';
 import { TaskStateMachine, TaskState } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
 import { getPlanFeedback, type PlanFeedback } from '../../planning-interface.js';
-import type { RefinementFeedback } from '../../refinement-interface.js';
-import type { SuperReviewerDecision, GardenerResult } from '../../../types.js';
+import type { RefinementFeedback, RefinementAction } from '../../refinement-interface.js';
+import type { SuperReviewerDecision, GardenerResult, MergeApprovalDecision } from '../../../types.js';
 import { FullscreenModal } from './FullscreenModal.js';
 import { TextInputModal } from './TextInputModal.js';
 import { MarkdownText } from './MarkdownText.js';
@@ -18,6 +18,7 @@ interface PlanningLayoutProps {
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
   onAnswerCallback?: (answer: string) => void;
+  onRefinementInteraction?: (action: RefinementAction) => void;
   onSuperReviewerDecision?: (decision: SuperReviewerDecision) => void;
   onFullscreen?: (paneNum: number) => void;
   terminalHeight: number;
@@ -33,6 +34,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   onPlanFeedback,
   onRefinementFeedback,
   onAnswerCallback,
+  onRefinementInteraction,
   onSuperReviewerDecision,
   onFullscreen,
   terminalHeight,
@@ -74,6 +76,15 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Injection modal state
   const [showInjectionModal, setShowInjectionModal] = useState(false);
 
+  // Get data from TaskStateMachine (needed for useEffects)
+  const context = taskStateMachine.getContext();
+  const taskToUse = context.taskToUse || context.humanTask;
+  const pendingRefinement = taskStateMachine.getPendingRefinement();
+  const planMd = taskStateMachine.getPlanMd();
+  const planPath = taskStateMachine.getPlanPath();
+  const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
+  const simplificationCount = taskStateMachine.getSimplificationCount();
+
   // Unified helper to open text input modal with context
   const openTextInputModal = (
     context: 'refinement' | 'plan' | 'superreviewer',
@@ -110,11 +121,11 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Wire up refinement feedback when callback is provided
   React.useEffect(() => {
-    if (onRefinementFeedback && currentState === TaskState.TASK_REFINING && taskStateMachine.getPendingRefinement()) {
+    if (onRefinementFeedback && currentState === TaskState.TASK_REFINING && pendingRefinement) {
       // Store the callback directly - it will handle the feedback
       setRefinementResolver(() => onRefinementFeedback);
     }
-  }, [onRefinementFeedback, currentState]);
+  }, [onRefinementFeedback, currentState, pendingRefinement]);
 
   // Wire up answer callback when a question is asked
   React.useEffect(() => {
@@ -132,6 +143,17 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   }, [onSuperReviewerDecision, currentState, taskStateMachine]);
 
+
+  // NEW: Unified refinement interaction handler
+  const [refinementInteractionHandler, setRefinementInteractionHandler] = useState<((action: RefinementAction) => void) | null>(null);
+
+  React.useEffect(() => {
+    if (onRefinementInteraction && currentState === TaskState.TASK_REFINING) {
+      setRefinementInteractionHandler(() => onRefinementInteraction);
+    } else {
+      setRefinementInteractionHandler(null);
+    }
+  }, [onRefinementInteraction, currentState]);
 
 
   // Handle approve action
@@ -254,15 +276,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Calculate responsive layout based on terminal width
   const isWideTerminal = terminalWidth > 120;
   const panelWidth = Math.floor(terminalWidth * 0.49);
-
-  // Get data from TaskStateMachine
-  const context = taskStateMachine.getContext();
-  const taskToUse = context.taskToUse || context.humanTask;
-  const pendingRefinement = taskStateMachine.getPendingRefinement();
-  const planMd = taskStateMachine.getPlanMd();
-  const planPath = taskStateMachine.getPlanPath();
-  const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
-  const simplificationCount = taskStateMachine.getSimplificationCount();
 
   // Monitor injection pause and show modal when appropriate
   React.useEffect(() => {
@@ -426,7 +439,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
                   <MarkdownText maxLines={paneContentHeight}>
-                    {pendingRefinement.raw || pendingRefinement.goal}
+                    {pendingRefinement}
                   </MarkdownText>
                 ) : currentState === TaskState.TASK_REFINING ? (
                   <Text dimColor>Refining task description...</Text>
@@ -639,7 +652,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           })()}
 
           {/* Interactive Instructions - Show for refinement or planning states */}
-          {currentState === TaskState.TASK_REFINING && pendingRefinement && refinementResolver && (
+          {currentState === TaskState.TASK_REFINING && pendingRefinement && (refinementInteractionHandler || refinementResolver) && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Refined Task Ready for Review</Text>
               <Box marginTop={1}>
@@ -649,10 +662,20 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                     { label: 'Reject and Use Original', value: 'reject' }
                   ]}
                   onSelect={(item) => {
-                    if (item.value === 'approve') {
-                      handleRefinementApprove();
-                    } else if (item.value === 'reject') {
-                      handleRefinementReject();
+                    if (refinementInteractionHandler) {
+                      // Use unified handler if available
+                      if (item.value === 'approve') {
+                        refinementInteractionHandler({ type: 'approve' });
+                      } else if (item.value === 'reject') {
+                        refinementInteractionHandler({ type: 'reject' });
+                      }
+                    } else {
+                      // Fall back to old pattern
+                      if (item.value === 'approve') {
+                        handleRefinementApprove();
+                      } else if (item.value === 'reject') {
+                        handleRefinementReject();
+                      }
                     }
                   }}
                 />
@@ -743,18 +766,28 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       </Box>
 
       {/* Question Modal - for clarifying questions during refinement */}
-      {currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion() && answerResolver && (
+      {currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion() && (refinementInteractionHandler || answerResolver) && (
         <TextInputModal
-          title={`Clarifying Question: ${taskStateMachine.getCurrentQuestion()}`}
+          title="Clarifying Question"
+          content={taskStateMachine.getCurrentQuestion() || undefined}  // Show the question in the modal body
           placeholder="Type your answer and press Enter to submit"
+          width={terminalWidth - 4}  // Full width minus margin
+          height={Math.min(terminalHeight - 4, 30)}  // Full height minus margin, max 30
           onSubmit={(answer) => {
-            if (answerResolver) {
+            if (refinementInteractionHandler) {
+              // Use unified handler if available
+              refinementInteractionHandler({ type: 'answer', answer });
+            } else if (answerResolver) {
+              // Fall back to old pattern
               answerResolver(answer);
               setAnswerResolver(null);
             }
           }}
           onCancel={() => {
-            if (answerResolver) {
+            if (refinementInteractionHandler) {
+              // Use unified handler with empty answer
+              refinementInteractionHandler({ type: 'answer', answer: '' });
+            } else if (answerResolver) {
               answerResolver('');
               setAnswerResolver(null);
             }

@@ -10,7 +10,7 @@ import clipboardy from 'clipboardy';
 import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
 import { RefinerAgent } from "./agents/refiner.js";
-import { interactiveRefinement, type RefinementFeedback } from "./ui/refinement-interface.js";
+import { interactiveRefinement, type RefinementFeedback, type RefinementAction, type RefinementResult } from "./ui/refinement-interface.js";
 import { App } from './ui/ink/App.js';
 import { getPlanFeedback, type PlanFeedback } from './ui/planning-interface.js';
 import { interpretRefinerResponse, interpretCurmudgeonResponse, type RefinerInterpretation } from "./protocol/interpreter.js";
@@ -32,7 +32,8 @@ import { TaskOptions } from "./types.js";
 import { bell } from "./utils/terminal-bell.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
 import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
-import type { SuperReviewerDecision, HumanInteractionResult } from './types.js';
+import { CommandBus } from "./ui/command-bus.js";
+import type { SuperReviewerDecision, HumanInteractionResult, MergeApprovalDecision, RefinedTask } from './types.js';
 import {
   revertLastCommit,
   commitChanges,
@@ -310,13 +311,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
     // Start the task
     taskStateMachine.transition(TaskEvent.START_TASK);
 
-    // Update Ink UI to reflect initial state change
-    if (inkInstance) {
-        inkInstance.rerender(React.createElement(App, {
-            taskStateMachine,
-            onPlanFeedback: undefined  // Will be set when needed
-        }));
-    }
+    // No manual rerender needed - App.tsx auto-re-renders on state:changed event
 
     // Main task state machine loop with audit lifecycle management
     const maxIterations = 200; // Safety limit for parent + child iterations
@@ -342,146 +337,117 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                 case TaskState.TASK_REFINING: {
                     // Task refinement through UI
                     if (inkInstance) {
-                        // Use UI-based refinement
+                        // Use UI-based refinement with simplified flow
                         log.info("🔍 Refining task description...");
                         const refinerAgent = new RefinerAgent(provider);
 
-                        // Generate initial refinement
-                        const initialRefinedTask = await refinerAgent.refine(cwd, humanTask, taskId, taskStateMachine);
 
-                        // Q&A Loop: Handle clarifying questions
-                        let currentResponse = initialRefinedTask.raw;
-                        let interpretation: RefinerInterpretation | null = null;
+                        // Create ONE promise for the entire refinement flow
+                        let refinementResolver: ((result: RefinementResult) => void) | null = null;
+                        const refinementPromise = new Promise<RefinementResult>((resolve) => {
+                            refinementResolver = resolve;
+                        });
+
+                        // Track Q&A state locally
+                        let currentResponse = "";
+                        let finalRefinedTask = "";
+                        let questionsAsked = 0;
                         const MAX_QUESTIONS = 3;
-                        let questionCount = 0;
 
-                        for (questionCount = 0; questionCount <= MAX_QUESTIONS; questionCount++) {
-                            // Interpret the refiner's response
-                            interpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
-
-                            if (interpretation?.type === "question" && questionCount < MAX_QUESTIONS) {
-                                // Store question in state machine
-                                taskStateMachine.setCurrentQuestion(interpretation.question);
-
-                                // Re-render UI to show question modal
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    onPlanFeedback: undefined,
-                                    onRefinementFeedback: undefined
-                                }));
-
-                                // Create promise for user answer
-                                let answerResolver: ((value: string) => void) | null = null;
-                                const answerPromise = new Promise<string>((resolve) => {
-                                    answerResolver = resolve;
-                                });
-                                // Create callback for UI to handle answer directly
-                                const answerCallback = (answer: string) => {
-                                    if (answerResolver) {
-                                        answerResolver(answer);
-                                        answerResolver = null; // Clean up resolver
-                                    }
-                                };
-
-                                // Re-render UI with answer callback
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    onAnswerCallback: answerCallback,
-                                    onPlanFeedback: undefined,
-                                    onRefinementFeedback: undefined
-                                }));
-
-                                // Wait for user to provide answer
-                                const answer = await answerPromise;
+                        // Single callback for ALL refinement interactions
+                        const refinementInteractionCallback = async (action: RefinementAction) => {
+                            if (action.type === 'answer' && action.answer) {
+                                // Handle answer internally, continue flow
+                                questionsAsked++;
 
                                 // Clear question from state
                                 taskStateMachine.clearCurrentQuestion();
 
-                                // Get next response from refiner based on answer
-                                currentResponse = await refinerAgent.askFollowup(answer);
-                            } else {
-                                // Got refinement OR hit question limit - exit loop
-                                break;
-                            }
-                        }
+                                // Get next response from refiner
+                                currentResponse = await refinerAgent.askFollowup(action.answer);
 
-                        // Safety failsafe: ensure we didn't exceed question limit
-                        if (questionCount > MAX_QUESTIONS) {
-                            throw new Error("Safety limit exceeded: Too many clarifying questions");
-                        }
+                                // Interpret the response
+                                const interpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
 
-                        // Extract final refinement content
-                        const finalContent = interpretation?.type === "refinement"
-                            ? interpretation.content
-                            : currentResponse;
+                                if (interpretation?.type === "question" && questionsAsked < MAX_QUESTIONS) {
+                                    // Another question - update state (UI auto-updates on question:asked event)
+                                    taskStateMachine.setCurrentQuestion(interpretation.question);
+                                } else {
+                                    // Got refinement or hit limit
+                                    if (interpretation?.type === "refinement") {
+                                        finalRefinedTask = interpretation.content || currentResponse;
+                                    } else {
+                                        // Request final refinement if needed
+                                        finalRefinedTask = await refinerAgent.askFollowup(
+                                            "Based on all the information provided, please now provide the complete refined task specification with Goal, Context, Constraints, and Success Criteria sections."
+                                        );
+                                    }
 
-                        // Create final refined task with updated content
-                        const refinedTask = {
-                            ...initialRefinedTask,
-                            raw: finalContent
-                        };
-
-                        // Clear any remaining question state and store as pending for UI approval
-                        taskStateMachine.clearCurrentQuestion();
-                        taskStateMachine.setPendingRefinement(refinedTask);
-
-                        // Create promise for UI feedback
-                        let resolverFunc: ((value: RefinementFeedback) => void) | null = null;
-                        const feedbackPromise = new Promise<RefinementFeedback>((resolve) => {
-                            resolverFunc = resolve;
-                        });
-                        // Attach the resolver to the promise object for the UI to access
-                        (feedbackPromise as any).resolve = resolverFunc;
-
-                        // Create callback for UI to handle feedback directly
-                        const refinementCallback = (feedback: RefinementFeedback) => {
-                            if (resolverFunc) {
-                                resolverFunc(feedback);
-                                resolverFunc = null; // Clean up resolver
+                                    // Clear question and set pending refinement for approval (UI auto-updates on refinement:ready event)
+                                    taskStateMachine.clearCurrentQuestion();
+                                    taskStateMachine.setPendingRefinement(finalRefinedTask);
+                                }
+                            } else if (action.type === 'approve' || action.type === 'reject') {
+                                // Resolve the main promise with final result
+                                if (refinementResolver) {
+                                    refinementResolver({
+                                        approved: action.type === 'approve',
+                                        task: finalRefinedTask,
+                                        details: action.details
+                                    });
+                                }
                             }
                         };
 
-                        // Update UI to show pending refinement with approval callback
+                        // Generate initial refinement
+                        const initialRefinedTask = await refinerAgent.refine(cwd, humanTask, taskId, taskStateMachine);
+                        currentResponse = initialRefinedTask;
+
+                        // Interpret initial response
+                        const initialInterpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
+
+                        if (initialInterpretation?.type === "question" && questionsAsked < MAX_QUESTIONS) {
+                            // Start with a question
+                            taskStateMachine.setCurrentQuestion(initialInterpretation.question);
+                        } else {
+                            // Start with a refinement
+                            finalRefinedTask = initialInterpretation?.type === 'refinement' ? (initialInterpretation.content || currentResponse) : currentResponse;
+                            taskStateMachine.setPendingRefinement(finalRefinedTask);
+                        }
+
+                        // Initial render with the callback
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: refinementCallback
+                            onRefinementInteraction: refinementInteractionCallback
                         }));
 
-                        // Wait for UI feedback
-                        const feedback = await feedbackPromise;
+                        // Wait for entire flow to complete
+                        const result = await refinementPromise;
 
-                        if (feedback.type === "approve") {
-                            const taskToUse = formatRefinedTaskForPlanner(refinedTask);
-                            taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                        if (result.approved) {
+                            taskStateMachine.setRefinedTask(result.task, result.task);
                             log.orchestrator("Using refined task specification for planning.");
                             taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
-
-                            // Update UI after approval
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined
-                            }));
                         } else {
                             log.warn("Task refinement rejected. Using original description.");
                             taskStateMachine.transition(TaskEvent.REFINEMENT_CANCELLED);
-
-                            // Update UI after rejection
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined
-                            }));
                         }
+
+                        // Final UI update
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            onRefinementInteraction: undefined
+                        }));
+
                     } else {
                         // Fallback to interactive refinement if no UI
                         const refinerAgent = new RefinerAgent(provider);
                         const refinedTask = await interactiveRefinement(refinerAgent, cwd, humanTask, taskId);
 
                         if (refinedTask) {
-                            const taskToUse = formatRefinedTaskForPlanner(refinedTask);
-                            taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                            // Use raw text from RefinedTask
+                            const taskToUse = refinedTask.raw || refinedTask.goal || humanTask;
+                            taskStateMachine.setRefinedTask(taskToUse, taskToUse);
                             log.orchestrator("Using refined task specification for planning.");
                             taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
                         } else {
@@ -498,14 +464,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     // Set live activity message for planner
                     taskStateMachine.setLiveActivityMessage('Planner', 'Coming up with an implementation plan...');
 
-                    // Re-render UI to show planning state before generating plan
-                    if (inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
+                    // No manual rerender needed - UI auto-updates on state:changed event
 
                     let taskToUse = taskStateMachine.getContext().taskToUse || humanTask;
                     let curmudgeonFeedback: string | undefined = undefined;
@@ -522,10 +481,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         log.orchestrator(`Re-planning with feedback: ${taskToUse}`);
 
                         // Update context with new task and clear retry feedback
-                        taskStateMachine.setRefinedTask(
-                            { goal: taskToUse, context: "", constraints: [], successCriteria: [], raw: "" },
-                            taskToUse
-                        );
+                        taskStateMachine.setRefinedTask(taskToUse, taskToUse);
                         taskStateMachine.clearRetryFeedback();
 
                         // Reset the execution state machine for a fresh cycle
@@ -547,15 +503,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             await checkAndWaitForInjectionPause('Planner', taskStateMachine);
                             const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback, undefined, taskStateMachine, inkInstance);
 
-                            // Store the plan in state machine
+                            // Store the plan in state machine (UI auto-updates on plan:ready event)
                             taskStateMachine.setPlan(planMd, planPath);
-
-                            // Re-render UI to show the plan
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined
-                            }));
 
                             // Automatically transition to Curmudgeon review (no approval yet)
                             taskStateMachine.transition(TaskEvent.PLAN_CREATED);
@@ -1298,8 +1247,9 @@ async function runRestoredTask(
                         const refinedTask = await interactiveRefinement(refinerAgent, cwd, taskStateMachine.getContext().humanTask, taskStateMachine.getContext().taskId);
 
                         if (refinedTask) {
-                            const taskToUse = formatRefinedTaskForPlanner(refinedTask);
-                            taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                            // Use raw text from RefinedTask
+                            const taskToUse = refinedTask.raw || refinedTask.goal || taskStateMachine.getContext().humanTask;
+                            taskStateMachine.setRefinedTask(taskToUse, taskToUse);
                             log.orchestrator("Using refined task specification for planning.");
                             taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
                         } else {
@@ -1326,10 +1276,7 @@ async function runRestoredTask(
                             log.orchestrator(`Re-planning with feedback: ${taskToUse}`);
 
                             // Update context with new task and clear retry feedback
-                            taskStateMachine.setRefinedTask(
-                                { goal: taskToUse, context: "", constraints: [], successCriteria: [], raw: "" },
-                                taskToUse
-                            );
+                            taskStateMachine.setRefinedTask(taskToUse, taskToUse);
                             taskStateMachine.clearRetryFeedback();
 
                             // Reset the execution state machine for a fresh cycle

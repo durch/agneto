@@ -7,6 +7,9 @@ export interface TextInputModalProps {
   placeholder: string;
   onSubmit: (text: string) => void;
   onCancel: () => void;
+  width?: number;  // Optional width for responsive sizing
+  height?: number; // Optional height for responsive sizing
+  content?: string; // Optional content to show above the input
 }
 
 /**
@@ -22,7 +25,10 @@ export const TextInputModal: React.FC<TextInputModalProps> = ({
   title,
   placeholder,
   onSubmit,
-  onCancel
+  onCancel,
+  width,
+  height,
+  content
 }) => {
   const [text, setText] = useState<string>('');
 
@@ -35,10 +41,9 @@ export const TextInputModal: React.FC<TextInputModalProps> = ({
     }
   });
 
-  // Calculate modal sizing (similar to FullscreenModal)
-  // We'll use a fixed large size since we don't have terminal dimensions
-  const modalWidth = 80; // Characters wide
-  const modalHeight = 24; // Lines tall
+  // Calculate modal sizing - use provided dimensions or defaults
+  const modalWidth = width || 80; // Use provided width or default
+  const modalHeight = height || 24; // Use provided height or default
 
   const contentHeight = modalHeight - 6; // Subtract title, footer, borders, padding
 
@@ -57,7 +62,7 @@ export const TextInputModal: React.FC<TextInputModalProps> = ({
         <Text dimColor>[Esc to cancel ✕]</Text>
       </Box>
 
-      {/* Text Input Area */}
+      {/* Content Area with Question and Input */}
       <Box
         flexDirection="column"
         flexGrow={1}
@@ -66,13 +71,23 @@ export const TextInputModal: React.FC<TextInputModalProps> = ({
         borderColor="gray"
         padding={1}
       >
-        <TextInput
-          value={text}
-          onChange={setText}
-          placeholder={placeholder}
-          onSubmit={() => onSubmit(text)}
-          focus={true}
-        />
+        {/* Show content/question if provided */}
+        {content && (
+          <Box marginBottom={1} flexShrink={0}>
+            <Text wrap="wrap">{content}</Text>
+          </Box>
+        )}
+
+        {/* Text Input */}
+        <Box marginTop={content ? 1 : 0}>
+          <TextInput
+            value={text}
+            onChange={setText}
+            placeholder={placeholder}
+            onSubmit={() => onSubmit(text)}
+            focus={true}
+          />
+        </Box>
       </Box>
 
       {/* Footer with character count and keyboard hints */}

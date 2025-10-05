@@ -15,6 +15,7 @@ interface AppProps {
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
   onAnswerCallback?: (answer: string) => void;
+  onRefinementInteraction?: (action: import("../refinement-interface.js").RefinementAction) => void;
   onSuperReviewerDecision?: (decision: SuperReviewerDecision) => void;
   onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
 }
@@ -68,7 +69,7 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onSuperReviewerDecision, onHumanReviewDecision }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onRefinementInteraction, onSuperReviewerDecision, onHumanReviewDecision, onMergeApprovalCallback }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
@@ -89,6 +90,35 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
 
   // Force re-render trigger for state propagation to child components
   const [, forceUpdate] = useState({});
+
+  // Subscribe to TaskStateMachine events for automatic re-rendering
+  React.useEffect(() => {
+    const handleStateChange = () => {
+      forceUpdate({}); // Trigger re-render when state changes
+    };
+
+    const handleDataUpdate = () => {
+      forceUpdate({}); // Trigger re-render when data updates
+    };
+
+    // Subscribe to all relevant events
+    taskStateMachine.on('state:changed', handleStateChange);
+    taskStateMachine.on('plan:ready', handleDataUpdate);
+    taskStateMachine.on('refinement:ready', handleDataUpdate);
+    taskStateMachine.on('question:asked', handleDataUpdate);
+    taskStateMachine.on('superreview:complete', handleDataUpdate);
+    taskStateMachine.on('gardener:complete', handleDataUpdate);
+
+    // Cleanup on unmount
+    return () => {
+      taskStateMachine.off('state:changed', handleStateChange);
+      taskStateMachine.off('plan:ready', handleDataUpdate);
+      taskStateMachine.off('refinement:ready', handleDataUpdate);
+      taskStateMachine.off('question:asked', handleDataUpdate);
+      taskStateMachine.off('superreview:complete', handleDataUpdate);
+      taskStateMachine.off('gardener:complete', handleDataUpdate);
+    };
+  }, [taskStateMachine]);
 
   // Exit UI when task completes
   useEffect(() => {
@@ -238,7 +268,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         } else if (previousCurmudgeonFeedback) {
           return { title: '🧐 Previous Feedback', content: curmudgeonFeedback || '' };
         } else if (currentState === TaskState.TASK_REFINING && pendingRefinement) {
-          return { title: '📝 Refined Task', content: pendingRefinement.raw || pendingRefinement.goal || '' };
+          return { title: '📝 Refined Task', content: pendingRefinement || '' };
         } else {
           return { title: '📝 Refined Task', content: context.taskToUse || context.humanTask || 'No task description' };
         }
@@ -357,6 +387,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
           onPlanFeedback={onPlanFeedback}
           onRefinementFeedback={onRefinementFeedback}
           onAnswerCallback={onAnswerCallback}
+          onRefinementInteraction={onRefinementInteraction}
           onSuperReviewerDecision={onSuperReviewerDecision}
           onFullscreen={handleFullscreen}
           terminalHeight={terminalHeight}

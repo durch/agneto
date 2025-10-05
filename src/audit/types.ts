@@ -107,7 +107,8 @@ export interface TaskStateCheckpoint {
   workingDirectory: string;
 
   /** Refined task data (if refinement occurred) */
-  refinedTask?: {
+  refinedTask?: string | {
+    // Support legacy format for backward compatibility
     goal: string;
     context: string;
     constraints: string[];

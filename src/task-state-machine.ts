@@ -1,6 +1,7 @@
+import { EventEmitter } from 'events';
 import { log } from "./ui/log.js";
 import { CoderReviewerStateMachine } from "./state-machine.js";
-import type { RefinedTask, SuperReviewerResult, GardenerResult } from "./types.js";
+import type { SuperReviewerResult, GardenerResult } from "./types.js";
 import type { TaskStateCheckpoint } from "./audit/types.js";
 import type { AuditLogger } from "./audit/audit-logger.js";
 
@@ -84,9 +85,9 @@ export interface TaskContext {
   workingDirectory: string;
 
   // Refined task (if refinement occurred)
-  refinedTask?: RefinedTask;
+  refinedTask?: string;
   taskToUse?: string; // The actual task description to use (refined or original)
-  pendingRefinement?: RefinedTask; // Refinement awaiting approval
+  pendingRefinement?: string; // Refinement awaiting approval
 
   // Planning outputs
   planMd?: string;
@@ -126,7 +127,7 @@ export interface TaskContext {
   userHasReviewedPlan: boolean;
 }
 
-export class TaskStateMachine {
+export class TaskStateMachine extends EventEmitter {
   private state: TaskState = TaskState.TASK_INIT;
   private context: TaskContext;
   private auditLogger?: AuditLogger;
@@ -146,6 +147,7 @@ export class TaskStateMachine {
     options: TaskContext["options"] = {},
     auditLogger?: AuditLogger
   ) {
+    super(); // EventEmitter constructor
     this.context = {
       taskId,
       humanTask,
@@ -172,7 +174,7 @@ export class TaskStateMachine {
     return this.context.executionStateMachine;
   }
 
-  getRefinedTask(): RefinedTask | undefined {
+  getRefinedTask(): string | undefined {
     return this.context.refinedTask;
   }
 
@@ -198,6 +200,8 @@ export class TaskStateMachine {
 
   setGardenerResult(result: GardenerResult): void {
     this.gardenerResult = result;
+    // Emit event for UI to show gardener result
+    this.emit('gardener:complete', { result });
   }
 
   // Live activity message management
@@ -227,11 +231,13 @@ export class TaskStateMachine {
   }
 
   // Setters for context updates
-  setPendingRefinement(refinement: RefinedTask) {
+  setPendingRefinement(refinement: string) {
     this.context.pendingRefinement = refinement;
+    // Emit event for UI to show pending refinement
+    this.emit('refinement:ready', { refinement });
   }
 
-  getPendingRefinement(): RefinedTask | undefined {
+  getPendingRefinement(): string | undefined {
     return this.context.pendingRefinement;
   }
 
@@ -241,13 +247,17 @@ export class TaskStateMachine {
 
   setCurrentQuestion(question: string | null): void {
     this.currentQuestion = question;
+    // Emit event for UI to show question
+    if (question) {
+      this.emit('question:asked', { question });
+    }
   }
 
   clearCurrentQuestion(): void {
     this.currentQuestion = null;
   }
 
-  setRefinedTask(refinedTask: RefinedTask, taskToUse: string) {
+  setRefinedTask(refinedTask: string, taskToUse: string) {
     this.context.refinedTask = refinedTask;
     this.context.taskToUse = taskToUse;
     // Clear pending once approved
@@ -257,6 +267,8 @@ export class TaskStateMachine {
   setPlan(planMd: string | undefined, planPath: string) {
     this.context.planMd = planMd;
     this.context.planPath = planPath;
+    // Emit event for UI to show plan
+    this.emit('plan:ready', { planMd, planPath });
   }
 
   setExecutionStateMachine(machine: CoderReviewerStateMachine) {
@@ -270,6 +282,8 @@ export class TaskStateMachine {
 
   setSuperReviewResult(result: SuperReviewerResult) {
     this.context.superReviewResult = result;
+    // Emit event for UI to show super review result
+    this.emit('superreview:complete', { result });
   }
 
   setRetryFeedback(feedback: string) {
@@ -417,6 +431,9 @@ export class TaskStateMachine {
           }
         });
       }
+
+      // Emit event for UI to react to state change
+      this.emit('state:changed', { oldState, newState: this.state, event });
     }
 
     return this.state;
@@ -608,12 +625,16 @@ export class TaskStateMachine {
 
       // Restore refined task data if available
       if (checkpoint.refinedTask && checkpoint.taskToUse) {
-        // Ensure raw property is set for RefinedTask compatibility
-        const refinedTask: RefinedTask = {
-          ...checkpoint.refinedTask,
-          raw: checkpoint.refinedTask.raw || undefined
-        };
-        this.context.refinedTask = refinedTask;
+        // Handle legacy checkpoint format (RefinedTask object)
+        if (typeof checkpoint.refinedTask === 'object' && checkpoint.refinedTask !== null) {
+          // Convert RefinedTask object to string
+          this.context.refinedTask = (checkpoint.refinedTask as any).raw ||
+                                     (checkpoint.refinedTask as any).goal ||
+                                     checkpoint.taskToUse;
+        } else {
+          // Already a string
+          this.context.refinedTask = checkpoint.refinedTask as string;
+        }
         this.context.taskToUse = checkpoint.taskToUse;
       } else if (checkpoint.taskToUse) {
         this.context.taskToUse = checkpoint.taskToUse;

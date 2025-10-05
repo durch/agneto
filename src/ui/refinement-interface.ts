@@ -13,6 +13,21 @@ export interface RefinementFeedback {
     details?: string;
 }
 
+// New simplified types for unified refinement flow
+export type RefinementActionType = "answer" | "approve" | "reject";
+
+export interface RefinementAction {
+    type: RefinementActionType;
+    answer?: string;  // For question answers
+    details?: string;  // For rejection feedback
+}
+
+export interface RefinementResult {
+    approved: boolean;
+    task: string;
+    details?: string;
+}
+
 export async function displayRefinedTask(refinedTask: RefinedTask, iteration: number) {
     console.log("\n" + chalk.blue("=".repeat(120)));
     console.log(chalk.blue.bold(`🔍 REFINED TASK v${iteration}`));

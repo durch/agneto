@@ -663,18 +663,16 @@ function parseRefinerKeywords(
 
   // Check if interpreter detected a question
   if (lowerResponse?.includes("question")) {
-    // Extract the question from original response
-    const question = extractQuestion(originalResponse);
-
-    // Validate question is non-empty before returning
-    if (!question || question.trim().length === 0) {
-      console.warn("Detected question type but could not extract question text");
+    // Just return the full original response - no parsing needed
+    // The refiner is already instructed to ask a single focused question
+    if (!originalResponse || originalResponse.trim().length === 0) {
+      console.warn("Detected question type but response was empty");
       return null;
     }
 
     return {
       type: "question",
-      question: question.trim(),
+      question: originalResponse.trim(),
     };
   }
 
@@ -685,47 +683,8 @@ function parseRefinerKeywords(
   };
 }
 
-/**
- * Extract question from refiner response
- */
-function extractQuestion(response: string | undefined): string {
-  if (!response) return "";
-
-  const lines = response.split("\n");
-
-  // Look for explicit question markers
-  for (const line of lines) {
-    if (
-      line.toLowerCase().includes("i need to clarify") ||
-      line.toLowerCase().includes("could you specify") ||
-      line.toLowerCase().includes("could you clarify")
-    ) {
-      // Return the line after the marker, or the full line if it contains the question
-      const colonIndex = line.indexOf(":");
-      if (colonIndex !== -1) {
-        return line.substring(colonIndex + 1).trim();
-      }
-      return line.trim();
-    }
-  }
-
-  // Look for question marks in early sentences (first 2 sentences)
-  const sentences = response.split(/[.!?]/);
-  for (let i = 0; i < Math.min(2, sentences.length); i++) {
-    if (sentences[i].includes("?")) {
-      return sentences[i].trim() + "?";
-    }
-  }
-
-  // Fallback: return first meaningful sentence
-  for (const sentence of sentences) {
-    if (sentence.trim().length > 10) {
-      return sentence.trim();
-    }
-  }
-
-  return "";
-}
+// extractQuestion() removed - we now pass through the full refiner response
+// when it's identified as a question, avoiding brittle parsing
 
 /**
  * Extract issues from SuperReviewer response text
