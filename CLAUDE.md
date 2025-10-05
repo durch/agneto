@@ -471,7 +471,7 @@ Set `DEBUG=true` to see:
 ### What Works Well
 - ✅ Interactive planning with feedback loop
 - ✅ **Streamlined approval flow** - Automatic Planner ↔ Curmudgeon cycles, single user approval
-- ✅ **Task Refiner clarifying questions** - Interactive Q&A loop for vague task descriptions with promise-based resolver pattern
+- ✅ **Task Refiner clarifying questions** - Interactive Q&A loop for vague task descriptions using CommandBus event-driven pattern
 - ✅ Safe sandbox execution with git worktrees
 - ✅ Bean Counter coordinated work breakdown (prevents loops!)
 - ✅ Small chunk implementation with frequent review cycles
@@ -493,7 +493,7 @@ Set `DEBUG=true` to see:
 - ✅ **Separate SuperReviewer and Gardener states** - Independent `TASK_GARDENING` state ensures documentation update results are visible before task finalization; split-pane UI shows SuperReviewer (left) and Gardener (right) results
 - ✅ **Dynamic prompt injection** - Ctrl+I keyboard shortcut enables real-time agent behavior modification during execution
 - ✅ **Curmudgeon interpreter pattern** - Structured verdict extraction prevents approval loop bugs
-- ✅ **Unified event-driven architecture** - All approval flows use CommandBus pattern for consistency (plan approval, refinement approval, etc.)
+- ✅ **Unified event-driven architecture** - All approval flows and question answering use CommandBus pattern for consistency (plan approval, refinement approval, question answering)
 - ✅ **Non-interactive task completion** - UI exits cleanly after Gardener, terminal displays copy-pasteable merge commands for manual execution
 
 
@@ -738,7 +738,7 @@ Agneto supports real-time agent behavior modification via the Ctrl+I keyboard sh
 - Uses `ink-select-input` for menu navigation (arrow keys + Enter)
 
 **Deprecated Patterns:**
-- ❌ Promise resolver callbacks passed as props - Replaced by CommandBus (completed: refinement approval, plan approval)
+- ❌ Promise resolver callbacks passed as props - Replaced by CommandBus (completed: refinement approval, plan approval, question answering)
 - ❌ Manual `inkInstance.rerender()` calls - Replaced by automatic event-driven updates
 - ❌ Local state for orchestrator interaction - Replaced by TaskStateMachine-owned state
 

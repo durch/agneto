@@ -337,43 +337,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         let questionsAsked = 0;
                         const MAX_QUESTIONS = 3;
 
-                        // Single callback for Q&A answers (approval now via CommandBus)
-                        const refinementInteractionCallback = async (action: RefinementAction) => {
-                            if (action.type === 'answer' && action.answer) {
-                                // Handle answer internally, continue flow
-                                questionsAsked++;
-
-                                // Clear question from state
-                                taskStateMachine.clearCurrentQuestion();
-
-                                // Get next response from refiner
-                                currentResponse = await refinerAgent.askFollowup(action.answer, cwd);
-
-                                // Interpret the response
-                                const interpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
-
-                                if (interpretation?.type === "question" && questionsAsked < MAX_QUESTIONS) {
-                                    // Another question - update state (UI auto-updates on question:asked event)
-                                    taskStateMachine.setCurrentQuestion(interpretation.question);
-                                } else {
-                                    // Got refinement or hit limit
-                                    if (interpretation?.type === "refinement") {
-                                        finalRefinedTask = interpretation.content || currentResponse;
-                                    } else {
-                                        // Request final refinement if needed
-                                        finalRefinedTask = await refinerAgent.askFollowup(
-                                            "Based on all the information provided, please now provide the complete refined task specification with Goal, Context, Constraints, and Success Criteria sections.",
-                                            cwd
-                                        );
-                                    }
-
-                                    // Clear question and set pending refinement for approval (UI auto-updates on refinement:ready event)
-                                    taskStateMachine.clearCurrentQuestion();
-                                    taskStateMachine.setPendingRefinement(finalRefinedTask);
-                                }
-                            }
-                        };
-
                         // Generate initial refinement
                         const initialRefinedTask = await refinerAgent.refine(cwd, humanTask, taskId, taskStateMachine);
                         currentResponse = initialRefinedTask;
@@ -390,12 +353,43 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             taskStateMachine.setPendingRefinement(finalRefinedTask);
                         }
 
-                        // Initial render with the callback
-                        inkInstance.rerender(React.createElement(App, {
-                            commandBus,
-                            taskStateMachine,
-                            onRefinementInteraction: refinementInteractionCallback
-                        }));
+                        // Question/Answer loop using CommandBus
+                        while (taskStateMachine.getCurrentQuestion() && questionsAsked < MAX_QUESTIONS) {
+                            // Wait for answer via CommandBus
+                            const answer = await commandBus.waitForCommand<string>('question:answer');
+
+                            // Handle answer internally, continue flow
+                            questionsAsked++;
+
+                            // Clear question from state
+                            taskStateMachine.clearCurrentQuestion();
+
+                            // Get next response from refiner
+                            currentResponse = await refinerAgent.askFollowup(answer, cwd);
+
+                            // Interpret the response
+                            const interpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
+
+                            if (interpretation?.type === "question" && questionsAsked < MAX_QUESTIONS) {
+                                // Another question - update state (UI auto-updates on question:asked event)
+                                taskStateMachine.setCurrentQuestion(interpretation.question);
+                            } else {
+                                // Got refinement or hit limit
+                                if (interpretation?.type === "refinement") {
+                                    finalRefinedTask = interpretation.content || currentResponse;
+                                } else {
+                                    // Request final refinement if needed
+                                    finalRefinedTask = await refinerAgent.askFollowup(
+                                        "Based on all the information provided, please now provide the complete refined task specification with Goal, Context, Constraints, and Success Criteria sections.",
+                                        cwd
+                                    );
+                                }
+
+                                // Clear question and set pending refinement for approval (UI auto-updates on refinement:ready event)
+                                taskStateMachine.clearCurrentQuestion();
+                                taskStateMachine.setPendingRefinement(finalRefinedTask);
+                            }
+                        }
 
                         // Wait for approval/rejection via CommandBus
                         const approvalFeedback = await commandBus.waitForAnyCommand<RefinementFeedback>(['refinement:approve', 'refinement:reject']);
@@ -412,8 +406,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // Final UI update
                         inkInstance.rerender(React.createElement(App, {
                             commandBus,
-                            taskStateMachine,
-                            onRefinementInteraction: undefined
+                            taskStateMachine
                         }));
 
                     } else {

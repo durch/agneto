@@ -18,8 +18,6 @@ interface PlanningLayoutProps {
   taskStateMachine: TaskStateMachine;
   commandBus: CommandBus;  // Required - event-driven architecture
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
-  onAnswerCallback?: (answer: string) => void;
-  onRefinementInteraction?: (action: RefinementAction) => void;
   onSuperReviewerDecision?: (decision: SuperReviewerDecision) => void;
   onFullscreen?: (paneNum: number) => void;
   terminalHeight: number;
@@ -34,8 +32,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   taskStateMachine,
   commandBus,
   onRefinementFeedback,
-  onAnswerCallback,
-  onRefinementInteraction,
   onSuperReviewerDecision,
   onFullscreen,
   terminalHeight,
@@ -57,7 +53,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const [isProcessingFeedback, setIsProcessingFeedback] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [refinementResolver, setRefinementResolver] = useState<((value: RefinementFeedback) => void) | null>(null);
-  const [answerResolver, setAnswerResolver] = useState<((answer: string) => void) | null>(null);
   const [superReviewerResolver, setSuperReviewerResolver] = useState<((value: SuperReviewerDecision) => void) | null>(null);
 
   // Structured modal state
@@ -129,14 +124,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   }, [onRefinementFeedback, currentState, pendingRefinement]);
 
-  // Wire up answer callback when a question is asked
-  React.useEffect(() => {
-    if (onAnswerCallback && currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion()) {
-      // Store the callback directly - it will handle the answer
-      setAnswerResolver(() => onAnswerCallback);
-    }
-  }, [onAnswerCallback, currentState, taskStateMachine]);
-
   // Wire up SuperReviewer decision when callback is provided
   React.useEffect(() => {
     if (onSuperReviewerDecision && currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult()) {
@@ -144,18 +131,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       setSuperReviewerResolver(() => onSuperReviewerDecision);
     }
   }, [onSuperReviewerDecision, currentState, taskStateMachine]);
-
-
-  // NEW: Unified refinement interaction handler
-  const [refinementInteractionHandler, setRefinementInteractionHandler] = useState<((action: RefinementAction) => void) | null>(null);
-
-  React.useEffect(() => {
-    if (onRefinementInteraction && currentState === TaskState.TASK_REFINING) {
-      setRefinementInteractionHandler(() => onRefinementInteraction);
-    } else {
-      setRefinementInteractionHandler(null);
-    }
-  }, [onRefinementInteraction, currentState]);
 
 
   // Handle approve action
@@ -305,7 +280,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     const isQuestionModalActive =
       currentState === TaskState.TASK_REFINING &&
       taskStateMachine.getCurrentQuestion() &&
-      answerResolver;
+      !isAnsweringQuestion;
 
     const isAnyModalActive = isQuestionModalActive || modalState.isOpen;
 
@@ -314,7 +289,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       setShowInjectionModal(true);
       taskStateMachine.clearInjectionPause();
     }
-  }, [planMd, curmudgeonFeedback, isProcessingFeedback, modalState.isOpen, answerResolver, currentState]);
+  }, [planMd, curmudgeonFeedback, isProcessingFeedback, modalState.isOpen, isAnsweringQuestion, currentState]);
 
   // Get execution state machine data if in TASK_EXECUTING
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
@@ -604,7 +579,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         borderColor={
           (pendingRefinement && refinementResolver) ||
           (planMd && currentState === TaskState.TASK_CURMUDGEONING && !isProcessingFeedback) ||
-          (taskStateMachine.getCurrentQuestion() && answerResolver) ||
+          (taskStateMachine.getCurrentQuestion() && !isAnsweringQuestion) ||
           (taskStateMachine.getSuperReviewResult()?.verdict === 'needs-human' && superReviewerResolver)
             ? "yellow"
             : "blue"
@@ -664,7 +639,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           })()}
 
           {/* Interactive Instructions - Show for refinement or planning states */}
-          {currentState === TaskState.TASK_REFINING && pendingRefinement && (commandBus || refinementInteractionHandler || refinementResolver) && (
+          {currentState === TaskState.TASK_REFINING && pendingRefinement && (commandBus || refinementResolver) && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Refined Task Ready for Review</Text>
               <Box marginTop={1}>
@@ -674,7 +649,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                     { label: 'Reject and Use Original', value: 'reject' }
                   ]}
                   onSelect={(item) => {
-                    // Always use handlers - they use CommandBus (refinementInteractionHandler is for Q&A only)
+                    // Always use handlers - they use CommandBus
                     if (item.value === 'approve') {
                       handleRefinementApprove();
                     } else if (item.value === 'reject') {
@@ -769,31 +744,18 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       </Box>
 
       {/* Question Modal - for clarifying questions during refinement */}
-      {currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion() && (refinementInteractionHandler || answerResolver) && (
+      {currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion() && !isAnsweringQuestion && (
         <TextInputModal
           title="Clarifying Question"
           content={taskStateMachine.getCurrentQuestion() || undefined}  // Show the question in the modal body
           placeholder="Type your answer and press Enter to submit"
           width={terminalWidth - 4}  // Full width minus margin
           height={Math.min(terminalHeight - 4, 30)}  // Full height minus margin, max 30
-          onSubmit={(answer) => {
-            if (refinementInteractionHandler) {
-              // Use unified handler if available
-              refinementInteractionHandler({ type: 'answer', answer });
-            } else if (answerResolver) {
-              // Fall back to old pattern
-              answerResolver(answer);
-              setAnswerResolver(null);
-            }
+          onSubmit={async (answer) => {
+            await commandBus.sendCommand({ type: 'question:answer', answer });
           }}
-          onCancel={() => {
-            if (refinementInteractionHandler) {
-              // Use unified handler with empty answer
-              refinementInteractionHandler({ type: 'answer', answer: '' });
-            } else if (answerResolver) {
-              answerResolver('');
-              setAnswerResolver(null);
-            }
+          onCancel={async () => {
+            await commandBus.sendCommand({ type: 'question:answer', answer: '' });
           }}
         />
       )}
