@@ -13,9 +13,9 @@ import type { SuperReviewerDecision, HumanInteractionResult, MergeApprovalDecisi
 interface AppProps {
   taskStateMachine: TaskStateMachine;
   onPlanFeedback?: (feedback: PlanFeedback) => void;
-  onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
-  onAnswerCallback?: (promise: Promise<string>) => void;
-  onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
+  onRefinementFeedback?: (feedback: RefinementFeedback) => void;
+  onAnswerCallback?: (answer: string) => void;
+  onSuperReviewerDecision?: (decision: SuperReviewerDecision) => void;
   onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
   onMergeApprovalCallback?: (decision: Promise<MergeApprovalDecision>) => void;
 }

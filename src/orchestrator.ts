@@ -375,12 +375,12 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 const answerPromise = new Promise<string>((resolve) => {
                                     answerResolver = resolve;
                                 });
-                                // Attach the resolver to the promise object for the UI to access
-                                (answerPromise as any).resolve = answerResolver;
-
-                                // Create callback for UI to wire up the resolver
-                                const answerCallback = (promise: Promise<string>) => {
-                                    (promise as any).resolve = answerResolver;
+                                // Create callback for UI to handle answer directly
+                                const answerCallback = (answer: string) => {
+                                    if (answerResolver) {
+                                        answerResolver(answer);
+                                        answerResolver = null; // Clean up resolver
+                                    }
                                 };
 
                                 // Re-render UI with answer callback
@@ -433,10 +433,12 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // Attach the resolver to the promise object for the UI to access
                         (feedbackPromise as any).resolve = resolverFunc;
 
-                        // Create callback for UI to wire up
-                        const refinementCallback = (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => {
-                            // Wire up the promise resolver to the UI handler
-                            (feedback as any).resolve = resolverFunc;
+                        // Create callback for UI to handle feedback directly
+                        const refinementCallback = (feedback: RefinementFeedback) => {
+                            if (resolverFunc) {
+                                resolverFunc(feedback);
+                                resolverFunc = null; // Clean up resolver
+                            }
                         };
 
                         // Update UI to show pending refinement with approval callback
@@ -445,9 +447,6 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                             onPlanFeedback: undefined,
                             onRefinementFeedback: refinementCallback
                         }));
-
-                        // Invoke callback with promise
-                        refinementCallback(feedbackPromise);
 
                         // Wait for UI feedback
                         const feedback = await feedbackPromise;
@@ -1078,13 +1077,13 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         const superReviewerDecisionPromise = new Promise<SuperReviewerDecision>((resolve) => {
                             superReviewerResolverFunc = resolve;
                         });
-                        // Attach the resolver to the promise object for the UI to access
-                        (superReviewerDecisionPromise as any).resolve = superReviewerResolverFunc;
 
-                        // Create callback for UI to wire up
-                        const superReviewerCallback = (decision: Promise<SuperReviewerDecision>) => {
-                            // Wire up the promise resolver to the UI handler
-                            (decision as any).resolve = superReviewerResolverFunc;
+                        // Create callback for UI to handle decision directly
+                        const superReviewerCallback = (decision: SuperReviewerDecision) => {
+                            if (superReviewerResolverFunc) {
+                                superReviewerResolverFunc(decision);
+                                superReviewerResolverFunc = null; // Clean up resolver
+                            }
                         };
 
                         // Update UI to show SuperReviewer results with decision callback
@@ -1095,9 +1094,6 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 onRefinementFeedback: undefined,
                                 onSuperReviewerDecision: superReviewerCallback
                             }));
-
-                            // Invoke callback with promise
-                            superReviewerCallback(superReviewerDecisionPromise);
                         }
 
                         // Wait for UI decision
@@ -1660,13 +1656,13 @@ async function runRestoredTask(
                             const superReviewerDecisionPromise = new Promise<SuperReviewerDecision>((resolve) => {
                                 superReviewerResolverFunc = resolve;
                             });
-                            // Attach the resolver to the promise object for the UI to access
-                            (superReviewerDecisionPromise as any).resolve = superReviewerResolverFunc;
 
-                            // Create callback for UI to wire up
-                            const superReviewerCallback = (decision: Promise<SuperReviewerDecision>) => {
-                                // Wire up the promise resolver to the UI handler
-                                (decision as any).resolve = superReviewerResolverFunc;
+                            // Create callback for UI to handle decision directly
+                            const superReviewerCallback = (decision: SuperReviewerDecision) => {
+                                if (superReviewerResolverFunc) {
+                                    superReviewerResolverFunc(decision);
+                                    superReviewerResolverFunc = null; // Clean up resolver
+                                }
                             };
 
                             // Update UI to show SuperReviewer results with decision callback
@@ -1677,9 +1673,6 @@ async function runRestoredTask(
                                     onRefinementFeedback: undefined,
                                     onSuperReviewerDecision: superReviewerCallback
                                 }));
-
-                                // Invoke callback with promise
-                                superReviewerCallback(superReviewerDecisionPromise);
                             }
 
                             // Wait for UI decision

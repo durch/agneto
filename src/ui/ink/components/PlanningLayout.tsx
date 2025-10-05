@@ -114,57 +114,24 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Wire up refinement feedback when callback is provided
   React.useEffect(() => {
     if (onRefinementFeedback && currentState === TaskState.TASK_REFINING && taskStateMachine.getPendingRefinement()) {
-      // Create a dummy promise to get the resolver attached by orchestrator
-      const dummyPromise = new Promise<RefinementFeedback>((resolve) => {
-        // This resolve will be replaced by the orchestrator
-      });
-
-      // Call the callback which will attach the real resolver
-      onRefinementFeedback(dummyPromise);
-
-      // Extract the resolver that was attached by orchestrator
-      const resolver = (dummyPromise as any).resolve;
-      if (resolver) {
-        setRefinementResolver(() => resolver);
-      }
+      // Store the callback directly - it will handle the feedback
+      setRefinementResolver(() => onRefinementFeedback);
     }
   }, [onRefinementFeedback, currentState]);
 
   // Wire up answer callback when a question is asked
   React.useEffect(() => {
     if (onAnswerCallback && currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion()) {
-      // Create a dummy promise to get the resolver attached by orchestrator
-      const dummyPromise = new Promise<string>((resolve) => {
-        // This resolve will be replaced by the orchestrator
-      });
-
-      // Call the callback which will attach the real resolver
-      onAnswerCallback(dummyPromise);
-
-      // Extract the resolver that was attached by orchestrator
-      const resolver = (dummyPromise as any).resolve;
-      if (resolver) {
-        setAnswerResolver(() => resolver);
-      }
+      // Store the callback directly - it will handle the answer
+      setAnswerResolver(() => onAnswerCallback);
     }
   }, [onAnswerCallback, currentState, taskStateMachine]);
 
   // Wire up SuperReviewer decision when callback is provided
   React.useEffect(() => {
     if (onSuperReviewerDecision && currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult()) {
-      // Create a dummy promise to get the resolver attached by orchestrator
-      const dummyPromise = new Promise<SuperReviewerDecision>((resolve) => {
-        // This resolve will be replaced by the orchestrator
-      });
-
-      // Call the callback which will attach the real resolver
-      onSuperReviewerDecision(dummyPromise);
-
-      // Extract the resolver that was attached by orchestrator
-      const resolver = (dummyPromise as any).resolve;
-      if (resolver) {
-        setSuperReviewerResolver(() => resolver);
-      }
+      // Store the callback as the resolver - it will be called directly with the decision
+      setSuperReviewerResolver(() => onSuperReviewerDecision);
     }
   }, [onSuperReviewerDecision, currentState, taskStateMachine]);
 
