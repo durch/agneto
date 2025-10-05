@@ -134,6 +134,7 @@ export class TaskStateMachine extends EventEmitter {
   private liveActivityMessage: LiveActivityMessage | null = null;
   private toolStatus: ToolStatus | null = null;
   private currentQuestion: string | null = null;
+  private answeringQuestion: boolean = false;
   private gardenerResult: GardenerResult | null = null;
   private injectionPauseRequested: boolean = false;
   private pendingInjection: string | null = null;
@@ -255,6 +256,16 @@ export class TaskStateMachine extends EventEmitter {
 
   clearCurrentQuestion(): void {
     this.currentQuestion = null;
+  }
+
+  getAnsweringQuestion(): boolean {
+    return this.answeringQuestion;
+  }
+
+  setAnsweringQuestion(isAnswering: boolean): void {
+    this.answeringQuestion = isAnswering;
+    // Emit event for UI to react to answering state change
+    this.emit('question:answering', { isAnswering });
   }
 
   setRefinedTask(refinedTask: string, taskToUse: string) {

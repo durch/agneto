@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Text, Box, useStdout, useInput, useApp } from 'ink';
 import { TaskStateMachine, TaskState } from '../../task-state-machine.js';
+import { CommandBus } from '../../ui/command-bus.js';
 import { PlanningLayout } from './components/PlanningLayout.js';
 import { ExecutionLayout } from './components/ExecutionLayout.js';
 import { FullscreenModal } from './components/FullscreenModal.js';
@@ -12,6 +13,7 @@ import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.
 // TypeScript interface for component props
 interface AppProps {
   taskStateMachine: TaskStateMachine;
+  commandBus?: CommandBus;  // Optional during migration
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
   onAnswerCallback?: (answer: string) => void;
@@ -69,7 +71,7 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onRefinementInteraction, onSuperReviewerDecision, onHumanReviewDecision, onMergeApprovalCallback }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onRefinementInteraction, onSuperReviewerDecision, onHumanReviewDecision, onMergeApprovalCallback }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
@@ -384,6 +386,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         <PlanningLayout
           currentState={phase.state}
           taskStateMachine={taskStateMachine}
+          commandBus={commandBus}
           onPlanFeedback={onPlanFeedback}
           onRefinementFeedback={onRefinementFeedback}
           onAnswerCallback={onAnswerCallback}
@@ -398,6 +401,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       ) : phase.state === TaskState.TASK_EXECUTING ? (
         <ExecutionLayout
           taskStateMachine={taskStateMachine}
+          commandBus={commandBus}
           onHumanReviewDecision={onHumanReviewDecision}
           onFullscreen={handleFullscreen}
         />

@@ -83,6 +83,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
     // Initialize checkpoint service for audit-driven recovery
     const checkpointService = new CheckpointService(taskId, cwd);
 
+    // Initialize CommandBus for UI → Orchestrator communication
+    const commandBus = new CommandBus();
+
     // Initialize session variables (may be overridden by restoration)
     let beanCounterSessionId = generateUUID();
     let coderSessionId = generateUUID();
@@ -282,7 +285,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
         const { unmount, waitUntilExit, rerender } = render(
             React.createElement(App, {
                 taskStateMachine,
-                onPlanFeedback: handlePlanFeedback
+                commandBus,
+                onPlanFeedback: handlePlanFeedback  // TODO: Remove after CommandBus migration complete
             }),
             {
                 patchConsole: false,  // Disable console interception to prevent flickering
@@ -337,16 +341,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                 case TaskState.TASK_REFINING: {
                     // Task refinement through UI
                     if (inkInstance) {
-                        // Use UI-based refinement with simplified flow
+                        // Use UI-based refinement with CommandBus flow
                         log.info("🔍 Refining task description...");
                         const refinerAgent = new RefinerAgent(provider);
-
-
-                        // Create ONE promise for the entire refinement flow
-                        let refinementResolver: ((result: RefinementResult) => void) | null = null;
-                        const refinementPromise = new Promise<RefinementResult>((resolve) => {
-                            refinementResolver = resolve;
-                        });
 
                         // Track Q&A state locally
                         let currentResponse = "";
@@ -354,7 +351,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         let questionsAsked = 0;
                         const MAX_QUESTIONS = 3;
 
-                        // Single callback for ALL refinement interactions
+                        // Single callback for Q&A answers (approval now via CommandBus)
                         const refinementInteractionCallback = async (action: RefinementAction) => {
                             if (action.type === 'answer' && action.answer) {
                                 // Handle answer internally, continue flow
@@ -364,7 +361,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                 taskStateMachine.clearCurrentQuestion();
 
                                 // Get next response from refiner
-                                currentResponse = await refinerAgent.askFollowup(action.answer);
+                                currentResponse = await refinerAgent.askFollowup(action.answer, cwd);
 
                                 // Interpret the response
                                 const interpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
@@ -379,22 +376,14 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                     } else {
                                         // Request final refinement if needed
                                         finalRefinedTask = await refinerAgent.askFollowup(
-                                            "Based on all the information provided, please now provide the complete refined task specification with Goal, Context, Constraints, and Success Criteria sections."
+                                            "Based on all the information provided, please now provide the complete refined task specification with Goal, Context, Constraints, and Success Criteria sections.",
+                                            cwd
                                         );
                                     }
 
                                     // Clear question and set pending refinement for approval (UI auto-updates on refinement:ready event)
                                     taskStateMachine.clearCurrentQuestion();
                                     taskStateMachine.setPendingRefinement(finalRefinedTask);
-                                }
-                            } else if (action.type === 'approve' || action.type === 'reject') {
-                                // Resolve the main promise with final result
-                                if (refinementResolver) {
-                                    refinementResolver({
-                                        approved: action.type === 'approve',
-                                        task: finalRefinedTask,
-                                        details: action.details
-                                    });
                                 }
                             }
                         };
@@ -417,15 +406,16 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         // Initial render with the callback
                         inkInstance.rerender(React.createElement(App, {
+                            commandBus,
                             taskStateMachine,
                             onRefinementInteraction: refinementInteractionCallback
                         }));
 
-                        // Wait for entire flow to complete
-                        const result = await refinementPromise;
+                        // Wait for approval/rejection via CommandBus
+                        const approvalFeedback = await commandBus.waitForAnyCommand<RefinementFeedback>(['refinement:approve', 'refinement:reject']);
 
-                        if (result.approved) {
-                            taskStateMachine.setRefinedTask(result.task, result.task);
+                        if (approvalFeedback.type === 'approve') {
+                            taskStateMachine.setRefinedTask(finalRefinedTask, finalRefinedTask);
                             log.orchestrator("Using refined task specification for planning.");
                             taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
                         } else {
@@ -435,6 +425,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         // Final UI update
                         inkInstance.rerender(React.createElement(App, {
+                            commandBus,
                             taskStateMachine,
                             onRefinementInteraction: undefined
                         }));

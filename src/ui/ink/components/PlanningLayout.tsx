@@ -3,6 +3,7 @@ import { Text, Box, useStdout, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import { TaskStateMachine, TaskState } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
+import { CommandBus } from '../../../ui/command-bus.js';
 import { getPlanFeedback, type PlanFeedback } from '../../planning-interface.js';
 import type { RefinementFeedback, RefinementAction } from '../../refinement-interface.js';
 import type { SuperReviewerDecision, GardenerResult, MergeApprovalDecision } from '../../../types.js';
@@ -15,6 +16,7 @@ import { Spinner } from './Spinner.js';
 interface PlanningLayoutProps {
   currentState: TaskState;
   taskStateMachine: TaskStateMachine;
+  commandBus?: CommandBus;  // Optional during migration
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
   onAnswerCallback?: (answer: string) => void;
@@ -31,6 +33,7 @@ interface PlanningLayoutProps {
 export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   currentState,
   taskStateMachine,
+  commandBus,
   onPlanFeedback,
   onRefinementFeedback,
   onAnswerCallback,
@@ -84,6 +87,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const planPath = taskStateMachine.getPlanPath();
   const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
   const simplificationCount = taskStateMachine.getSimplificationCount();
+  const isAnsweringQuestion = taskStateMachine.getAnsweringQuestion();
 
   // Unified helper to open text input modal with context
   const openTextInputModal = (
@@ -194,15 +198,20 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Handle refinement approve action
   const handleRefinementApprove = async () => {
-    if (!refinementResolver) return;
-
     setIsProcessingFeedback(true);
     setLastAction('Approved refinement');
 
     try {
-      const feedback: RefinementFeedback = { type: 'approve' };
-      refinementResolver(feedback);
-      setRefinementResolver(null);
+      // Use CommandBus if available (new pattern)
+      if (commandBus) {
+        await commandBus.sendCommand({ type: 'refinement:approve' });
+      }
+      // Fallback to resolver callback (old pattern)
+      else if (refinementResolver) {
+        const feedback: RefinementFeedback = { type: 'approve' };
+        refinementResolver(feedback);
+        setRefinementResolver(null);
+      }
     } catch (error) {
       setLastAction('Error processing refinement approval');
     } finally {
@@ -212,20 +221,27 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Handle refinement reject action - opens modal to collect feedback
   const handleRefinementReject = () => {
-    if (!refinementResolver) return;
+    if (!commandBus && !refinementResolver) return;  // Need at least one way to communicate
 
     openTextInputModal(
       'refinement',
       'Reject Refinement',
       'Why reject this refinement? Explain what\'s wrong...',
-      (feedbackText: string) => {
+      async (feedbackText: string) => {
         setIsProcessingFeedback(true);
         setLastAction('Rejected refinement - sending feedback');
 
         try {
-          const feedback: RefinementFeedback = { type: 'reject', details: feedbackText };
-          refinementResolver(feedback);
-          setRefinementResolver(null);
+          // Use CommandBus if available (new pattern)
+          if (commandBus) {
+            await commandBus.sendCommand({ type: 'refinement:reject', details: feedbackText });
+          }
+          // Fallback to resolver callback (old pattern)
+          else if (refinementResolver) {
+            const feedback: RefinementFeedback = { type: 'reject', details: feedbackText };
+            refinementResolver(feedback);
+            setRefinementResolver(null);
+          }
           setLastAction('Refinement rejection sent');
         } catch (error) {
           setLastAction('Error processing refinement rejection');

@@ -667,64 +667,100 @@ if (state === TASK_PLANNING) {
 }
 ```
 
-### Promise-Based Approval Pattern
+### Event-Driven Architecture
 
-Refinement, clarifying questions, and planning approvals all use the same promise-based pattern for user interaction:
+Agneto uses an **event-driven architecture** to completely decouple the UI from the orchestrator logic. This follows the same pattern as the web dashboard and eliminates the complexity of promise resolver callbacks.
+
+**Core Concepts:**
+1. **TaskStateMachine extends EventEmitter** - Emits events on all state and data changes
+2. **CommandBus** - Handles UI→Orchestrator commands via event queue
+3. **UI is purely reactive** - Listens to events for display, sends commands for interaction
+4. **Single source of truth** - State lives in TaskStateMachine, UI reads it dynamically
 
 ```typescript
-// 1. Orchestrator creates a promise and its resolver
-let resolverFunc: ((value: Feedback) => void) | null = null;
-const feedbackPromise = new Promise<Feedback>((resolve) => {
-  resolverFunc = resolve;
-});
-(feedbackPromise as any).resolve = resolverFunc; // Attach for UI access
+// TaskStateMachine emits events on data changes
+export class TaskStateMachine extends EventEmitter {
+  setPlan(planMd: string | undefined, planPath: string) {
+    this.context.planMd = planMd;
+    this.context.planPath = planPath;
+    this.emit('plan:ready', { planMd, planPath });  // UI auto-updates
+  }
 
-// 2. Pass callback to UI that will wire up the resolver
-const callback = (feedback: Promise<Feedback>) => {
-  (feedback as any).resolve = resolverFunc; // Critical: Use orchestrator's resolver!
+  setAnsweringQuestion(isAnswering: boolean) {
+    this.answeringQuestion = isAnswering;
+    this.emit('question:answering', { isAnswering });  // Modal visibility control
+  }
+}
+
+// UI subscribes to events for automatic re-rendering
+React.useEffect(() => {
+  const handleStateChange = () => forceUpdate({});
+  taskStateMachine.on('state:changed', handleStateChange);
+  taskStateMachine.on('plan:ready', handleDataUpdate);
+  taskStateMachine.on('question:asked', handleDataUpdate);
+  taskStateMachine.on('question:answering', handleDataUpdate);
+
+  return () => {
+    taskStateMachine.off('state:changed', handleStateChange);
+    // ... cleanup
+  };
+}, [taskStateMachine]);
+
+// UI sends commands to orchestrator via CommandBus
+const handleApprove = async () => {
+  await commandBus.sendCommand({ type: 'refinement:approve' });
 };
 
-// 3. UI extracts and uses the resolver
-React.useEffect(() => {
-  if (onFeedbackCallback && shouldShowApproval) {
-    const dummyPromise = new Promise((resolve) => {});
-    onFeedbackCallback(dummyPromise); // Callback attaches real resolver
-    const resolver = (dummyPromise as any).resolve; // Extract it
-    setLocalResolver(() => resolver); // Store for keyboard handler
-  }
-}, [dependencies]);
-
-// 4. Orchestrator waits for approval
-const feedback = await feedbackPromise;
+// Orchestrator waits for commands
+const feedback = await commandBus.waitForCommand<RefinementFeedback>('refinement:approve');
 ```
 
-**Critical Pattern:** The UI must use the resolver from the orchestrator's promise, not create its own promise. This was a major source of bugs.
+**Event Types Emitted:**
+- `state:changed` - TaskStateMachine state transitions
+- `plan:ready` - Plan markdown ready for display
+- `refinement:ready` - Refinement awaiting approval
+- `question:asked` - Clarifying question from Refiner
+- `question:answering` - Processing answer (modal visibility control)
+- `superreview:complete` - SuperReviewer results ready
+- `gardener:complete` - Documentation update results ready
 
-### Re-rendering Requirements
+**Command Types:**
+- `refinement:approve` / `refinement:reject` - Refinement approval
+- `plan:approve` / `plan:reject` - Plan approval
+- `question:answer` - Answer to clarifying question
+- `superreview:approve` / `superreview:retry` / `superreview:abandon` - Final review decisions
+- `merge:approve` / `merge:skip` - Merge approval
 
-The UI must be explicitly re-rendered at key points:
+**Benefits of Event-Driven Architecture:**
+1. **No prop drilling** - CommandBus and events eliminate deep prop chains
+2. **Decoupled components** - UI doesn't know about orchestrator internals
+3. **Same pattern as dashboard** - Reuses proven architecture
+4. **Easier debugging** - Events are observable and traceable
+5. **Extendible** - Adding new features doesn't require rewiring callbacks
+6. **No resolver hell** - Eliminates promise resolver race conditions
 
-1. **After state transitions:**
+### Automatic Re-rendering via Events
+
+With the event-driven architecture, **manual re-renders are mostly eliminated**. The UI automatically updates when TaskStateMachine emits events:
+
 ```typescript
-taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
-inkInstance.rerender(<App taskStateMachine={taskStateMachine} />);
-```
-
-2. **After storing data but before approval:**
-```typescript
+// ✅ CORRECT: Event-driven - No manual rerender needed
 taskStateMachine.setPlan(planMd, planPath);
-inkInstance.rerender(<App {...}/>); // Show the plan
-// Then set up approval mechanism
+// Event 'plan:ready' is emitted → UI auto-updates
+
+taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
+// Event 'state:changed' is emitted → UI auto-updates
+
+taskStateMachine.setAnsweringQuestion(true);
+// Event 'question:answering' is emitted → Modal auto-hides
 ```
 
-3. **When entering new states:**
+**Rare Cases for Manual Rerender:**
+Only needed when state changes don't trigger events (legacy code during migration):
+
 ```typescript
-case TaskState.TASK_PLANNING: {
-  if (inkInstance) {
-    inkInstance.rerender(<App {...}/>); // Update UI before long operation
-  }
-  // Then do planning work
-}
+// ❌ AVOID: Manual rerender (only if events aren't wired yet)
+inkInstance.rerender(<App taskStateMachine={taskStateMachine} />);
 ```
 
 ### State and Data Management
@@ -751,39 +787,50 @@ case TaskState.TASK_PLANNING: {
 
 ### Common Pitfalls and Solutions
 
-**Problem 1: UI Hangs After Approval**
-- **Cause:** Promise resolver not properly wired between orchestrator and UI
-- **Solution:** Ensure UI extracts resolver from orchestrator's promise, not creating its own
+**Problem 1: UI Not Updating After State Change**
+- **Cause:** Event subscription not properly set up in useEffect
+- **Solution:** Ensure all relevant events are subscribed with proper cleanup in return function
 
-**Problem 2: Plan Not Showing Before Approval**
-- **Cause:** No re-render after storing plan
-- **Solution:** Add explicit re-render after `setPlan()` before setting up approval
+**Problem 2: CommandBus Commands Not Working**
+- **Cause:** Orchestrator not listening for the command type
+- **Solution:** Add `commandBus.waitForCommand<Type>('command:type')` in orchestrator
 
-**Problem 3: "Awaiting Approval" Stuck After Approval**
-- **Cause:** `pendingRefinement` not cleared
-- **Solution:** `setRefinedTask()` clears it automatically, or manually clear
+**Problem 3: Modal Doesn't Close After Submit**
+- **Cause:** State not managed via events (e.g., `answeringQuestion` state)
+- **Solution:** TaskStateMachine should own the state and emit events; UI reads state dynamically
 
 **Problem 4: UI Shows Wrong Phase**
 - **Cause:** Component reading stale props instead of live state
-- **Solution:** Always read from `taskStateMachine.getCurrentState()` dynamically
+- **Solution:** Always read from `taskStateMachine.getCurrentState()` dynamically, not from props
 
-**Problem 5: Menu Selection Not Working**
-- **Cause:** SelectInput `onSelect` callback not properly wired to resolver functions
-- **Solution:** Ensure menu item values map correctly to handleApprove/handleReject/handleFeedback calls
+**Problem 5: Event Listeners Not Cleaned Up**
+- **Cause:** Missing cleanup in useEffect return function
+- **Solution:** Always use `taskStateMachine.off()` to remove listeners on unmount
 
 ### Implementation Checklist
 
-When adding UI interaction for a new phase:
+When adding UI interaction for a new phase using event-driven architecture:
 
-- [ ] Store any pending data in state machine
-- [ ] Re-render UI after storing data
-- [ ] Create promise with resolver in orchestrator
-- [ ] Pass callback to UI that attaches resolver
-- [ ] UI extracts resolver in useEffect
-- [ ] Keyboard handler calls resolver with feedback
-- [ ] Orchestrator waits on promise
-- [ ] Clear pending data after approval
-- [ ] Re-render UI after state transition
+**In TaskStateMachine:**
+- [ ] Add getter/setter methods for any new state (e.g., `getAnsweringQuestion()`, `setAnsweringQuestion()`)
+- [ ] Emit appropriate events in setter methods (e.g., `this.emit('question:answering', { isAnswering })`)
+- [ ] Ensure state is serialized in checkpoint if needed
+
+**In Orchestrator:**
+- [ ] Set state via TaskStateMachine methods (not directly on context)
+- [ ] Use `commandBus.waitForCommand<Type>('command:type')` to wait for user input
+- [ ] Update state after command received (e.g., clear flags, transition states)
+
+**In UI Components:**
+- [ ] Subscribe to relevant events in useEffect with cleanup
+- [ ] Read state dynamically from `taskStateMachine.getXxx()`, not props
+- [ ] Send commands via `commandBus.sendCommand({ type: 'command:type', ... })`
+- [ ] Conditionally render based on state (e.g., `!isAnswering && <Modal />`)
+
+**Testing:**
+- [ ] Verify events are emitted when state changes
+- [ ] Confirm UI updates automatically without manual rerenders
+- [ ] Test cleanup: unmount component, verify no memory leaks
 
 ### Dynamic Prompt Injection (Ctrl+I)
 
@@ -817,12 +864,19 @@ Agneto supports real-time agent behavior modification via the Ctrl+I keyboard sh
 
 ### File Organization
 
-- `src/ui/ink/App.tsx` - Main Ink app component
-- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval; displays SuperReviewer results (left pane) during `TASK_SUPER_REVIEWING`, then shows both SuperReviewer + Gardener results (split view) during `TASK_GARDENING` state
+- `src/ui/ink/App.tsx` - Main Ink app component; subscribes to TaskStateMachine events
+- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval via CommandBus; displays SuperReviewer results (left pane) during `TASK_SUPER_REVIEWING`, then shows both SuperReviewer + Gardener results (split view) during `TASK_GARDENING` state
 - `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review; injection modal integration
-- Approval callbacks passed as props through component hierarchy
-- State read dynamically from `taskStateMachine`, not props
+- `src/ui/command-bus.ts` - CommandBus class for UI→Orchestrator communication
+- `src/task-state-machine.ts` - Extends EventEmitter, emits events on all state changes
+- State read dynamically from `taskStateMachine.getXxx()`, not props
+- Commands sent via `commandBus.sendCommand()`, not callback props
 - Uses `ink-select-input` for menu navigation (arrow keys + Enter)
+
+**Deprecated Patterns:**
+- ❌ Promise resolver callbacks passed as props - Replaced by CommandBus
+- ❌ Manual `inkInstance.rerender()` calls - Replaced by automatic event-driven updates
+- ❌ Local state for orchestrator interaction - Replaced by TaskStateMachine-owned state
 
 
 ## 📦 NPX Usage

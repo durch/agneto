@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, Box, useStdout, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import { TaskStateMachine } from '../../../task-state-machine.js';
+import { CommandBus } from '../../../ui/command-bus.js';
 import { State } from '../../../state-machine.js';
 import { StatusIndicator } from './StatusIndicator.js';
 import type { HumanInteractionResult } from '../../../types.js';
@@ -12,6 +13,7 @@ import { MarkdownText } from './MarkdownText.js';
 // TypeScript interface for ExecutionLayout props
 interface ExecutionLayoutProps {
   taskStateMachine: TaskStateMachine;
+  commandBus?: CommandBus;  // Optional during migration
   onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
   onFullscreen?: (paneNum: number) => void;
 }

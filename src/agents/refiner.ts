@@ -75,7 +75,7 @@ export class RefinerAgent {
     return refinedOutput?.trim() || "";
   }
 
-  async askFollowup(previousAnswer: string): Promise<string> {
+  async askFollowup(previousAnswer: string, cwd: string): Promise<string> {
     // Validate session exists
     if (!this.sessionId) {
       throw new Error(
@@ -83,11 +83,11 @@ export class RefinerAgent {
       );
     }
 
-    // Call provider with existing session - NO tools needed for clarifying questions
+    // Call provider with existing session - use same parameters as refine()
     const response = await this.provider.query({
-      cwd: "", // No cwd needed for followup
+      cwd, // Use actual working directory
       mode: "default",
-      allowedTools: [], // Followup questions are clarifications, not codebase exploration
+      allowedTools: ["ReadFile", "Grep", "Bash"], // Same tools as refine() for consistency
       sessionId: this.sessionId,
       isInitialized: true, // Session already initialized by refine()
       messages: [{
