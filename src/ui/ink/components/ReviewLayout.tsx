@@ -8,7 +8,7 @@ interface ReviewLayoutProps {
   taskStateMachine: TaskStateMachine;
 }
 
-// Review Layout Component - handles TASK_SUPER_REVIEWING, TASK_FINALIZING
+// Review Layout Component - handles TASK_SUPER_REVIEWING
 export const ReviewLayout: React.FC<ReviewLayoutProps> = ({
   currentState,
   taskStateMachine
@@ -22,7 +22,6 @@ export const ReviewLayout: React.FC<ReviewLayoutProps> = ({
       <Box flexDirection="column">
         <Text dimColor>Current Stage: </Text>
         <Text>{currentState === TaskState.TASK_SUPER_REVIEWING && 'Final quality review in progress...'}
-             {currentState === TaskState.TASK_FINALIZING && 'Finalizing and preparing merge...'}
         </Text>
       </Box>
 

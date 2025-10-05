@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Text, Box, useStdout, useInput } from 'ink';
+import React, { useState, useEffect } from 'react';
+import { Text, Box, useStdout, useInput, useApp } from 'ink';
 import { TaskStateMachine, TaskState } from '../../task-state-machine.js';
 import { PlanningLayout } from './components/PlanningLayout.js';
 import { ExecutionLayout } from './components/ExecutionLayout.js';
@@ -7,7 +7,7 @@ import { FullscreenModal } from './components/FullscreenModal.js';
 import { TaskView } from './components/TaskView.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
-import type { SuperReviewerDecision, HumanInteractionResult, MergeApprovalDecision } from '../../types.js';
+import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.js';
 
 // TypeScript interface for component props
 interface AppProps {
@@ -17,7 +17,6 @@ interface AppProps {
   onAnswerCallback?: (answer: string) => void;
   onSuperReviewerDecision?: (decision: SuperReviewerDecision) => void;
   onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
-  onMergeApprovalCallback?: (decision: MergeApprovalDecision) => void;
 }
 
 // Helper function to convert TaskState enum to human-readable format
@@ -37,8 +36,6 @@ const getPhaseDisplayName = (state: TaskState): string => {
       return 'Final Review';
     case TaskState.TASK_GARDENING:
       return 'Updating Documentation';
-    case TaskState.TASK_FINALIZING:
-      return 'Finalizing';
     case TaskState.TASK_COMPLETE:
       return 'Complete';
     case TaskState.TASK_ABANDONED:
@@ -58,7 +55,6 @@ const getPhaseColor = (state: TaskState): string => {
       return 'blue';
     case TaskState.TASK_EXECUTING:
     case TaskState.TASK_SUPER_REVIEWING:
-    case TaskState.TASK_FINALIZING:
       return 'yellow';
     case TaskState.TASK_GARDENING:
       return 'cyan';
@@ -72,11 +68,14 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onSuperReviewerDecision, onHumanReviewDecision, onMergeApprovalCallback }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onSuperReviewerDecision, onHumanReviewDecision }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
   const terminalWidth = stdout?.columns || 120; // Default to 120 if unavailable
+
+  // Get app instance for exit control
+  const { exit } = useApp();
 
   // Global modal state for plan viewer
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
@@ -90,6 +89,17 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
 
   // Force re-render trigger for state propagation to child components
   const [, forceUpdate] = useState({});
+
+  // Exit UI when task completes
+  useEffect(() => {
+    const currentState = taskStateMachine.getCurrentState();
+    if (currentState === TaskState.TASK_COMPLETE || currentState === TaskState.TASK_ABANDONED) {
+      // Small delay to ensure final state renders before exit
+      setTimeout(() => {
+        exit();
+      }, 100);
+    }
+  }, [taskStateMachine, exit]);
 
   // Global keyboard handler for plan modal and execution phase modals
   useInput((input, key) => {
@@ -340,8 +350,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         phase.state === TaskState.TASK_PLANNING ||
         phase.state === TaskState.TASK_CURMUDGEONING ||
         phase.state === TaskState.TASK_SUPER_REVIEWING ||
-        phase.state === TaskState.TASK_GARDENING ||
-        phase.state === TaskState.TASK_FINALIZING) ? (
+        phase.state === TaskState.TASK_GARDENING) ? (
         <PlanningLayout
           currentState={phase.state}
           taskStateMachine={taskStateMachine}
@@ -349,7 +358,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
           onRefinementFeedback={onRefinementFeedback}
           onAnswerCallback={onAnswerCallback}
           onSuperReviewerDecision={onSuperReviewerDecision}
-          onMergeApprovalCallback={onMergeApprovalCallback}
           onFullscreen={handleFullscreen}
           terminalHeight={terminalHeight}
           terminalWidth={terminalWidth}

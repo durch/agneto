@@ -20,7 +20,6 @@ export enum TaskState {
   // Post-execution phases
   TASK_SUPER_REVIEWING = "TASK_SUPER_REVIEWING",
   TASK_GARDENING = "TASK_GARDENING",
-  TASK_FINALIZING = "TASK_FINALIZING",
 
   // Terminal states
   TASK_COMPLETE = "TASK_COMPLETE",
@@ -72,11 +71,6 @@ export enum TaskEvent {
   HUMAN_APPROVED = "HUMAN_APPROVED",
   HUMAN_RETRY = "HUMAN_RETRY",
   HUMAN_ABANDON = "HUMAN_ABANDON",
-
-  // Finalization events
-  AUTO_MERGE = "AUTO_MERGE",
-  MANUAL_MERGE = "MANUAL_MERGE",
-  CLEANUP_COMPLETE = "CLEANUP_COMPLETE",
 
   // Error event
   ERROR_OCCURRED = "ERROR_OCCURRED",
@@ -535,22 +529,6 @@ export class TaskStateMachine {
 
       case TaskState.TASK_GARDENING:
         if (event === TaskEvent.GARDENING_COMPLETE) {
-          this.state = TaskState.TASK_FINALIZING;
-          return true;
-        } else if (event === TaskEvent.ERROR_OCCURRED) {
-          this.handleError(data);
-          return true;
-        }
-        break;
-
-      case TaskState.TASK_FINALIZING:
-        if (
-          event === TaskEvent.AUTO_MERGE ||
-          event === TaskEvent.MANUAL_MERGE
-        ) {
-          this.state = TaskState.TASK_COMPLETE;
-          return true;
-        } else if (event === TaskEvent.CLEANUP_COMPLETE) {
           this.state = TaskState.TASK_COMPLETE;
           return true;
         } else if (event === TaskEvent.ERROR_OCCURRED) {
@@ -594,7 +572,6 @@ export class TaskStateMachine {
       case TaskState.TASK_CURMUDGEONING:
       case TaskState.TASK_EXECUTING:
       case TaskState.TASK_SUPER_REVIEWING:
-      case TaskState.TASK_FINALIZING:
         // Critical errors - abandon task
         this.state = TaskState.TASK_ABANDONED;
         log.orchestrator("Critical error - task abandoned");

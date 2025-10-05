@@ -57,13 +57,15 @@ Planner ↔ Curmudgeon cycles automatically (simplify if needed) →
 Curmudgeon approves → Single user approval prompt →
 Bean Counter: First chunk → Coder: Implements chunk → Reviewer: Approves →
 Bean Counter: Next chunk → Coder: Implements → Reviewer: Approves → [repeat] →
-Bean Counter: Task complete → SuperReviewer final check → Review in worktree → Merge
+Bean Counter: Task complete → SuperReviewer final check → Gardener updates docs →
+Task complete! UI exits → Terminal shows merge commands → Manual review and merge
 ```
 
 ### Default Behavior (Important!)
 - ✅ **Interactive planning ON** - You refine the plan before execution
-- ✅ **Runs ALL steps** - No need to continue manually
-- ✅ **Manual merge** - You review before merging to master
+- ✅ **Runs ALL steps** - Executes through Gardener automatically
+- ✅ **Non-interactive completion** - UI exits after Gardener, logs merge commands to terminal
+- ✅ **Manual merge** - Execute displayed commands after reviewing worktree
 - ✅ **Conservative** - Reviewer often asks for human input
 
 ## 🤖 Core Principle: LLM-First Communication
@@ -150,6 +152,7 @@ No parsing required. No failures. Just reliable LLM-to-LLM communication.
 # See all worktrees
 git worktree list
 
+# After task completion, Agneto displays these commands:
 # Review a worktree before merging
 cd .worktrees/<task-id>
 git log --oneline -5       # Recent commits
@@ -159,7 +162,7 @@ npm run build              # Verify it compiles
 # Merge and auto-cleanup (non-interactive!)
 npm run merge-task <task-id>
 
-# Manual cleanup if needed
+# Or cleanup without merging
 npm run cleanup-task <task-id>
 ```
 
@@ -404,6 +407,7 @@ Agneto uses a two-level state machine architecture:
    - Manages the overall task lifecycle
    - States: INIT → REFINING → PLANNING → CURMUDGEONING → EXECUTING → SUPER_REVIEWING → GARDENING → COMPLETE
    - Handles high-level task flow and agent coordination
+   - COMPLETE state triggers UI exit and merge command display (no interactive merge approval)
 
 2. **Execution State Machine** (`state-machine.ts`):
    - Manages the Bean Counter/Coder/Reviewer loop
@@ -626,6 +630,7 @@ Set `DEBUG=true` to see:
 - ✅ **Separate SuperReviewer and Gardener states** - Independent `TASK_GARDENING` state ensures documentation update results are visible before task finalization; split-pane UI shows SuperReviewer (left) and Gardener (right) results
 - ✅ **Dynamic prompt injection** - Ctrl+I keyboard shortcut enables real-time agent behavior modification during execution
 - ✅ **Curmudgeon interpreter pattern** - Structured verdict extraction prevents approval loop bugs
+- ✅ **Non-interactive task completion** - UI exits cleanly after Gardener, terminal displays copy-pasteable merge commands for manual execution
 
 
 ### Common Gotchas

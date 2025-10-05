@@ -32,7 +32,7 @@ import { TaskOptions } from "./types.js";
 import { bell } from "./utils/terminal-bell.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
 import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
-import type { SuperReviewerDecision, HumanInteractionResult, MergeApprovalDecision } from './types.js';
+import type { SuperReviewerDecision, HumanInteractionResult } from './types.js';
 import {
   revertLastCommit,
   commitChanges,
@@ -1176,7 +1176,17 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             }));
                         }
 
-                        // Transition to finalization regardless of Gardener success
+                        // Re-enable logging before showing merge instructions
+                        log.setSilent(false);
+
+                        // Log merge instructions to terminal
+                        log.info('\n📦 Task complete! Review and merge:');
+                        log.info(`   cd .worktrees/${taskId} && git log --oneline -5`);
+                        log.info(`   npm run merge-task ${taskId}`);
+                        log.info('   Or cleanup without merging:');
+                        log.info(`   npm run cleanup-task ${taskId}\n`);
+
+                        // Transition to TASK_COMPLETE
                         taskStateMachine.transition(TaskEvent.GARDENING_COMPLETE);
                     } catch (error) {
                         // Log error but continue - documentation updates never block completion
@@ -1187,78 +1197,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     break;
                 }
 
-                case TaskState.TASK_FINALIZING: {
-                    // Finalization phase - merge or manual review
-
-                    // Build merge instructions string
-                    const instructions = `Next steps:
-1. Review changes in worktree: ${cwd}
-2. Run tests to verify
-3. Merge to master:
-   git checkout master
-   git merge sandbox/${taskId} --squash
-   git commit -m "Task ${taskId} completed"
-4. Clean up:
-   git worktree remove .worktrees/${taskId}
-   git branch -D sandbox/${taskId}`;
-
-                    // Copy to clipboard and store result
-                    let clipboardStatus: 'success' | 'failed';
-                    try {
-                        await clipboardy.write(instructions);
-                        clipboardStatus = 'success';
-                    } catch (error) {
-                        clipboardStatus = 'failed';
-                    }
-                    taskStateMachine.setMergeInstructions(instructions, clipboardStatus);
-
-                    // Conditional flow: auto-merge vs interactive
-                    if (options?.autoMerge) {
-                        // Preserve existing auto-merge behavior
-                        log.orchestrator("📦 Auto-merging to master...");
-                        mergeToMaster(taskId, cwd);
-                        cleanupWorktree(taskId, cwd);
-                        taskStateMachine.transition(TaskEvent.AUTO_MERGE);
-                    } else {
-                        // New interactive approval flow (following SuperReviewer pattern)
-
-                        // Create promise for UI-based decision
-                        let mergeResolverFunc: ((value: MergeApprovalDecision) => void) | null = null;
-                        const mergeDecisionPromise = new Promise<MergeApprovalDecision>((resolve) => {
-                            mergeResolverFunc = resolve;
-                        });
-
-                        // Create callback for UI to handle decision directly
-                        const mergeCallback = (decision: MergeApprovalDecision) => {
-                            if (mergeResolverFunc) {
-                                mergeResolverFunc(decision);
-                                mergeResolverFunc = null; // Clean up resolver
-                            }
-                        };
-
-                        // Update UI to show merge instructions with decision callback
-                        if (inkInstance) {
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined,
-                                onSuperReviewerDecision: undefined,
-                                onMergeApprovalCallback: mergeCallback
-                            }));
-                        }
-
-                        // Wait for UI decision
-                        const userDecision = await mergeDecisionPromise;
-
-                        if (userDecision.action === 'proceed') {
-                            taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
-                        } else {
-                            // User cancelled - still transition to manual merge state
-                            taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
-                        }
-                    }
-                    break;
-                }
 
                 case TaskState.TASK_COMPLETE:
                     bell();
@@ -1733,29 +1671,6 @@ async function runRestoredTask(
                         break;
                     }
 
-                    case TaskState.TASK_FINALIZING: {
-                        // Finalization phase - merge or manual review
-                        if (options?.autoMerge) {
-                            log.orchestrator("📦 Auto-merging to master...");
-                            mergeToMaster(taskStateMachine.getContext().taskId, cwd);
-                            cleanupWorktree(taskStateMachine.getContext().taskId, cwd);
-                            taskStateMachine.transition(TaskEvent.AUTO_MERGE);
-                        } else {
-                            // Provide direct git commands for npx users
-                            log.orchestrator(`\nNext steps:
-1. Review changes in worktree: ${cwd}
-2. Run tests to verify
-3. Merge to master:
-   git checkout master
-   git merge sandbox/${taskStateMachine.getContext().taskId} --squash
-   git commit -m "Task ${taskStateMachine.getContext().taskId} completed"
-4. Clean up:
-   git worktree remove .worktrees/${taskStateMachine.getContext().taskId}
-   git branch -D sandbox/${taskStateMachine.getContext().taskId}`);
-                            taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
-                        }
-                        break;
-                    }
 
                     case TaskState.TASK_COMPLETE:
                         log.orchestrator("🎉 Task completed successfully!");
