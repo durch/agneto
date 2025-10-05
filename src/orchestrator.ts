@@ -256,13 +256,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
         // Legacy uiCallback - no longer used but kept for compatibility during migration
         uiCallback = (feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => {
             // Legacy pattern - not used anymore
-            // If rerender is requested, update the Ink UI
-            if (rerenderCallback && inkInstance) {
-                // Re-render the Ink UI (App will read current state dynamically)
-                inkInstance.rerender(React.createElement(App, {
-                    taskStateMachine,
-                    commandBus
-                }));
+            // Event-driven architecture handles UI updates automatically via state:changed events
+            if (rerenderCallback) {
                 rerenderCallback();
             }
         };
@@ -403,11 +398,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             taskStateMachine.transition(TaskEvent.REFINEMENT_CANCELLED);
                         }
 
-                        // Final UI update
-                        inkInstance.rerender(React.createElement(App, {
-                            commandBus,
-                            taskStateMachine
-                        }));
+                        // UI updates automatically via state:changed event from transition
 
                     } else {
                         // Fallback to interactive refinement if no UI
@@ -514,13 +505,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     const simplificationCount = taskStateMachine.getSimplificationCount();
                     const maxSimplifications = 4;
 
-                    // Update UI to show we're entering curmudgeon phase
-                    if (inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus
-                        }));
-                    }
+                    // UI updates automatically via state:changed event from transition to this state
 
                     // Check if user has already reviewed a plan - skip Curmudgeon and show directly to user
                     if (taskStateMachine.getUserHasReviewedPlan()) {
@@ -676,14 +661,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                             log.orchestrator(`🔄 Curmudgeon requests simplification (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
                                             taskStateMachine.setCurmudgeonFeedback(result.feedback);
 
-                                            // Update UI to show feedback before transitioning
-                                            if (inkInstance) {
-                                                inkInstance.rerender(React.createElement(App, {
-                                                    taskStateMachine,
-                                                    commandBus
-                                                }));
-                                            }
-
+                                            // UI will update with feedback via state:changed event from transition
                                             taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                                         }
                                         break;
@@ -774,15 +752,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     // Reset user review flag when entering execution (planning phase complete)
                     taskStateMachine.setUserHasReviewedPlan(false);
 
-                    // Keep Ink UI alive during execution phase for real-time updates
-                    if (inkInstance) {
-                        log.orchestrator("🖥️ Ink UI will continue displaying execution phase...");
-                        // Re-render to show execution phase
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus
-                        }));
-                    }
+                    // UI updates automatically via state:changed event from transition to this state
+                    log.orchestrator("🖥️ Entering execution phase...");
 
                     // Execution phase - delegate to CoderReviewerStateMachine
                     let executionStateMachine = taskStateMachine.getExecutionStateMachine();
@@ -860,14 +831,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         throw new Error("No plan available for super review");
                     }
 
-                    // Update UI to show we're entering super review phase
-                    if (inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
+                    // UI updates automatically via state:changed event from transition to this state
 
                     log.orchestrator("🔍 Running SuperReviewer for final quality check...");
                     await checkAndWaitForInjectionPause('SuperReviewer', taskStateMachine);
@@ -889,14 +853,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         });
                     }
 
-                    // Update UI to show SuperReviewer results regardless of verdict
-                    if (inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
+                    // UI already updated via superreview:complete event from setSuperReviewResult()
 
                     if (superReviewResult.verdict === "needs-human") {
                         log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
@@ -927,13 +884,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                 case TaskState.TASK_GARDENING: {
                     log.orchestrator("📝 Updating documentation...");
 
-                    // Rerender UI to show gardening phase
-                    if (inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus
-                        }));
-                    }
+                    // UI updates automatically via state:changed event from transition to this state
 
                     try {
                         // Execute Gardener to update CLAUDE.md
@@ -956,14 +907,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             log.orchestrator("⚠️ Documentation update skipped or failed (non-blocking)");
                         }
 
-                        // Rerender UI to show Gardener results
-                        if (inkInstance) {
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                commandBus,
-                                onRefinementFeedback: undefined
-                            }));
-                        }
+                        // UI already updated via gardener:complete event from setGardenerResult()
+                        // and will update again on transition
 
                         // Re-enable logging before showing merge instructions
                         log.setSilent(false);
@@ -1778,14 +1723,8 @@ async function runExecutionStateMachine(
                             // Set human review state in execution state machine
                             stateMachine.setNeedsHumanReview(true, verdict.feedback || "Reviewer requires human input");
 
-                            // Update UI to show human review prompt with callback
-                            if (inkInstance) {
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    commandBus,
-                                    onHumanReviewDecision: humanReviewCallback
-                                }));
-                            }
+                            // UI will detect getNeedsHumanReview() flag and show prompt
+                            // Callback mechanism remains for now (to be migrated to CommandBus later)
 
                             // Wait for UI decision
                             const planDecision = await humanReviewDecisionPromise;
@@ -1981,14 +1920,8 @@ async function runExecutionStateMachine(
                             // Set human review state in execution state machine
                             stateMachine.setNeedsHumanReview(true, verdict.feedback || "Reviewer requires human input on code implementation");
 
-                            // Update UI to show human review prompt with callback
-                            if (inkInstance) {
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    commandBus,
-                                    onHumanReviewDecision: codeHumanReviewCallback
-                                }));
-                            }
+                            // UI will detect getNeedsHumanReview() flag and show prompt
+                            // Callback mechanism remains for now (to be migrated to CommandBus later)
 
                             // Wait for UI decision
                             const codeDecision = await codeHumanReviewDecisionPromise;
