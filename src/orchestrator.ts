@@ -1851,6 +1851,16 @@ async function runExecutionStateMachine(
                     }
 
                     stateMachine.transition(Event.PLAN_PROPOSED, proposal);
+
+                    // Trigger UI update after state transition to show Reviewer becoming active
+                    if (taskStateMachine && inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            commandBus,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+                    }
                     break;
                 }
 
@@ -2055,6 +2065,16 @@ async function runExecutionStateMachine(
                     }
                     // Always transition to CODE_APPLIED - let reviewer validate the approach
                     stateMachine.transition(Event.CODE_APPLIED);
+
+                    // Trigger UI update after state transition to show Reviewer becoming active
+                    if (taskStateMachine && inkInstance) {
+                        inkInstance.rerender(React.createElement(App, {
+                            taskStateMachine,
+                            commandBus,
+                            onPlanFeedback: undefined,
+                            onRefinementFeedback: undefined
+                        }));
+                    }
                     break;
                 }
 

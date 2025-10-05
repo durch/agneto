@@ -5,7 +5,7 @@ import { CommandBus, type Command } from '../../command-bus.js';
 
 interface DebugEvent {
   timestamp: string;
-  type: 'EVENT' | 'COMMAND';
+  type: 'EVENT' | 'COMMAND' | 'EXEC_EVENT' | 'EXEC_STATE';
   name: string;
   details?: string;
 }
@@ -40,7 +40,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
   const [events, setEvents] = useState<DebugEvent[]>([]);
 
   useEffect(() => {
-    const addEvent = (type: 'EVENT' | 'COMMAND', name: string, details?: string) => {
+    const addEvent = (type: 'EVENT' | 'COMMAND' | 'EXEC_EVENT' | 'EXEC_STATE', name: string, details?: string) => {
       setEvents(prev => {
         const newEvent: DebugEvent = {
           timestamp: formatTime(),
@@ -91,6 +91,17 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
       addEvent('COMMAND', command.type, details);
     };
 
+    // Execution state machine listeners
+    const executionStateMachine = taskStateMachine.getExecutionStateMachine();
+
+    const handleExecutionStateChange = (data: any) => {
+      addEvent('EXEC_STATE', 'state:changed', `${data.oldState} → ${data.newState}`);
+    };
+
+    const handleExecutionEvent = (data: any) => {
+      addEvent('EXEC_EVENT', 'event', `${data.event}`);
+    };
+
     // Subscribe to TaskStateMachine events
     taskStateMachine.on('state:changed', handleStateChange);
     taskStateMachine.on('plan:ready', handlePlanReady);
@@ -103,6 +114,12 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
     // Subscribe to CommandBus events
     commandBus.on('command', handleCommand);
 
+    // Subscribe to execution state machine events if available
+    if (executionStateMachine) {
+      executionStateMachine.on('execution:state:changed', handleExecutionStateChange);
+      executionStateMachine.on('execution:event', handleExecutionEvent);
+    }
+
     // Cleanup on unmount
     return () => {
       taskStateMachine.off('state:changed', handleStateChange);
@@ -113,6 +130,12 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
       taskStateMachine.off('superreview:complete', handleSuperReviewComplete);
       taskStateMachine.off('gardener:complete', handleGardenerComplete);
       commandBus.off('command', handleCommand);
+
+      // Cleanup execution state machine listeners
+      if (executionStateMachine) {
+        executionStateMachine.off('execution:state:changed', handleExecutionStateChange);
+        executionStateMachine.off('execution:event', handleExecutionEvent);
+      }
     };
   }, [taskStateMachine, commandBus]);
 
@@ -132,7 +155,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
       paddingBottom={1}
     >
       <Box
-        width={72}
+        width={56}
         borderStyle="round"
         borderColor="magenta"
         flexDirection="column"
@@ -151,6 +174,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                   bold
                   color={
                     event.type === 'COMMAND' ? 'yellow' :
+                    event.type === 'EXEC_EVENT' || event.type === 'EXEC_STATE' ? 'magenta' :
                     event.name === 'state:changed' ? 'cyan' :
                     'blue'
                   }

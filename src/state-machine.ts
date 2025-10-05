@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import { log } from "./ui/log.js";
 import type { CoderPlanProposal } from "./types.js";
 import type { ExecutionStateCheckpoint } from "./audit/types.js";
@@ -101,13 +102,14 @@ export interface StateMachineContext {
   maxCodeAttempts: number;
 }
 
-export class CoderReviewerStateMachine {
+export class CoderReviewerStateMachine extends EventEmitter {
   private state: State = State.TASK_START;
   private context: StateMachineContext;
   private auditLogger?: AuditLogger;
   private toolStatus: ToolStatus | null = null;
 
   constructor(maxPlanAttempts = 7, maxCodeAttempts = 7, baselineCommit?: string, auditLogger?: AuditLogger) {
+    super();
     this.context = {
       planAttempts: 0,
       codeAttempts: 0,
@@ -283,8 +285,14 @@ export class CoderReviewerStateMachine {
       return this.state;
     }
 
+    // Emit event for debug overlay
+    this.emit('execution:event', { event, oldState, newState: this.state });
+
     if (oldState !== this.state) {
       log.orchestrator(`State transition: ${oldState} → ${this.state} (event: ${event})`);
+
+      // Emit state change event for debug overlay
+      this.emit('execution:state:changed', { oldState, newState: this.state, event });
 
       // Emit audit event for state transition
       if (this.auditLogger) {
