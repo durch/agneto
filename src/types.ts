@@ -98,3 +98,11 @@ export interface GardenerResult {
   sectionsUpdated: string[];
   error?: string;
 }
+
+// Task execution options
+export interface TaskOptions {
+  autoMerge?: boolean;
+  nonInteractive?: boolean;
+  recoveryDecision?: any; // RecoveryDecision from cli.ts - using any to avoid circular dependency
+  baseBranch?: string;
+}

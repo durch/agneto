@@ -28,6 +28,7 @@ import { enableAuditLogging } from "./audit/integration-example.js";
 import { CheckpointService } from "./audit/checkpoint-service.js";
 import { RestorationService } from "./audit/restoration-service.js";
 import { generateUUID } from "./utils/id-generator.js";
+import { TaskOptions } from "./types.js";
 import { bell } from "./utils/terminal-bell.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
 import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
@@ -38,7 +39,6 @@ import {
   documentTaskCompletion
 } from "./orchestrator-helpers.js";
 import type { CoderPlanProposal } from "./types.js";
-import type { RecoveryDecision } from "./cli.js";
 
 // Helper function to wait for pause flag to be cleared
 async function waitForResume(taskStateMachine: TaskStateMachine): Promise<void> {
@@ -72,9 +72,9 @@ async function checkAndWaitForInjectionPause(
   }
 }
 
-export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }) {
+export async function runTask(taskId: string, humanTask: string, options?: TaskOptions) {
     const provider = await selectProvider();
-    const { dir: cwd } = ensureWorktree(taskId);
+    const { dir: cwd } = ensureWorktree(taskId, options?.baseBranch);
 
     // Initialize audit logging - wrap the log instance for comprehensive audit capture
     const { log, auditLogger } = enableAuditLogging(taskId, humanTask);
@@ -1330,7 +1330,7 @@ async function runRestoredTask(
     reviewerInitialized: boolean,
     uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined,
     inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null,
-    options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }
+    options?: TaskOptions
 ): Promise<{ cwd: string }> {
     // Main task state machine loop with audit lifecycle management
     const maxIterations = 200; // Safety limit for parent + child iterations
