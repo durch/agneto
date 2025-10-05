@@ -53,6 +53,7 @@ Some chunks are **research/investigation tasks** with no expected file outputs. 
 3. **Check for gaps** - Are there obvious areas they missed?
 4. **Verify their findings** - Use `ReadFile` or `Grep` to spot-check claims
 5. **Judge quality, not quantity** - Concise, focused findings > exhaustive dumps
+6. Its fine if research chunks have no changes, it is actually expected
 
 **Research Approval Criteria:**
 - ✅ Approve if: Coder clearly understands the area, identified key information, and addressed chunk requirements
