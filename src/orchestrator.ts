@@ -1616,15 +1616,6 @@ async function runExecutionStateMachine(
                         const chunkOutput = `${chunk.description}\n\nRequirements:\n${chunk.requirements.map((r: string) => `- ${r}`).join('\n')}\n\nContext: ${chunk.context}`;
                         stateMachine.setAgentOutput('bean', chunkOutput);
 
-                        // Trigger UI update if Ink is active
-                        if (taskStateMachine && inkInstance) {
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                commandBus,
-                                onRefinementFeedback: undefined
-                            }));
-                        }
-
                         // Session strategy: Both agents get fresh sessions per chunk
                         // This prevents context accumulation and ensures clean state for each work unit
                         reviewerSessionId = generateUUID();
@@ -1706,24 +1697,7 @@ async function runExecutionStateMachine(
                     const coderPlanSummary = await summarizeCoderOutput(provider, coderOutput, cwd);
                     stateMachine.setSummary('coder', coderPlanSummary);
 
-                    // Trigger UI update if Ink is active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus
-                        }));
-                    }
-
                     stateMachine.transition(Event.PLAN_PROPOSED, proposal);
-
-                    // Trigger UI update after state transition to show Reviewer becoming active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
                     break;
                 }
 
@@ -1769,14 +1743,6 @@ async function runExecutionStateMachine(
                         cwd
                     );
                     stateMachine.setSummary('reviewer', planReviewSummary);
-
-                    // Trigger UI update if Ink is active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus
-                        }));
-                    }
 
                     // Handle verdict
                     switch (verdict.verdict) {
@@ -1910,29 +1876,12 @@ async function runExecutionStateMachine(
                     const coderSummary = await summarizeCoderOutput(provider, response, cwd);
                     stateMachine.setSummary('coder', coderSummary);
 
-                    // Trigger UI update if Ink is active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus
-                        }));
-                    }
-
                     // Check if Coder applied changes (don't log here since Coder already displayed its response)
                     if (!response.includes("CODE_APPLIED:")) {
                         log.info("No changes were needed - work already complete");
                     }
                     // Always transition to CODE_APPLIED - let reviewer validate the approach
                     stateMachine.transition(Event.CODE_APPLIED);
-
-                    // Trigger UI update after state transition to show Reviewer becoming active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
                     break;
                 }
 
@@ -1969,14 +1918,6 @@ async function runExecutionStateMachine(
                         cwd
                     );
                     stateMachine.setSummary('reviewer', reviewerSummary);
-
-                    // Trigger UI update if Ink is active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            commandBus
-                        }));
-                    }
 
                     // Handle verdict
                     switch (verdict.verdict) {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Text, Box, useStdout, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import { TaskStateMachine } from '../../../task-state-machine.js';
@@ -93,6 +93,9 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   const terminalWidth = stdout?.columns || 120;
   const terminalHeight = stdout?.rows || 40;
 
+  // Force update mechanism for event-driven re-rendering
+  const [, forceUpdate] = useState({});
+
   // Local state for human review decision resolver
   const [humanReviewResolver, setHumanReviewResolver] = React.useState<((value: HumanInteractionResult) => void) | null>(null);
 
@@ -165,6 +168,29 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       taskStateMachine.clearInjectionPause();
     }
   }, [executionStateMachine, taskStateMachine, showRetryModal]);
+
+  // Subscribe to execution data updates for automatic re-rendering
+  React.useEffect(() => {
+    if (!executionStateMachine) return;
+
+    const handleOutputUpdate = () => {
+      forceUpdate({}); // Trigger re-render when agent output updates
+    };
+
+    const handleSummaryUpdate = () => {
+      forceUpdate({}); // Trigger re-render when agent summary updates
+    };
+
+    // Subscribe to execution events
+    executionStateMachine.on('execution:output:updated', handleOutputUpdate);
+    executionStateMachine.on('execution:summary:updated', handleSummaryUpdate);
+
+    // Cleanup on unmount
+    return () => {
+      executionStateMachine.off('execution:output:updated', handleOutputUpdate);
+      executionStateMachine.off('execution:summary:updated', handleSummaryUpdate);
+    };
+  }, [executionStateMachine]);
 
   if (!executionStateMachine) {
     return (

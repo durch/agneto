@@ -168,6 +168,7 @@ export class CoderReviewerStateMachine extends EventEmitter {
     } else if (agent === 'reviewer') {
       this.context.lastReviewerOutput = output;
     }
+    this.emit('execution:output:updated', { agent, output });
   }
 
   getAgentOutput(agent: 'bean' | 'coder' | 'reviewer'): string | undefined {
@@ -188,6 +189,7 @@ export class CoderReviewerStateMachine extends EventEmitter {
     } else if (agent === 'reviewer') {
       this.context.reviewerSummary = summary;
     }
+    this.emit('execution:summary:updated', { agent, summary });
   }
 
   getSummary(agent: 'coder' | 'reviewer'): string | undefined {
