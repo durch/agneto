@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, Box } from 'ink';
 import { TaskStateMachine, TaskState } from '../../../task-state-machine.js';
+import { CommandBus } from '../../../ui/command-bus.js';
 import { PlanningLayout } from './PlanningLayout.js';
 import { ExecutionLayout } from './ExecutionLayout.js';
 import { ReviewLayout } from './ReviewLayout.js';
@@ -8,6 +9,7 @@ import { ReviewLayout } from './ReviewLayout.js';
 // TypeScript interface for component props
 interface PhaseLayoutProps {
   taskStateMachine: TaskStateMachine;
+  commandBus: CommandBus;  // Required - event-driven architecture
 }
 
 // Phase group enumeration for clear categorization
@@ -110,7 +112,7 @@ const InitLayout: React.FC<{ currentState: TaskState; taskStateMachine: TaskStat
 };
 
 // Main PhaseLayout component with conditional rendering logic
-export const PhaseLayout: React.FC<PhaseLayoutProps> = ({ taskStateMachine }) => {
+export const PhaseLayout: React.FC<PhaseLayoutProps> = ({ taskStateMachine, commandBus }) => {
   // Phase detection with error handling
   const getCurrentPhaseData = (): { state: TaskState; group: PhaseGroup } => {
     try {
@@ -143,13 +145,14 @@ export const PhaseLayout: React.FC<PhaseLayoutProps> = ({ taskStateMachine }) =>
         return <PlanningLayout
           currentState={currentState}
           taskStateMachine={taskStateMachine}
+          commandBus={commandBus}
           terminalHeight={40}
           terminalWidth={120}
           availableContentHeight={30}
         />;
 
       case PhaseGroup.EXECUTION:
-        return <ExecutionLayout taskStateMachine={taskStateMachine} />;
+        return <ExecutionLayout taskStateMachine={taskStateMachine} commandBus={commandBus} />;
 
       case PhaseGroup.REVIEW:
         return <ReviewLayout currentState={currentState} taskStateMachine={taskStateMachine} />;

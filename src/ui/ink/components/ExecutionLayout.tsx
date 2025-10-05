@@ -13,7 +13,7 @@ import { MarkdownText } from './MarkdownText.js';
 // TypeScript interface for ExecutionLayout props
 interface ExecutionLayoutProps {
   taskStateMachine: TaskStateMachine;
-  commandBus?: CommandBus;  // Optional during migration
+  commandBus: CommandBus;  // Required - event-driven architecture
   onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
   onFullscreen?: (paneNum: number) => void;
 }

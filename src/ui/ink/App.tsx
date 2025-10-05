@@ -13,7 +13,7 @@ import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.
 // TypeScript interface for component props
 interface AppProps {
   taskStateMachine: TaskStateMachine;
-  commandBus?: CommandBus;  // Optional during migration
+  commandBus: CommandBus;  // Required - event-driven architecture
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
   onAnswerCallback?: (answer: string) => void;

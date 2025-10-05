@@ -467,6 +467,8 @@ Agneto uses a two-level state machine architecture:
 
 **AIDEV-NOTE:** The system uses natural language communication between agents, with a stateless interpreter converting responses to structured decisions. This eliminates JSON parsing failures and makes agent responses more readable and debuggable.
 
+**⚠️ CRITICAL WARNING: DO NOT implement parsers for natural language responses!** Any attempt to parse agent responses with regex, string manipulation, or programmatic extraction WILL FAIL. This has been tried repeatedly and fails every single time without exception. The ONLY reliable approach is LLM-based interpretation (see interpreter pattern below). If you find yourself writing code to parse agent responses, STOP immediately - you are making a fundamental architectural mistake.
+
 **Agent Communication Flow:**
 ```
 Agent Response (Natural Language) → Interpreter (Stateless Sonnet) → Structured Decision (JSON)
@@ -590,12 +592,15 @@ Set `DEBUG=true` to see:
 - Catches potential issues early
 - Maintains code quality
 
-**Natural Language → Interpreter Protocol**
+**Natural Language → Interpreter Protocol (LLM-First Architecture)**
 - Agents communicate naturally in readable language
 - Stateless LLM interpreter extracts structured decisions
+- **NEVER parse agent responses programmatically** - This fundamental rule has no exceptions
 - No JSON parsing failures or schema validation errors
 - Robust handling of any response format variations
 - Better debugging through readable agent responses
+- **Why this works**: LLMs understand LLMs better than regex ever will
+- **Why parsing fails**: Response formats vary, structure changes, brittle string matching breaks
 
 **Focused Changes**
 - Multi-file support available

@@ -16,7 +16,7 @@ import { Spinner } from './Spinner.js';
 interface PlanningLayoutProps {
   currentState: TaskState;
   taskStateMachine: TaskStateMachine;
-  commandBus?: CommandBus;  // Optional during migration
+  commandBus: CommandBus;  // Required - event-driven architecture
   onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
   onAnswerCallback?: (answer: string) => void;

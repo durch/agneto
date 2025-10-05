@@ -231,6 +231,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                 reviewerInitialized,
                                 uiCallback,
                                 inkInstance,
+                                commandBus,
                                 options
                             );
                         }
@@ -274,6 +275,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                 // Re-render the Ink UI (App will read current state dynamically)
                 inkInstance.rerender(React.createElement(App, {
                     taskStateMachine,
+                    commandBus,
                     onPlanFeedback: handlePlanFeedback
                 }));
                 rerenderCallback();
@@ -539,6 +541,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
@@ -559,6 +562,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             // which will call planFeedbackResolver when user interacts
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
+                                commandBus,
                                 onPlanFeedback: handlePlanFeedback,
                                 onRefinementFeedback: undefined
                             }));
@@ -595,6 +599,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             // Rerender UI - it will use the existing handlePlanFeedback callback
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
+                                commandBus,
                                 onPlanFeedback: handlePlanFeedback,
                                 onRefinementFeedback: undefined
                             }));
@@ -646,6 +651,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                 // Rerender UI - it will use the existing handlePlanFeedback callback
                                 inkInstance.rerender(React.createElement(App, {
                                     taskStateMachine,
+                                    commandBus,
                                     onPlanFeedback: handlePlanFeedback,
                                     onRefinementFeedback: undefined
                                 }));
@@ -693,6 +699,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                             // Rerender UI - it will use the existing handlePlanFeedback callback
                                             inkInstance.rerender(React.createElement(App, {
                                                 taskStateMachine,
+                                                commandBus,
                                                 onPlanFeedback: handlePlanFeedback,
                                                 onRefinementFeedback: undefined
                                             }));
@@ -731,6 +738,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                                 // Rerender UI - it will use the existing handlePlanFeedback callback
                                                 inkInstance.rerender(React.createElement(App, {
                                                     taskStateMachine,
+                                                    commandBus,
                                                     onPlanFeedback: handlePlanFeedback,
                                                     onRefinementFeedback: undefined
                                                 }));
@@ -758,6 +766,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                             if (inkInstance) {
                                                 inkInstance.rerender(React.createElement(App, {
                                                     taskStateMachine,
+                                                    commandBus,
                                                     onPlanFeedback: undefined,
                                                     onRefinementFeedback: undefined
                                                 }));
@@ -779,6 +788,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                             inkInstance.rerender(React.createElement(App, {
                                                 taskStateMachine,
+                                                commandBus,
                                                 onPlanFeedback: handlePlanFeedback,
                                                 onRefinementFeedback: undefined
                                             }));
@@ -813,6 +823,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                             inkInstance.rerender(React.createElement(App, {
                                                 taskStateMachine,
+                                                commandBus,
                                                 onPlanFeedback: handlePlanFeedback,
                                                 onRefinementFeedback: undefined
                                             }));
@@ -855,6 +866,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             // Rerender UI - it will use the existing handlePlanFeedback callback
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
+                                commandBus,
                                 onPlanFeedback: handlePlanFeedback,
                                 onRefinementFeedback: undefined
                             }));
@@ -888,6 +900,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // Re-render to show execution phase
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
@@ -940,7 +953,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         log,
                         checkpointService,
                         taskStateMachine,
-                        inkInstance
+                        inkInstance,
+                        commandBus
                     );
 
                     beanCounterInitialized = executionResult.beanCounterInitialized;
@@ -972,6 +986,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined,
                             onSuperReviewerDecision: undefined
@@ -1002,6 +1017,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined,
                             onSuperReviewerDecision: undefined
@@ -1030,6 +1046,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         if (inkInstance) {
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
+                                commandBus,
                                 onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined,
                                 onSuperReviewerDecision: superReviewerCallback
@@ -1045,6 +1062,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             // Rerender UI before transition
                             inkInstance?.rerender(React.createElement(App, {
                                 taskStateMachine,
+                                commandBus,
                                 onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined
                             }));
@@ -1065,6 +1083,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // Rerender UI before transition
                         inkInstance?.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
@@ -1081,6 +1100,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
@@ -1111,6 +1131,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         if (inkInstance) {
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
+                                commandBus,
                                 onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined
                             }));
@@ -1136,7 +1157,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                     break;
                 }
-
 
                 case TaskState.TASK_COMPLETE:
                     bell();
@@ -1208,6 +1228,7 @@ async function runRestoredTask(
     reviewerInitialized: boolean,
     uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined,
     inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null,
+    commandBus: CommandBus,
     options?: TaskOptions
 ): Promise<{ cwd: string }> {
     // Main task state machine loop with audit lifecycle management
@@ -1457,7 +1478,8 @@ async function runRestoredTask(
                             log,
                             checkpointService,
                             taskStateMachine,
-                            null  // No UI for restored tasks
+                            null,  // No UI for restored tasks
+                            commandBus
                         );
 
                         // Check execution result
@@ -1485,6 +1507,7 @@ async function runRestoredTask(
                         if (inkInstance) {
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
+                                commandBus,
                                 onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined,
                                 onSuperReviewerDecision: undefined
@@ -1515,6 +1538,7 @@ async function runRestoredTask(
                         if (inkInstance) {
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
+                                commandBus,
                                 onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined,
                                 onSuperReviewerDecision: undefined
@@ -1543,6 +1567,7 @@ async function runRestoredTask(
                             if (inkInstance) {
                                 inkInstance.rerender(React.createElement(App, {
                                     taskStateMachine,
+                                    commandBus,
                                     onPlanFeedback: undefined,
                                     onRefinementFeedback: undefined,
                                     onSuperReviewerDecision: superReviewerCallback
@@ -1665,7 +1690,8 @@ async function runExecutionStateMachine(
     log: any,
     checkpointService: CheckpointService,
     taskStateMachine: TaskStateMachine,
-    inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null
+    inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null,
+    commandBus: CommandBus
 ): Promise<{ beanCounterInitialized: boolean, coderInitialized: boolean, reviewerInitialized: boolean }> {
 
     // Run the execution state machine loop
@@ -1727,6 +1753,7 @@ async function runExecutionStateMachine(
                         if (taskStateMachine && inkInstance) {
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
+                                commandBus,
                                 onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined
                             }));
@@ -1817,6 +1844,7 @@ async function runExecutionStateMachine(
                     if (taskStateMachine && inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
@@ -1873,6 +1901,7 @@ async function runExecutionStateMachine(
                     if (taskStateMachine && inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
@@ -1933,6 +1962,7 @@ async function runExecutionStateMachine(
                             if (inkInstance) {
                                 inkInstance.rerender(React.createElement(App, {
                                     taskStateMachine,
+                                    commandBus,
                                     onHumanReviewDecision: humanReviewCallback
                                 }));
                             }
@@ -2013,6 +2043,7 @@ async function runExecutionStateMachine(
                     if (taskStateMachine && inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
@@ -2065,6 +2096,7 @@ async function runExecutionStateMachine(
                     if (taskStateMachine && inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
+                            commandBus,
                             onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
@@ -2153,6 +2185,7 @@ async function runExecutionStateMachine(
                             if (inkInstance) {
                                 inkInstance.rerender(React.createElement(App, {
                                     taskStateMachine,
+                                    commandBus,
                                     onHumanReviewDecision: codeHumanReviewCallback
                                 }));
                             }
