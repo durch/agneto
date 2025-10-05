@@ -6,6 +6,7 @@ import { PlanningLayout } from './components/PlanningLayout.js';
 import { ExecutionLayout } from './components/ExecutionLayout.js';
 import { FullscreenModal } from './components/FullscreenModal.js';
 import { TaskView } from './components/TaskView.js';
+import { DebugOverlay } from './components/DebugOverlay.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
 import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.js';
@@ -89,6 +90,11 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onPlanFe
   // Modal state for execution phase agent outputs
   const [viewMode, setViewMode] = useState<'split' | 'fullscreen'>('split');
   const [fullscreenContent, setFullscreenContent] = useState<{title: string, text: string} | null>(null);
+
+  // Debug overlay state
+  const [isDebugOverlayVisible, setIsDebugOverlayVisible] = useState(
+    process.env.AGNETO_DEBUG_OVERLAY === 'true'
+  );
 
   // Force re-render trigger for state propagation to child components
   const [, forceUpdate] = useState({});
@@ -177,6 +183,12 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onPlanFe
     if (key.ctrl && (input === 'q' || input === 'Q' || input === 'w' || input === 'W' || input === 'e' || input === 'E')) {
       const paneMap: { [key: string]: number } = { q: 1, Q: 1, w: 2, W: 2, e: 3, E: 3 };
       handleFullscreen(paneMap[input]);
+      return;
+    }
+
+    // Handle Ctrl+D to toggle debug overlay
+    if (key.ctrl && (input === 'd' || input === 'D')) {
+      setIsDebugOverlayVisible(prev => !prev);
       return;
     }
   });
@@ -367,57 +379,72 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onPlanFe
   }
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1} height={terminalHeight}>
-      {/* Header Section */}
-      <Box marginBottom={1}>
-        <Text bold>🧲 Agneto</Text>
-        <Text dimColor> | Task ID: </Text>
-        <Text>{taskInfo.taskId}</Text>
-        <Text dimColor> | Phase: </Text>
-        <Text color={phase.color} bold>{phase.displayName}</Text>
+    <>
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1} height={terminalHeight}>
+        {/* Header Section */}
+        <Box marginBottom={1}>
+          <Text bold>🧲 Agneto</Text>
+          <Text dimColor> | Task ID: </Text>
+          <Text>{taskInfo.taskId}</Text>
+          <Text dimColor> | Phase: </Text>
+          <Text color={phase.color} bold>{phase.displayName}</Text>
+        </Box>
+
+        {/* Status Section - Ready for future phase-based content */}
+        {(phase.state === TaskState.TASK_REFINING ||
+          phase.state === TaskState.TASK_PLANNING ||
+          phase.state === TaskState.TASK_CURMUDGEONING ||
+          phase.state === TaskState.TASK_SUPER_REVIEWING ||
+          phase.state === TaskState.TASK_GARDENING ||
+          phase.state === TaskState.TASK_FINALIZING) ? (
+          <PlanningLayout
+            currentState={phase.state}
+            taskStateMachine={taskStateMachine}
+            commandBus={commandBus}
+            onPlanFeedback={onPlanFeedback}
+            onRefinementFeedback={onRefinementFeedback}
+            onAnswerCallback={onAnswerCallback}
+            onRefinementInteraction={onRefinementInteraction}
+            onSuperReviewerDecision={onSuperReviewerDecision}
+            onMergeApprovalCallback={onMergeApprovalCallback}
+            onFullscreen={handleFullscreen}
+            terminalHeight={terminalHeight}
+            terminalWidth={terminalWidth}
+            availableContentHeight={availableContentHeight}
+            gardenerResult={taskStateMachine.getGardenerResult()}
+          />
+        ) : phase.state === TaskState.TASK_EXECUTING ? (
+          <ExecutionLayout
+            taskStateMachine={taskStateMachine}
+            commandBus={commandBus}
+            onHumanReviewDecision={onHumanReviewDecision}
+            onFullscreen={handleFullscreen}
+          />
+        ) : (
+          <Text dimColor italic>
+            Phase-specific content will be displayed here...
+          </Text>
+        )}
+
+        {/* Keyboard Shortcuts Footer */}
+        <Box marginTop={1} paddingX={1}>
+          <Text dimColor>
+            [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+I] Inject  [Ctrl+D] Debug  [Ctrl+Q/W/E] Fullscreen  [Esc] Close
+          </Text>
+        </Box>
       </Box>
 
-      {/* Status Section - Ready for future phase-based content */}
-      {(phase.state === TaskState.TASK_REFINING ||
-        phase.state === TaskState.TASK_PLANNING ||
-        phase.state === TaskState.TASK_CURMUDGEONING ||
-        phase.state === TaskState.TASK_SUPER_REVIEWING ||
-        phase.state === TaskState.TASK_GARDENING) ? (
-        <PlanningLayout
-          currentState={phase.state}
+      {/* Debug Overlay - Rendered outside main box for proper absolute positioning */}
+      {isDebugOverlayVisible && (
+        <DebugOverlay
           taskStateMachine={taskStateMachine}
           commandBus={commandBus}
-          onPlanFeedback={onPlanFeedback}
-          onRefinementFeedback={onRefinementFeedback}
-          onAnswerCallback={onAnswerCallback}
-          onRefinementInteraction={onRefinementInteraction}
-          onSuperReviewerDecision={onSuperReviewerDecision}
-          onFullscreen={handleFullscreen}
+          visible={isDebugOverlayVisible}
           terminalHeight={terminalHeight}
           terminalWidth={terminalWidth}
-          availableContentHeight={availableContentHeight}
-          gardenerResult={taskStateMachine.getGardenerResult()}
         />
-      ) : phase.state === TaskState.TASK_EXECUTING ? (
-        <ExecutionLayout
-          taskStateMachine={taskStateMachine}
-          commandBus={commandBus}
-          onHumanReviewDecision={onHumanReviewDecision}
-          onFullscreen={handleFullscreen}
-        />
-      ) : (
-        <Text dimColor italic>
-          Phase-specific content will be displayed here...
-        </Text>
       )}
-
-      {/* Keyboard Shortcuts Footer */}
-      <Box marginTop={1} paddingX={1}>
-        <Text dimColor>
-          [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+I] Inject  [Ctrl+Q/W/E] Fullscreen  [Esc] Close
-        </Text>
-      </Box>
-    </Box>
+    </>
   );
 };
 

@@ -668,7 +668,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           })()}
 
           {/* Interactive Instructions - Show for refinement or planning states */}
-          {currentState === TaskState.TASK_REFINING && pendingRefinement && (refinementInteractionHandler || refinementResolver) && (
+          {currentState === TaskState.TASK_REFINING && pendingRefinement && (commandBus || refinementInteractionHandler || refinementResolver) && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Refined Task Ready for Review</Text>
               <Box marginTop={1}>
@@ -678,20 +678,11 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                     { label: 'Reject and Use Original', value: 'reject' }
                   ]}
                   onSelect={(item) => {
-                    if (refinementInteractionHandler) {
-                      // Use unified handler if available
-                      if (item.value === 'approve') {
-                        refinementInteractionHandler({ type: 'approve' });
-                      } else if (item.value === 'reject') {
-                        refinementInteractionHandler({ type: 'reject' });
-                      }
-                    } else {
-                      // Fall back to old pattern
-                      if (item.value === 'approve') {
-                        handleRefinementApprove();
-                      } else if (item.value === 'reject') {
-                        handleRefinementReject();
-                      }
+                    // Always use handlers - they use CommandBus (refinementInteractionHandler is for Q&A only)
+                    if (item.value === 'approve') {
+                      handleRefinementApprove();
+                    } else if (item.value === 'reject') {
+                      handleRefinementReject();
                     }
                   }}
                 />
