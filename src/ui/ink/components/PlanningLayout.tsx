@@ -17,7 +17,6 @@ interface PlanningLayoutProps {
   currentState: TaskState;
   taskStateMachine: TaskStateMachine;
   commandBus: CommandBus;  // Required - event-driven architecture
-  onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
   onAnswerCallback?: (answer: string) => void;
   onRefinementInteraction?: (action: RefinementAction) => void;
@@ -34,7 +33,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   currentState,
   taskStateMachine,
   commandBus,
-  onPlanFeedback,
   onRefinementFeedback,
   onAnswerCallback,
   onRefinementInteraction,
@@ -166,8 +164,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     setLastAction('Approved');
 
     try {
-      const feedback: PlanFeedback = { type: 'approve' };
-      onPlanFeedback?.(feedback);
+      await commandBus.sendCommand({ type: 'plan:approve' });
     } catch (error) {
       setLastAction('Error processing approval');
       setIsProcessingFeedback(false); // Only reset on error
@@ -180,13 +177,12 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       'plan',
       'Reject Plan',
       'Explain what\'s wrong with this approach...',
-      (feedbackText: string) => {
+      async (feedbackText: string) => {
         setIsProcessingFeedback(true);
         setLastAction('Rejected - sending feedback');
 
         try {
-          const feedback: PlanFeedback = { type: 'wrong-approach', details: feedbackText };
-          onPlanFeedback?.(feedback);
+          await commandBus.sendCommand({ type: 'plan:reject', details: feedbackText });
           setLastAction('Rejection feedback sent');
         } catch (error) {
           setLastAction('Error processing rejection');
@@ -607,7 +603,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         borderStyle="single"
         borderColor={
           (pendingRefinement && refinementResolver) ||
-          (planMd && onPlanFeedback && currentState === TaskState.TASK_CURMUDGEONING && !isProcessingFeedback) ||
+          (planMd && currentState === TaskState.TASK_CURMUDGEONING && !isProcessingFeedback) ||
           (taskStateMachine.getCurrentQuestion() && answerResolver) ||
           (taskStateMachine.getSuperReviewResult()?.verdict === 'needs-human' && superReviewerResolver)
             ? "yellow"
@@ -697,7 +693,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {(currentState === TaskState.TASK_CURMUDGEONING && onPlanFeedback) &&
+          {currentState === TaskState.TASK_CURMUDGEONING &&
            planMd && !isProcessingFeedback && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🎯 Plan Ready for Review</Text>

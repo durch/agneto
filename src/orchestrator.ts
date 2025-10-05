@@ -98,13 +98,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
     let uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined = undefined;
     let inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null = null;
 
-    // Plan feedback resolver and callback (scoped to entire function for reuse)
-    let planFeedbackResolver: ((feedback: PlanFeedback) => void) | null = null;
-    let handlePlanFeedback: ((feedback: PlanFeedback) => void) | undefined = undefined;
-
-    log.orchestrator("🖥️ Ink UI enabled - UI callback mechanism will be available for plan feedback");
-    // The actual callback will be set up when the Ink UI is rendered
-    // to properly wire up the promise resolver mechanism
+    log.orchestrator("🖥️ Ink UI enabled - CommandBus will handle plan feedback");
+    // Plan feedback now handled via CommandBus event-driven pattern
 
     // Check for checkpoint restoration request
     if (options?.recoveryDecision?.action === "resume") {
@@ -256,27 +251,17 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
     // Setup Ink UI - UI is the app!
     try {
-        // Initialize the plan feedback callback (assigned to function-scoped variable)
-        handlePlanFeedback = (feedback: PlanFeedback) => {
-            if (planFeedbackResolver) {
-                planFeedbackResolver(feedback);
-                planFeedbackResolver = null; // Clean up resolver
-            }
-        };
+        // Plan feedback now handled via CommandBus - no callback setup needed
 
-        // Update uiCallback to wire up the resolver from the planner's promise and provide rerender
+        // Legacy uiCallback - no longer used but kept for compatibility during migration
         uiCallback = (feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => {
-            // Extract and store the resolver from the planner's promise
-            // The planner attaches the resolver to the promise object
-            planFeedbackResolver = (feedbackPromise as any).resolve;
-
+            // Legacy pattern - not used anymore
             // If rerender is requested, update the Ink UI
             if (rerenderCallback && inkInstance) {
                 // Re-render the Ink UI (App will read current state dynamically)
                 inkInstance.rerender(React.createElement(App, {
                     taskStateMachine,
-                    commandBus,
-                    onPlanFeedback: handlePlanFeedback
+                    commandBus
                 }));
                 rerenderCallback();
             }
@@ -287,8 +272,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
         const { unmount, waitUntilExit, rerender } = render(
             React.createElement(App, {
                 taskStateMachine,
-                commandBus,
-                onPlanFeedback: handlePlanFeedback  // TODO: Remove after CommandBus migration complete
+                commandBus
             }),
             {
                 patchConsole: false,  // Disable console interception to prevent flickering
@@ -541,9 +525,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
-                            commandBus,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
+                            commandBus
                         }));
                     }
 
@@ -553,21 +535,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         // Interactive mode: show plan to user for approval
                         if (inkInstance && !options?.nonInteractive) {
-                            // Create NEW promise and set the global resolver for UI to use
-                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                planFeedbackResolver = resolve;
-                            });
-
-                            // Rerender UI - it will use the existing handlePlanFeedback callback
-                            // which will call planFeedbackResolver when user interacts
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                commandBus,
-                                onPlanFeedback: handlePlanFeedback,
-                                onRefinementFeedback: undefined
-                            }));
-
-                            const feedback = await feedbackPromise;
+                            // Wait for plan feedback via CommandBus
+                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
                             if (feedback.type === "approve") {
                                 log.orchestrator("Plan approved by user.");
@@ -591,20 +560,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         // Interactive mode: show plan to user for approval
                         if (inkInstance && !options?.nonInteractive) {
-                            // Create NEW promise and set the global resolver for UI to use
-                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                planFeedbackResolver = resolve;
-                            });
-
-                            // Rerender UI - it will use the existing handlePlanFeedback callback
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                commandBus,
-                                onPlanFeedback: handlePlanFeedback,
-                                onRefinementFeedback: undefined
-                            }));
-
-                            const feedback = await feedbackPromise;
+                            // Wait for plan feedback via CommandBus
+                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
                             if (feedback.type === "approve") {
                                 log.orchestrator("Plan approved by user after max simplification attempts.");
@@ -643,20 +600,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                             // Interactive mode: show plan to user for approval
                             if (inkInstance && !options?.nonInteractive) {
-                                // Create NEW promise and set the global resolver for UI to use
-                                const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                    planFeedbackResolver = resolve;
-                                });
-
-                                // Rerender UI - it will use the existing handlePlanFeedback callback
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    commandBus,
-                                    onPlanFeedback: handlePlanFeedback,
-                                    onRefinementFeedback: undefined
-                                }));
-
-                                const feedback = await feedbackPromise;
+                                // Wait for plan feedback via CommandBus
+                                const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
                                 if (feedback.type === "approve") {
                                     log.orchestrator("Plan approved by user (Curmudgeon had no concerns).");
@@ -691,20 +636,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                         // Interactive mode: show plan to user for final approval
                                         if (inkInstance && !options?.nonInteractive) {
-                                            // Create NEW promise and set the global resolver for UI to use
-                                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                                planFeedbackResolver = resolve;
-                                            });
-
-                                            // Rerender UI - it will use the existing handlePlanFeedback callback
-                                            inkInstance.rerender(React.createElement(App, {
-                                                taskStateMachine,
-                                                commandBus,
-                                                onPlanFeedback: handlePlanFeedback,
-                                                onRefinementFeedback: undefined
-                                            }));
-
-                                            const feedback = await feedbackPromise;
+                                            // Wait for plan feedback via CommandBus
+                                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
                                             if (feedback.type === "approve") {
                                                 log.orchestrator("Plan approved by user.");
@@ -730,20 +663,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                             // Interactive mode: show plan to user for approval
                                             if (inkInstance && !options?.nonInteractive) {
-                                                // Create NEW promise and set the global resolver for UI to use
-                                                const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                                    planFeedbackResolver = resolve;
-                                                });
-
-                                                // Rerender UI - it will use the existing handlePlanFeedback callback
-                                                inkInstance.rerender(React.createElement(App, {
-                                                    taskStateMachine,
-                                                    commandBus,
-                                                    onPlanFeedback: handlePlanFeedback,
-                                                    onRefinementFeedback: undefined
-                                                }));
-
-                                                const feedback = await feedbackPromise;
+                                                // Wait for plan feedback via CommandBus
+                                                const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
                                                 if (feedback.type === "approve") {
                                                     log.orchestrator("Plan approved by user after max simplification attempts.");
@@ -766,9 +687,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                             if (inkInstance) {
                                                 inkInstance.rerender(React.createElement(App, {
                                                     taskStateMachine,
-                                                    commandBus,
-                                                    onPlanFeedback: undefined,
-                                                    onRefinementFeedback: undefined
+                                                    commandBus
                                                 }));
                                             }
 
@@ -782,18 +701,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                         // Interactive mode: show to user for decision
                                         if (inkInstance && !options?.nonInteractive) {
-                                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                                planFeedbackResolver = resolve;
-                                            });
-
-                                            inkInstance.rerender(React.createElement(App, {
-                                                taskStateMachine,
-                                                commandBus,
-                                                onPlanFeedback: handlePlanFeedback,
-                                                onRefinementFeedback: undefined
-                                            }));
-
-                                            const feedback = await feedbackPromise;
+                                            // Wait for plan feedback via CommandBus
+                                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
                                             if (feedback.type === "approve") {
                                                 log.orchestrator("User overrode Curmudgeon rejection.");
@@ -817,18 +726,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                         // Always show to user when human review needed
                                         if (inkInstance && !options?.nonInteractive) {
-                                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                                planFeedbackResolver = resolve;
-                                            });
-
-                                            inkInstance.rerender(React.createElement(App, {
-                                                taskStateMachine,
-                                                commandBus,
-                                                onPlanFeedback: handlePlanFeedback,
-                                                onRefinementFeedback: undefined
-                                            }));
-
-                                            const feedback = await feedbackPromise;
+                                            // Wait for plan feedback via CommandBus
+                                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
                                             if (feedback.type === "approve") {
                                                 log.orchestrator("Human approved plan.");
@@ -858,20 +757,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         if (inkInstance && !options?.nonInteractive) {
                             log.orchestrator("Curmudgeon review failed. Requesting user approval for plan.");
 
-                            // Create NEW promise and set the global resolver for UI to use
-                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                planFeedbackResolver = resolve;
-                            });
-
-                            // Rerender UI - it will use the existing handlePlanFeedback callback
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                commandBus,
-                                onPlanFeedback: handlePlanFeedback,
-                                onRefinementFeedback: undefined
-                            }));
-
-                            const feedback = await feedbackPromise;
+                            // Wait for plan feedback via CommandBus
+                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
                             if (feedback.type === "approve") {
                                 log.orchestrator("Plan approved by user (Curmudgeon review failed).");
@@ -900,9 +787,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // Re-render to show execution phase
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
-                            commandBus,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
+                            commandBus
                         }));
                     }
 
@@ -987,7 +872,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
                             commandBus,
-                            onPlanFeedback: undefined,
                             onRefinementFeedback: undefined,
                             onSuperReviewerDecision: undefined
                         }));
@@ -1018,7 +902,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
                             commandBus,
-                            onPlanFeedback: undefined,
                             onRefinementFeedback: undefined,
                             onSuperReviewerDecision: undefined
                         }));
@@ -1047,7 +930,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
                                 commandBus,
-                                onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined,
                                 onSuperReviewerDecision: superReviewerCallback
                             }));
@@ -1063,7 +945,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             inkInstance?.rerender(React.createElement(App, {
                                 taskStateMachine,
                                 commandBus,
-                                onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined
                             }));
 
@@ -1084,7 +965,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         inkInstance?.rerender(React.createElement(App, {
                             taskStateMachine,
                             commandBus,
-                            onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
 
@@ -1100,9 +980,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
-                            commandBus,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
+                            commandBus
                         }));
                     }
 
@@ -1132,7 +1010,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
                                 commandBus,
-                                onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined
                             }));
                         }
@@ -1508,7 +1385,6 @@ async function runRestoredTask(
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
                                 commandBus,
-                                onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined,
                                 onSuperReviewerDecision: undefined
                             }));
@@ -1539,7 +1415,6 @@ async function runRestoredTask(
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
                                 commandBus,
-                                onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined,
                                 onSuperReviewerDecision: undefined
                             }));
@@ -1568,7 +1443,6 @@ async function runRestoredTask(
                                 inkInstance.rerender(React.createElement(App, {
                                     taskStateMachine,
                                     commandBus,
-                                    onPlanFeedback: undefined,
                                     onRefinementFeedback: undefined,
                                     onSuperReviewerDecision: superReviewerCallback
                                 }));
@@ -1754,7 +1628,6 @@ async function runExecutionStateMachine(
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
                                 commandBus,
-                                onPlanFeedback: undefined,
                                 onRefinementFeedback: undefined
                             }));
                         }
@@ -1844,9 +1717,7 @@ async function runExecutionStateMachine(
                     if (taskStateMachine && inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
-                            commandBus,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
+                            commandBus
                         }));
                     }
 
@@ -1911,9 +1782,7 @@ async function runExecutionStateMachine(
                     if (taskStateMachine && inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
-                            commandBus,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
+                            commandBus
                         }));
                     }
 
@@ -2053,9 +1922,7 @@ async function runExecutionStateMachine(
                     if (taskStateMachine && inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
-                            commandBus,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
+                            commandBus
                         }));
                     }
 
@@ -2116,9 +1983,7 @@ async function runExecutionStateMachine(
                     if (taskStateMachine && inkInstance) {
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
-                            commandBus,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
+                            commandBus
                         }));
                     }
 

@@ -172,77 +172,18 @@ Agneto includes a comprehensive audit system that logs all agent interactions, p
 
 ### Audit Features
 
-- **Comprehensive Logging**: All agent communications, tool usage, and phase transitions captured
-- **Persistent Storage**: Events stored in `.agneto/task-{id}/` directories
-- **Checkpoint System**: State snapshots for recovery and restoration
-- **Rich Metadata**: Cost tracking, duration metrics, and execution context
-- **Human-Readable Output**: Both JSON events and markdown summaries generated
-- **Non-Intrusive**: Zero changes to existing code - wraps LogUI transparently
+- **Comprehensive Logging**: Agent communications, tool usage, phase transitions
+- **Persistent Storage**: Events in `.agneto/task-{id}/` directories
+- **Checkpoint System**: State snapshots for recovery
+- **Rich Metadata**: Cost tracking, duration metrics
+- **Human-Readable Output**: JSON events and markdown summaries
 
-### Audit Directory Structure
+### Key Capabilities
 
-Every task creates an audit trail:
-```
-.agneto/task-{id}/
-├── events/               # Individual JSON event files
-│   ├── 1727462285785-uuid.json
-│   └── ...
-├── metadata.json         # Task metadata and summary
-└── summary.md           # Human-readable execution summary
-```
-
-### Checkpoint & Recovery System
-
-The audit system includes sophisticated checkpoint and recovery capabilities:
-
-**Checkpoint Service**
-- Captures comprehensive state snapshots during execution
-- Includes agent session state, progress ledger, file modifications
-- Configurable naming formats and compression
-- Automatic cleanup of old checkpoints
-
-**Recovery Service**
-- Restores task execution from any checkpoint
-- Filters and searches checkpoints efficiently
-- Provides detailed recovery status reporting
-
-**Restoration Service**
-- Startup-only restoration from previous executions
-- Preserves session continuity and progress state
-- Graceful handling of corrupted or missing data
-
-### Audit Event Types
-
-The system captures:
-
-- **Agent Messages**: All planner, coder, reviewer communications
-- **Tool Usage**: ReadFile, Write, Edit, Bash command executions
-- **Phase Transitions**: PLANNING → CODING → REVIEW cycles
-- **Completion Metrics**: Cost, duration, success/failure status
-- **Context Data**: Chunk numbers, sprint tracking, session IDs
-
-### Usage Examples
-
-**Review audit trail for a task:**
-```bash
-# View all events
-ls .agneto/task-abc123/events/
-
-# Read human-readable summary
-cat .agneto/task-abc123/summary.md
-
-# Check task metadata
-cat .agneto/task-abc123/metadata.json
-```
-
-**Debug using audit data:**
-```bash
-# Find all coder events
-grep -r "\"agent\": \"coder\"" .agneto/task-abc123/events/
-
-# Check for errors
-grep -r "error\|failed" .agneto/task-abc123/events/
-```
+- Captures agent messages, tool usage, phase transitions
+- Checkpoint/recovery service for execution restoration
+- Events stored as individual JSON files with metadata
+- Use `cat .agneto/task-{id}/summary.md` to review execution
 
 ## 📱 Web Dashboard Interface
 
@@ -250,64 +191,18 @@ Agneto includes a real-time web dashboard for monitoring task execution, providi
 
 ### Dashboard Features
 
-- **Real-time Event Streaming**: Live updates as agents communicate and execute tasks
-- **Task History**: Complete audit trail visualization with filtering and search
-- **Agent Activity Monitoring**: See planner, coder, and reviewer interactions in real-time
-- **Performance Metrics**: Cost tracking, duration analysis, and execution statistics
-- **WebSocket Integration**: Instant updates without page refreshes
-- **Event Storage**: In-memory storage for up to 1000 events per task
-- **Cross-Platform**: Works in any modern web browser
+- Real-time event streaming with WebSocket integration
+- Task history visualization with filtering and search
+- Performance metrics (cost tracking, duration analysis)
+- In-memory storage for up to 1000 events per task
 
-### Dashboard Architecture
-
-The dashboard integrates seamlessly with Agneto's audit system:
-
-```
-┌─────────────────┐    HTTP POST     ┌─────────────────┐    WebSocket    ┌─────────────────┐
-│   Agneto Task   │ ──────────────→ │ Dashboard Server│ ──────────────→ │  Web Interface  │
-│   (EventEmitter)│    /events       │   (Express)     │   Real-time     │   (Browser)     │
-└─────────────────┘                  └─────────────────┘                 └─────────────────┘
-```
-
-**Components:**
-- **EventEmitter** (`src/dashboard/event-emitter.ts`): Sends audit events to dashboard
-- **Express Server** (`dashboard/server.ts`): Receives events via HTTP, serves WebSocket
-- **Web Interface** (`dashboard/public/`): Real-time visualization and controls
-
-### Environment Configuration
-
+**Quick Start:**
 ```bash
-# Set custom dashboard endpoint (default: http://localhost:3000)
-AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start -- "your task"
-
-# Enable dashboard debug output
-DEBUG=true npm run dashboard
+PORT=8080 npm run dashboard  # Start server
+AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start -- "task"
 ```
 
-### Dashboard API
-
-The dashboard provides HTTP and WebSocket APIs:
-
-**HTTP Endpoints:**
-- `POST /events` - Receive audit events from EventEmitter
-- `GET /tasks/{taskId}` - Retrieve task history and metadata
-- `GET /` - Serve dashboard interface
-
-**WebSocket Events:**
-- `task_started` - New task execution began
-- `agent_message` - Agent communication event
-- `tool_usage` - Tool execution event
-- `phase_transition` - Execution phase change
-- `task_completed` - Task finished successfully
-
-### Dashboard Benefits
-
-1. **Real-time Monitoring**: See execution progress as it happens
-2. **Visual Debugging**: Understand agent decision-making and tool usage
-3. **Performance Analysis**: Track costs and execution times across tasks
-4. **Team Collaboration**: Share task progress with stakeholders via web interface
-5. **Historical Analysis**: Review past executions and identify patterns
-6. **Compliance Visibility**: Real-time audit trail for regulatory requirements
+**Architecture:** EventEmitter → Express Server → WebSocket → Browser UI
 
 ## 🔧 Environment Variables Reference
 
@@ -344,58 +239,21 @@ Agneto supports various environment variables to control execution, debugging, a
 | `NTFY_TOPIC` | (required) | The ntfy topic to send push notifications to when tasks complete or require human input | `NTFY_TOPIC=agneto-alerts npm start` |
 | `NTFY_SERVER` | `https://ntfy.sh` | Custom ntfy server URL for sending notifications | `NTFY_SERVER=https://my-ntfy.com npm start` |
 
-### Usage Examples
+### Common Configurations
 
-**Full debugging setup:**
 ```bash
-# Maximum verbosity with all debugging enabled
-DEBUG=true LOG_LEVEL=debug npm start -- "debug task" --non-interactive
+# Debug mode
+DEBUG=true LOG_LEVEL=debug npm start -- "task"
+
+# CI/CD mode
+DISABLE_AUDIT=true DISABLE_CHECKPOINTS=true npm start -- "task" --non-interactive
+
+# With dashboard
+AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start -- "task"
+
+# With notifications
+NTFY_TOPIC=my-alerts npm start -- "task"
 ```
-
-**Minimal setup for CI/CD:**
-```bash
-# Disable all extra features for clean CI runs
-DISABLE_AUDIT=true DISABLE_CHECKPOINTS=true npm start -- "ci task" --non-interactive
-```
-
-**Development with dashboard:**
-```bash
-# Terminal 1: Start dashboard with custom port
-PORT=8080 npm run dashboard
-
-# Terminal 2: Run task with dashboard integration
-AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 DEBUG=true npm start -- "development task"
-```
-
-**Checkpoint management:**
-```bash
-# Keep only 3 checkpoints with compression enabled
-MAX_CHECKPOINTS=3 CHECKPOINT_COMPRESSION=true npm start -- "large task"
-```
-
-**Production deployment:**
-```bash
-# Production-ready configuration
-LOG_LEVEL=warn MAX_CHECKPOINTS=5 CHECKPOINT_COMPRESSION=true npm start -- "production task" --non-interactive
-```
-
-**Push notifications setup:**
-```bash
-# Enable ntfy notifications for task completion and human review prompts
-NTFY_TOPIC=my-agneto-alerts npm start -- "important task"
-
-# With custom ntfy server
-NTFY_TOPIC=agneto-team NTFY_SERVER=https://ntfy.company.com npm start -- "team task"
-```
-
-### Variable Precedence
-
-Environment variables can be set in multiple ways:
-
-1. **Command line** (highest precedence): `DEBUG=true npm start`
-2. **Shell export**: `export DEBUG=true && npm start`
-3. **`.envrc` file** (if using direnv): `echo "export DEBUG=true" > .envrc`
-4. **System defaults** (lowest precedence): Built-in defaults
 
 ## 🏗️ Architecture Reference
 
@@ -635,6 +493,7 @@ Set `DEBUG=true` to see:
 - ✅ **Separate SuperReviewer and Gardener states** - Independent `TASK_GARDENING` state ensures documentation update results are visible before task finalization; split-pane UI shows SuperReviewer (left) and Gardener (right) results
 - ✅ **Dynamic prompt injection** - Ctrl+I keyboard shortcut enables real-time agent behavior modification during execution
 - ✅ **Curmudgeon interpreter pattern** - Structured verdict extraction prevents approval loop bugs
+- ✅ **Unified event-driven architecture** - All approval flows use CommandBus pattern for consistency (plan approval, refinement approval, etc.)
 - ✅ **Non-interactive task completion** - UI exits cleanly after Gardener, terminal displays copy-pasteable merge commands for manual execution
 
 
@@ -731,7 +590,7 @@ const feedback = await commandBus.waitForCommand<RefinementFeedback>('refinement
 
 **Command Types:**
 - `refinement:approve` / `refinement:reject` - Refinement approval
-- `plan:approve` / `plan:reject` - Plan approval
+- `plan:approve` / `plan:reject` - Plan approval (standardized to CommandBus pattern)
 - `question:answer` - Answer to clarifying question
 - `superreview:approve` / `superreview:retry` / `superreview:abandon` - Final review decisions
 - `merge:approve` / `merge:skip` - Merge approval
@@ -879,9 +738,16 @@ Agneto supports real-time agent behavior modification via the Ctrl+I keyboard sh
 - Uses `ink-select-input` for menu navigation (arrow keys + Enter)
 
 **Deprecated Patterns:**
-- ❌ Promise resolver callbacks passed as props - Replaced by CommandBus
+- ❌ Promise resolver callbacks passed as props - Replaced by CommandBus (completed: refinement approval, plan approval)
 - ❌ Manual `inkInstance.rerender()` calls - Replaced by automatic event-driven updates
 - ❌ Local state for orchestrator interaction - Replaced by TaskStateMachine-owned state
+
+**Migration Pattern (Reference):**
+When migrating approval flows to CommandBus:
+1. Replace callback resolver with `commandBus.waitForCommand<Type>('command:type')` in orchestrator
+2. Remove callback props from UI component interfaces
+3. Replace callback invocations with `commandBus.sendCommand({ type: 'command:type', ... })`
+4. Remove callback prop passing from parent components
 
 
 ## 📦 NPX Usage

@@ -15,7 +15,6 @@ import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.
 interface AppProps {
   taskStateMachine: TaskStateMachine;
   commandBus: CommandBus;  // Required - event-driven architecture
-  onPlanFeedback?: (feedback: PlanFeedback) => void;
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
   onAnswerCallback?: (answer: string) => void;
   onRefinementInteraction?: (action: import("../refinement-interface.js").RefinementAction) => void;
@@ -72,7 +71,7 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onRefinementInteraction, onSuperReviewerDecision, onHumanReviewDecision, onMergeApprovalCallback }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefinementFeedback, onAnswerCallback, onRefinementInteraction, onSuperReviewerDecision, onHumanReviewDecision, onMergeApprovalCallback }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
@@ -401,7 +400,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onPlanFe
             currentState={phase.state}
             taskStateMachine={taskStateMachine}
             commandBus={commandBus}
-            onPlanFeedback={onPlanFeedback}
             onRefinementFeedback={onRefinementFeedback}
             onAnswerCallback={onAnswerCallback}
             onRefinementInteraction={onRefinementInteraction}
