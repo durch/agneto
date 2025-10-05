@@ -16,10 +16,10 @@ interface PlanningLayoutProps {
   currentState: TaskState;
   taskStateMachine: TaskStateMachine;
   onPlanFeedback?: (feedback: PlanFeedback) => void;
-  onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
-  onAnswerCallback?: (promise: Promise<string>) => void;
-  onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
-  onMergeApprovalCallback?: (decision: Promise<MergeApprovalDecision>) => void;
+  onRefinementFeedback?: (feedback: RefinementFeedback) => void;
+  onAnswerCallback?: (answer: string) => void;
+  onSuperReviewerDecision?: (decision: SuperReviewerDecision) => void;
+  onMergeApprovalCallback?: (decision: MergeApprovalDecision) => void;
   onFullscreen?: (paneNum: number) => void;
   terminalHeight: number;
   terminalWidth: number;
@@ -138,19 +138,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Wire up Merge Approval decision when callback is provided
   React.useEffect(() => {
     if (onMergeApprovalCallback && currentState === TaskState.TASK_FINALIZING && taskStateMachine.getMergeInstructions()) {
-      // Create a dummy promise to get the resolver attached by orchestrator
-      const dummyPromise = new Promise<MergeApprovalDecision>((resolve) => {
-        // This resolve will be replaced by the orchestrator
-      });
-
-      // Call the callback which will attach the real resolver
-      onMergeApprovalCallback(dummyPromise);
-
-      // Extract the resolver that was attached by orchestrator
-      const resolver = (dummyPromise as any).resolve;
-      if (resolver) {
-        setMergeApprovalResolver(() => resolver);
-      }
+      // Store the callback directly - it will handle the decision
+      setMergeApprovalResolver(() => onMergeApprovalCallback);
     }
   }, [onMergeApprovalCallback, currentState, taskStateMachine]);
 

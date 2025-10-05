@@ -17,7 +17,7 @@ interface AppProps {
   onAnswerCallback?: (answer: string) => void;
   onSuperReviewerDecision?: (decision: SuperReviewerDecision) => void;
   onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
-  onMergeApprovalCallback?: (decision: Promise<MergeApprovalDecision>) => void;
+  onMergeApprovalCallback?: (decision: MergeApprovalDecision) => void;
 }
 
 // Helper function to convert TaskState enum to human-readable format

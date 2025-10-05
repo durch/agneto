@@ -1227,12 +1227,13 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         const mergeDecisionPromise = new Promise<MergeApprovalDecision>((resolve) => {
                             mergeResolverFunc = resolve;
                         });
-                        // Attach resolver to promise for UI access
-                        (mergeDecisionPromise as any).resolve = mergeResolverFunc;
 
-                        // Create callback for UI to wire up
-                        const mergeCallback = (decision: Promise<MergeApprovalDecision>) => {
-                            (decision as any).resolve = mergeResolverFunc;
+                        // Create callback for UI to handle decision directly
+                        const mergeCallback = (decision: MergeApprovalDecision) => {
+                            if (mergeResolverFunc) {
+                                mergeResolverFunc(decision);
+                                mergeResolverFunc = null; // Clean up resolver
+                            }
                         };
 
                         // Update UI to show merge instructions with decision callback
@@ -1244,9 +1245,6 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 onSuperReviewerDecision: undefined,
                                 onMergeApprovalCallback: mergeCallback
                             }));
-
-                            // Invoke callback with promise
-                            mergeCallback(mergeDecisionPromise);
                         }
 
                         // Wait for UI decision
