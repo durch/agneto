@@ -1728,7 +1728,6 @@ async function runExecutionStateMachine(
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
                             commandBus,
-                            onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
                     }
@@ -1938,7 +1937,6 @@ async function runExecutionStateMachine(
                         inkInstance.rerender(React.createElement(App, {
                             taskStateMachine,
                             commandBus,
-                            onPlanFeedback: undefined,
                             onRefinementFeedback: undefined
                         }));
                     }
