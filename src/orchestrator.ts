@@ -496,7 +496,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     // Planning phase
 
                     // Set live activity message for planner
-                    taskStateMachine.setLiveActivityMessage('Planner', 'Creating strategic plan...');
+                    taskStateMachine.setLiveActivityMessage('Planner', 'Coming up with an implementation plan...');
 
                     // Re-render UI to show planning state before generating plan
                     if (inkInstance) {

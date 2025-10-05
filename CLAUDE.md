@@ -66,6 +66,72 @@ Bean Counter: Task complete → SuperReviewer final check → Review in worktree
 - ✅ **Manual merge** - You review before merging to master
 - ✅ **Conservative** - Reviewer often asks for human input
 
+## 🤖 Core Principle: LLM-First Communication
+
+**CRITICAL: Agneto is LLM-first by design. This is a fundamental architectural principle.**
+
+### The Golden Rule of Agent Communication
+
+**⚠️ NEVER attempt to parse natural language responses programmatically. This ALWAYS fails.**
+
+Agneto uses **raw text/natural language as the ONLY reliable protocol** for all communication:
+- Agent ↔ Agent communication
+- Agent ↔ User communication
+- Agent ↔ Orchestrator communication
+
+### Why Parsing Always Fails
+
+Attempts to implement parsers for natural language agent responses **fail without exception** because:
+- LLMs produce varied response formats and styles
+- Response structure changes based on context and prompt variations
+- JSON extraction from natural language is inherently unreliable
+- Schema validation errors cascade into system failures
+- Regex and string pattern matching is brittle and breaks unexpectedly
+
+### The Interpreter Pattern (Correct Approach)
+
+Instead of parsing, Agneto uses a **stateless LLM interpreter**:
+
+```
+Agent Response (Natural Language) → Interpreter (LLM) → Structured Decision (JSON)
+```
+
+**Key Components:**
+1. **Agents write natural language** - No format requirements, no JSON constraints
+2. **Stateless interpreter extracts intent** - Fast Sonnet model understands and structures the response
+3. **Orchestrator receives structured data** - Reliable decisions without parsing failures
+
+### What This Means for Development
+
+**DO:**
+- ✅ Let agents communicate in natural, readable language
+- ✅ Use LLM interpreter to extract structured decisions
+- ✅ Trust the interpreter to handle format variations
+- ✅ Keep prompts focused on natural communication
+
+**DON'T:**
+- ❌ Implement regex parsers for agent responses
+- ❌ Require JSON output from agents
+- ❌ Validate response formats with schemas
+- ❌ Extract data with string manipulation
+- ❌ Assume consistent response structure
+
+### Example: Why This Works
+
+**Agent says (natural language):**
+> "I approve this implementation. The authentication logic is solid and follows best practices. Let's proceed to the next chunk."
+
+**Interpreter extracts (structured):**
+```json
+{
+  "verdict": "approve",
+  "feedback": "The authentication logic is solid and follows best practices",
+  "continueNext": true
+}
+```
+
+No parsing required. No failures. Just reliable LLM-to-LLM communication.
+
 ## 🔧 Common Tasks
 
 ### Understanding the Output
