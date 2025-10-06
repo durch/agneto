@@ -134,6 +134,8 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
     taskStateMachine.on('plan:ready', handleDataUpdate);
     taskStateMachine.on('refinement:ready', handleDataUpdate);
     taskStateMachine.on('question:asked', handleDataUpdate);
+    taskStateMachine.on('question:cleared', handleDataUpdate);
+    taskStateMachine.on('task:refined', handleDataUpdate);
     taskStateMachine.on('superreview:complete', handleDataUpdate);
     taskStateMachine.on('gardener:complete', handleDataUpdate);
 
@@ -146,6 +148,8 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
       taskStateMachine.off('plan:ready', handleDataUpdate);
       taskStateMachine.off('refinement:ready', handleDataUpdate);
       taskStateMachine.off('question:asked', handleDataUpdate);
+      taskStateMachine.off('question:cleared', handleDataUpdate);
+      taskStateMachine.off('task:refined', handleDataUpdate);
       taskStateMachine.off('superreview:complete', handleDataUpdate);
       taskStateMachine.off('gardener:complete', handleDataUpdate);
     };
