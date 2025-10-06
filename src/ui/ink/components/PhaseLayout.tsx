@@ -36,6 +36,7 @@ const getPhaseGroup = (state: TaskState): PhaseGroup => {
 
     // Review Layout: Post-execution phases
     case TaskState.TASK_SUPER_REVIEWING:
+    case TaskState.TASK_GARDENING:
       return PhaseGroup.REVIEW;
 
     // Terminal states
