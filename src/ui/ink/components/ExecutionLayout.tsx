@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Text, Box, useStdout, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
-import { TaskStateMachine } from '../../../task-state-machine.js';
+import { TaskStateMachine, ToolStatus } from '../../../task-state-machine.js';
 import { CommandBus } from '../../../ui/command-bus.js';
 import { State } from '../../../state-machine.js';
 import { StatusIndicator } from './StatusIndicator.js';
@@ -92,7 +92,21 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   const terminalWidth = stdout?.columns || 120;
   const terminalHeight = stdout?.rows || 40;
 
-  // Force update mechanism for event-driven re-rendering
+  // Get execution state machine
+  const executionStateMachine = taskStateMachine.getExecutionStateMachine();
+
+  // React state mirroring ExecutionStateMachine data (event-driven updates)
+  const [currentPhase, setCurrentPhase] = useState<State>(executionStateMachine?.getCurrentState() || State.BEAN_COUNTING);
+  const [beanCounterOutput, setBeanCounterOutput] = useState<string | undefined>(executionStateMachine?.getAgentOutput('bean'));
+  const [coderOutput, setCoderOutput] = useState<string | undefined>(executionStateMachine?.getAgentOutput('coder'));
+  const [reviewerOutput, setReviewerOutput] = useState<string | undefined>(executionStateMachine?.getAgentOutput('reviewer'));
+  const [coderSummary, setCoderSummary] = useState<string | undefined>(executionStateMachine?.getSummary('coder'));
+  const [reviewerSummary, setReviewerSummary] = useState<string | undefined>(executionStateMachine?.getSummary('reviewer'));
+  const [needsHumanReview, setNeedsHumanReview] = useState<boolean>(executionStateMachine?.getNeedsHumanReview() || false);
+  const [humanReviewContext, setHumanReviewContext] = useState<string | undefined>(executionStateMachine?.getHumanReviewContext());
+  const [toolStatus, setToolStatus] = useState<ToolStatus | null>(executionStateMachine?.getToolStatus() || null);
+
+  // Force re-render trigger for state propagation to child components (fallback mechanism)
   const [, forceUpdate] = useState({});
 
   // Retry modal state
@@ -101,12 +115,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
   // Injection modal state
   const [showInjectionModal, setShowInjectionModal] = React.useState(false);
-
-  // Get execution state machine
-  const executionStateMachine = taskStateMachine.getExecutionStateMachine();
-
-  // Get tool status to determine if spinner should animate
-  const toolStatus = executionStateMachine?.getToolStatus();
 
   // Intercept Ctrl+Q/W/E for fullscreen panes
   useInput((input, key) => {
@@ -152,8 +160,24 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
     if (!executionStateMachine) return;
 
     const handleUpdate = () => {
-      forceUpdate({}); // Trigger re-render when agent output, summary, or phase changes
+      if (process.env.DEBUG) {
+        console.log('[ExecutionLayout.tsx] handleUpdate: updating React state from executionStateMachine');
+      }
+      // Update all state from executionStateMachine
+      setCurrentPhase(executionStateMachine.getCurrentState());
+      setBeanCounterOutput(executionStateMachine.getAgentOutput('bean'));
+      setCoderOutput(executionStateMachine.getAgentOutput('coder'));
+      setReviewerOutput(executionStateMachine.getAgentOutput('reviewer'));
+      setCoderSummary(executionStateMachine.getSummary('coder'));
+      setReviewerSummary(executionStateMachine.getSummary('reviewer'));
+      setNeedsHumanReview(executionStateMachine.getNeedsHumanReview());
+      setHumanReviewContext(executionStateMachine.getHumanReviewContext());
+      setToolStatus(executionStateMachine.getToolStatus());
+      forceUpdate({}); // Fallback mechanism (kept for backward compatibility)
     };
+
+    // Initialize state on mount
+    handleUpdate();
 
     // Subscribe to execution events
     executionStateMachine.on('execution:output:updated', handleUpdate);
@@ -176,10 +200,8 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
     );
   }
 
-  const currentState = executionStateMachine.getCurrentState();
-  const beanCounterOutput = executionStateMachine.getAgentOutput('bean');
-  const coderOutput = executionStateMachine.getAgentOutput('coder');
-  const reviewerOutput = executionStateMachine.getAgentOutput('reviewer');
+  // Note: currentPhase, beanCounterOutput, coderOutput, reviewerOutput now come from React state (lines 99-107)
+  const currentState = currentPhase; // Alias for backward compatibility with existing code
 
   // Calculate pane dimensions
   const isWideTerminal = terminalWidth > 120;
