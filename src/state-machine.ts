@@ -213,6 +213,8 @@ export class CoderReviewerStateMachine extends EventEmitter {
 
   clearToolStatus(): void {
     this.toolStatus = null;
+    // Emit event with null values to notify UI to clear tool status display
+    this.emit('tool:status', { agent: null, tool: null, summary: null });
   }
 
   // Setters for testing and external manipulation

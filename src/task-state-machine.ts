@@ -231,6 +231,8 @@ export class TaskStateMachine extends EventEmitter {
 
   clearToolStatus(): void {
     this.toolStatus = null;
+    // Emit event with null values to notify UI to clear tool status display
+    this.emit('tool:status', { agent: null, tool: null, summary: null });
   }
 
   // Setters for context updates
@@ -258,6 +260,8 @@ export class TaskStateMachine extends EventEmitter {
 
   clearCurrentQuestion(): void {
     this.currentQuestion = null;
+    // Emit event for UI to clear question display
+    this.emit('question:cleared');
   }
 
   getAnsweringQuestion(): boolean {
@@ -275,6 +279,8 @@ export class TaskStateMachine extends EventEmitter {
     this.context.taskToUse = taskToUse;
     // Clear pending once approved
     this.context.pendingRefinement = undefined;
+    // Emit event for UI to update task display
+    this.emit('task:refined', { refinedTask, taskToUse });
   }
 
   setPlan(planMd: string | undefined, planPath: string) {
