@@ -154,7 +154,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
   // Subscribe to execution data updates for automatic re-rendering
   React.useEffect(() => {
-    if (!executionStateMachine) return;
+    if (!executionStateMachine || !taskStateMachine) return;
 
     const handleUpdate = () => {
       if (process.env.DEBUG) {
@@ -180,6 +180,10 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
     executionStateMachine.on('execution:summary:updated', handleUpdate);
     executionStateMachine.on('execution:phase:changed', handleUpdate);
 
+    // Subscribe to taskStateMachine events for tool/activity updates
+    taskStateMachine.on('activity:updated', handleUpdate);
+    taskStateMachine.on('tool:status', handleUpdate);
+
     // Cleanup on unmount
     return () => {
       if (process.env.DEBUG) {
@@ -188,8 +192,12 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       executionStateMachine.off('execution:output:updated', handleUpdate);
       executionStateMachine.off('execution:summary:updated', handleUpdate);
       executionStateMachine.off('execution:phase:changed', handleUpdate);
+
+      // Cleanup taskStateMachine subscriptions
+      taskStateMachine.off('activity:updated', handleUpdate);
+      taskStateMachine.off('tool:status', handleUpdate);
     };
-  }, [executionStateMachine]);
+  }, [executionStateMachine, taskStateMachine]);
 
   if (!executionStateMachine) {
     return (
