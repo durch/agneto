@@ -7,3 +7,4 @@
 + [ ] There are a bunch of place where the flow gets stuck, ultrathink review for these. Transition to ExecutionLayout also gets stuck. I believe these are remanants from the commandbus migration
 + [ ] npm run merge should merge to active branch
 + [ ] Terrible rendering of text input modals
++ [ ] Support for codex for planning and superreviewing
