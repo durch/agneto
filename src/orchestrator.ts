@@ -1425,6 +1425,34 @@ async function runRestoredTask(
         auditLogger.failTask(errorMessage);
         log.warn(`Task execution failed: ${errorMessage}`);
         throw error; // Re-throw to maintain existing error handling behavior
+    } finally {
+        // Ensure Ink UI is cleaned up if it's still running
+        if (inkInstance) {
+            try {
+                log.orchestrator("🧹 Cleaning up Ink UI...");
+                inkInstance.unmount();
+                await inkInstance.waitUntilExit();
+                inkInstance = null;
+
+                // After UI exits, log merge instructions if task completed successfully
+                const finalState = taskStateMachine.getCurrentState();
+                if (finalState === TaskState.TASK_COMPLETE) {
+                    const taskId = taskStateMachine.getContext().taskId;
+                    log.setSilent(false); // Ensure stdout is visible
+                    log.info("\n📋 Task complete! Review the changes before merging:\n");
+                    log.info(`cd .worktrees/${taskId}`);
+                    log.info("git log --oneline -5");
+                    log.info("git diff master --stat");
+                    log.info("npm run build\n");
+                    log.info("To merge and cleanup:");
+                    log.info(`npm run merge-task ${taskId}\n`);
+                    log.info("Or cleanup without merging:");
+                    log.info(`npm run cleanup-task ${taskId}`);
+                }
+            } catch (cleanupError) {
+                log.warn(`⚠️ Ink UI cleanup error: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`);
+            }
+        }
     }
 
     return { cwd };
