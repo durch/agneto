@@ -117,33 +117,34 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
     }
   });
 
-  // Monitor injection pause and show modal when chunk operation completes
+  // Subscribe to execution phase changes for injection modal
   React.useEffect(() => {
     if (!executionStateMachine) return;
 
-    const pauseRequested = taskStateMachine.isInjectionPauseRequested();
-    const currentState = executionStateMachine.getCurrentState();
-    const beanCounterOutput = executionStateMachine.getAgentOutput('bean');
-    const coderOutput = executionStateMachine.getAgentOutput('coder');
-    const reviewerOutput = executionStateMachine.getAgentOutput('reviewer');
+    const handlePhaseChange = ({ to }: { from: State; to: State }) => {
+      // Check if injection is pending
+      if (!taskStateMachine.isInjectionPauseRequested()) return;
 
-    // Detect operation completion (agent has finished current work)
-    // Exclude TASK_COMPLETE state from triggering injection modal
-    const isOperationComplete =
-      (currentState === State.PLANNING && beanCounterOutput) ||
-      (currentState === State.CODE_REVIEW && coderOutput) ||
-      (currentState === State.BEAN_COUNTING && reviewerOutput);
+      // Don't show modal if task is complete
+      if (to === State.TASK_COMPLETE) return;
 
-    const isTaskComplete = currentState === State.TASK_COMPLETE;
+      // Don't show modal if there are conflicting modals
+      const isHumanReviewActive = executionStateMachine.getNeedsHumanReview();
+      const isRetryModalActive = showRetryModal;
+      if (isHumanReviewActive || isRetryModalActive) return;
 
-    // Check for conflicting modals
-    const isHumanReviewActive = executionStateMachine.getNeedsHumanReview();
-    const isRetryModalActive = showRetryModal;
-
-    if (pauseRequested && isOperationComplete && !isTaskComplete && !isHumanReviewActive && !isRetryModalActive) {
+      // Phase transition detected with pending injection → show modal
       setShowInjectionModal(true);
       taskStateMachine.clearInjectionPause();
-    }
+    };
+
+    // Subscribe to phase change events
+    executionStateMachine.on('execution:phase:changed', handlePhaseChange);
+
+    // Cleanup on unmount
+    return () => {
+      executionStateMachine.off('execution:phase:changed', handlePhaseChange);
+    };
   }, [executionStateMachine, taskStateMachine, showRetryModal]);
 
   // Subscribe to execution data updates for automatic re-rendering
