@@ -408,6 +408,11 @@ export class TaskStateMachine extends EventEmitter {
     return this.clipboardStatus;
   }
 
+  // Signal that plan is ready for user approval (after Curmudgeon approval)
+  setPlanAwaitingApproval(): void {
+    this.emit('plan:awaiting_approval');
+  }
+
   // Check if we can continue processing
   canContinue(): boolean {
     return ![TaskState.TASK_COMPLETE, TaskState.TASK_ABANDONED].includes(

@@ -522,6 +522,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         // Interactive mode: show plan to user for approval
                         if (inkInstance && !options?.nonInteractive) {
+                            // Signal UI that plan is ready for approval
+                            taskStateMachine.setPlanAwaitingApproval();
+
                             // Wait for plan feedback via CommandBus
                             const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
@@ -547,6 +550,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         // Interactive mode: show plan to user for approval
                         if (inkInstance && !options?.nonInteractive) {
+                            // Signal UI that plan is ready for approval
+                            taskStateMachine.setPlanAwaitingApproval();
+
                             // Wait for plan feedback via CommandBus
                             const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
@@ -587,6 +593,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                             // Interactive mode: show plan to user for approval
                             if (inkInstance && !options?.nonInteractive) {
+                                // Signal UI that plan is ready for approval
+                                taskStateMachine.setPlanAwaitingApproval();
+
                                 // Wait for plan feedback via CommandBus
                                 const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
@@ -623,6 +632,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                         // Interactive mode: show plan to user for final approval
                                         if (inkInstance && !options?.nonInteractive) {
+                                            // Signal UI that plan is ready for approval
+                                            taskStateMachine.setPlanAwaitingApproval();
+
                                             // Wait for plan feedback via CommandBus
                                             const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
@@ -650,6 +662,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                             // Interactive mode: show plan to user for approval
                                             if (inkInstance && !options?.nonInteractive) {
+                                                // Signal UI that plan is ready for approval
+                                                taskStateMachine.setPlanAwaitingApproval();
+
                                                 // Wait for plan feedback via CommandBus
                                                 const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
@@ -681,6 +696,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                         // Interactive mode: show to user for decision
                                         if (inkInstance && !options?.nonInteractive) {
+                                            // Signal UI that plan is ready for approval
+                                            taskStateMachine.setPlanAwaitingApproval();
+
                                             // Wait for plan feedback via CommandBus
                                             const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
@@ -706,6 +724,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                         // Always show to user when human review needed
                                         if (inkInstance && !options?.nonInteractive) {
+                                            // Signal UI that plan is ready for approval
+                                            taskStateMachine.setPlanAwaitingApproval();
+
                                             // Wait for plan feedback via CommandBus
                                             const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
 
@@ -736,6 +757,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // Interactive mode: show plan to user for approval even if Curmudgeon failed
                         if (inkInstance && !options?.nonInteractive) {
                             log.orchestrator("Curmudgeon review failed. Requesting user approval for plan.");
+
+                            // Signal UI that plan is ready for approval
+                            taskStateMachine.setPlanAwaitingApproval();
 
                             // Wait for plan feedback via CommandBus
                             const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');

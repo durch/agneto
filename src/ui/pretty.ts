@@ -21,22 +21,89 @@ const isHorizontalRule = (line: string) => /^(\*{3,}|-{3,}|_{3,})\s*$/.test(line
  * Enhance inline formatting (bold, italic, code, keywords)
  */
 function enhanceInlineFormatting(text: string): string {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, chalk.bold('$1'))
-    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, chalk.italic('$1'))
-    .replace(/`([^`]+)`/g, chalk.yellow('$1'))
-    // Highlight special keywords
+  // Manual parsing to avoid regex issues with overlapping patterns
+  let result = '';
+  let i = 0;
+
+  while (i < text.length) {
+    // Check for inline code: `code`
+    if (text[i] === '`') {
+      const closeIdx = text.indexOf('`', i + 1);
+      if (closeIdx !== -1) {
+        // Found matching backtick
+        const content = text.substring(i + 1, closeIdx);
+        result += chalk.yellow(content);
+        i = closeIdx + 1;
+        continue;
+      }
+    }
+
+    // Check for bold: **text**
+    if (text[i] === '*' && text[i + 1] === '*') {
+      // Look for closing **
+      const closeIdx = text.indexOf('**', i + 2);
+      if (closeIdx !== -1) {
+        // Found matching bold marker
+        const content = text.substring(i + 2, closeIdx);
+        result += chalk.bold(content);
+        i = closeIdx + 2;
+        continue;
+      }
+    }
+
+    // Check for italic: *text* (but not ** or standalone *)
+    // Only treat as italic if the asterisk is adjacent to non-whitespace
+    if (text[i] === '*' &&
+        text[i + 1] !== '*' &&
+        (i === 0 || text[i - 1] !== '*') &&
+        i + 1 < text.length &&
+        text[i + 1] !== ' ') {
+      // Look ahead to find if there's a closing * that's before a boundary
+      let j = i + 1;
+      let foundClosing = false;
+      while (j < text.length) {
+        if (text[j] === '*' &&
+            (j + 1 >= text.length || text[j + 1] !== '*') &&
+            text[j - 1] !== '*' &&
+            text[j - 1] !== ' ') {
+          // Found a closing italic marker
+          const content = text.substring(i + 1, j);
+          result += chalk.italic(content);
+          i = j + 1;
+          foundClosing = true;
+          break;
+        }
+        j++;
+      }
+      if (!foundClosing) {
+        // No closing italic found, treat as regular asterisk
+        result += text[i];
+        i++;
+      }
+      continue;
+    }
+
+    // Regular character
+    result += text[i];
+    i++;
+  }
+
+  // Apply keyword highlighting to the result
+  result = result
     .replace(/^(Intent|Files|Verification|Verify):/gm, chalk.green.bold('$1:'))
     .replace(/^(Risk|Warning|Note|Error):/gm, chalk.red.bold('$1:'))
     .replace(/^(Context|Background|Summary):/gm, chalk.blue.bold('$1:'))
     .replace(/^(Steps?|Actions?|Tasks?):/gm, chalk.cyan.bold('$1:'))
     .replace(/^(Acceptance Criteria|Success Criteria|Requirements?):/gm, chalk.magenta.bold('$1:'));
+
+  return result;
 }
 
 export function prettyPrint(raw: string, opts: PrettyOpts = {}): string {
   const width = Math.min(120, Math.max(40, opts.width ?? process.stdout.columns ?? 80));
   const indent = " ".repeat(opts.indent ?? 0);
-  const paras = splitIntoParagraphs(raw, opts.maxParagraphGap ?? 1);
+  const paras = splitIntoParagraphs(raw, opts.maxParagraphGap ?? 0);  // Changed default from 1 to 0
+
 
   const out: string[] = [];
   let inFence = false;
@@ -214,9 +281,24 @@ function splitIntoParagraphs(raw: string, maxGap: number): string[][] {
   for (const ln of lines) {
     if (ln.trim() === "") {
       blankRun++;
-      if (blankRun <= maxGap) cur.push("");
-      else if (cur.length) { paras.push(cur); cur = []; }
+      if (blankRun <= maxGap) {
+        // With maxGap=0, no blank lines are added to paragraphs
+        // With maxGap=1, one blank line can be part of the paragraph
+        if (maxGap > 0) cur.push("");
+      } else if (cur.length) {
+        paras.push(cur);
+        cur = [];
+      }
     } else {
+      // When we hit a non-blank line after blanks
+      if (blankRun > maxGap && cur.length) {
+        paras.push(cur);
+        cur = [];
+      } else if (blankRun > 0 && maxGap === 0 && cur.length) {
+        // For maxGap=0, any blank splits paragraphs
+        paras.push(cur);
+        cur = [];
+      }
       blankRun = 0;
       cur.push(ln);
     }

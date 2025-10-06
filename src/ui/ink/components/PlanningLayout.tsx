@@ -50,6 +50,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Local state for interactive feedback
   const [isProcessingFeedback, setIsProcessingFeedback] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
+  const [showPlanApproval, setShowPlanApproval] = useState(false);
 
   // Structured modal state
   const [modalState, setModalState] = useState<ModalState>({
@@ -134,6 +135,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       setTaskToolStatus(taskStateMachine.getToolStatus());
     };
 
+    const handlePlanAwaitingApproval = () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] handlePlanAwaitingApproval: showing plan approval menu');
+      }
+      setShowPlanApproval(true);
+    };
+
     // Subscribe to events
     taskStateMachine.on('activity:updated', handleDataUpdate);
     taskStateMachine.on('tool:status', handleDataUpdate);
@@ -142,6 +150,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     taskStateMachine.on('question:asked', handleDataUpdate);
     taskStateMachine.on('question:answering', handleDataUpdate);
     taskStateMachine.on('curmudgeon:feedback', handleDataUpdate);
+    taskStateMachine.on('plan:awaiting_approval', handlePlanAwaitingApproval);
 
     // Cleanup on unmount
     return () => {
@@ -155,11 +164,20 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       taskStateMachine.off('question:asked', handleDataUpdate);
       taskStateMachine.off('question:answering', handleDataUpdate);
       taskStateMachine.off('curmudgeon:feedback', handleDataUpdate);
+      taskStateMachine.off('plan:awaiting_approval', handlePlanAwaitingApproval);
     };
   }, [taskStateMachine]);
 
+  // Reset showPlanApproval when leaving TASK_CURMUDGEONING state
+  React.useEffect(() => {
+    if (currentState !== TaskState.TASK_CURMUDGEONING) {
+      setShowPlanApproval(false);
+    }
+  }, [currentState]);
+
   // Handle approve action
   const handleApprove = async () => {
+    setShowPlanApproval(false); // Hide menu immediately
     setIsProcessingFeedback(true);
     setLastAction('Approved');
 
@@ -173,6 +191,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Handle reject action - opens modal to collect feedback
   const handleReject = () => {
+    setShowPlanApproval(false); // Hide menu immediately
     openTextInputModal(
       'plan',
       'Reject Plan',
@@ -582,7 +601,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         borderStyle="single"
         borderColor={
           pendingRefinement ||
-          (planMd && currentState === TaskState.TASK_CURMUDGEONING && !isProcessingFeedback) ||
+          showPlanApproval ||
           (taskStateMachine.getCurrentQuestion() && !isAnsweringQuestion) ||
           (taskStateMachine.getSuperReviewResult()?.verdict === 'needs-human')
             ? "yellow"
@@ -672,8 +691,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {currentState === TaskState.TASK_CURMUDGEONING &&
-           planMd && !isProcessingFeedback && (
+          {showPlanApproval && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🎯 Plan Ready for Review</Text>
               <Box marginTop={1}>
