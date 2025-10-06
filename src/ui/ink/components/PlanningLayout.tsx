@@ -141,6 +141,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     taskStateMachine.on('refinement:ready', handleDataUpdate);
     taskStateMachine.on('question:asked', handleDataUpdate);
     taskStateMachine.on('question:answering', handleDataUpdate);
+    taskStateMachine.on('curmudgeon:feedback', handleDataUpdate);
 
     // Cleanup on unmount
     return () => {
@@ -153,6 +154,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       taskStateMachine.off('refinement:ready', handleDataUpdate);
       taskStateMachine.off('question:asked', handleDataUpdate);
       taskStateMachine.off('question:answering', handleDataUpdate);
+      taskStateMachine.off('curmudgeon:feedback', handleDataUpdate);
     };
   }, [taskStateMachine]);
 
