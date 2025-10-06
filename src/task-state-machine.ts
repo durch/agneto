@@ -226,6 +226,7 @@ export class TaskStateMachine extends EventEmitter {
 
   setToolStatus(agent: string, tool: string, summary: string): void {
     this.toolStatus = { agent, tool, summary };
+    this.emit('tool:status', { agent, tool, summary });  // UI auto-updates
   }
 
   clearToolStatus(): void {
