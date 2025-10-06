@@ -37,7 +37,8 @@ import type { SuperReviewerDecision, HumanInteractionResult, RefinedTask } from 
 import {
   revertLastCommit,
   commitChanges,
-  documentTaskCompletion
+  documentTaskCompletion,
+  logMergeInstructions
 } from "./orchestrator-helpers.js";
 import type { CoderPlanProposal } from "./types.js";
 
@@ -979,16 +980,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                 // After UI exits, log merge instructions if task completed successfully
                 const finalState = taskStateMachine.getCurrentState();
                 if (finalState === TaskState.TASK_COMPLETE) {
-                    log.setSilent(false); // Ensure stdout is visible
-                    log.info("\n📋 Task complete! Review the changes before merging:\n");
-                    log.info(`cd .worktrees/${taskId}`);
-                    log.info("git log --oneline -5");
-                    log.info("git diff master --stat");
-                    log.info("npm run build\n");
-                    log.info("To merge and cleanup:");
-                    log.info(`npm run merge-task ${taskId}\n`);
-                    log.info("Or cleanup without merging:");
-                    log.info(`npm run cleanup-task ${taskId}`);
+                    logMergeInstructions(taskId);
                 }
             } catch (cleanupError) {
                 log.warn(`⚠️ Ink UI cleanup error: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`);
@@ -1438,16 +1430,7 @@ async function runRestoredTask(
                 const finalState = taskStateMachine.getCurrentState();
                 if (finalState === TaskState.TASK_COMPLETE) {
                     const taskId = taskStateMachine.getContext().taskId;
-                    log.setSilent(false); // Ensure stdout is visible
-                    log.info("\n📋 Task complete! Review the changes before merging:\n");
-                    log.info(`cd .worktrees/${taskId}`);
-                    log.info("git log --oneline -5");
-                    log.info("git diff master --stat");
-                    log.info("npm run build\n");
-                    log.info("To merge and cleanup:");
-                    log.info(`npm run merge-task ${taskId}\n`);
-                    log.info("Or cleanup without merging:");
-                    log.info(`npm run cleanup-task ${taskId}`);
+                    logMergeInstructions(taskId);
                 }
             } catch (cleanupError) {
                 log.warn(`⚠️ Ink UI cleanup error: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`);
