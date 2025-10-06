@@ -212,6 +212,7 @@ export class TaskStateMachine extends EventEmitter {
 
   setLiveActivityMessage(agent: string, message: string): void {
     this.liveActivityMessage = { agent, message };
+    this.emit('activity:updated', { agent, message });
   }
 
   clearLiveActivityMessage(): void {
