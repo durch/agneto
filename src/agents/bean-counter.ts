@@ -17,6 +17,11 @@ export interface BeanCounterChunk {
   context: string;
 }
 
+export interface BeanCounterResult {
+  rawResponse: string;
+  chunk: BeanCounterChunk;
+}
+
 // Unified chunking: Get next chunk (first or subsequent)
 export async function getNextChunk(
   provider: LLMProvider,
@@ -27,7 +32,7 @@ export async function getNextChunk(
   previousApproval?: string,
   stateMachine?: CoderReviewerStateMachine,
   taskStateMachine?: any
-): Promise<BeanCounterChunk | null> {
+): Promise<BeanCounterResult | null> {
   const template = readFileSync(
     new URL("../prompts/bean-counter.md", import.meta.url),
     "utf8"
@@ -85,10 +90,14 @@ export async function getNextChunk(
       taskStateMachine,
     });
 
-    // Display the Bean Counter response
-    if (rawResponse && rawResponse.trim()) {
-      log.beanCounter(rawResponse);
+    // Validate response
+    if (!rawResponse || !rawResponse.trim()) {
+      console.error("Bean Counter returned empty response");
+      return null;
     }
+
+    // Display the Bean Counter response
+    log.beanCounter(rawResponse);
 
     // Use interpreter to extract structured decision
     const interpretation = await interpretBeanCounterResponse(provider, rawResponse, cwd);
@@ -97,7 +106,10 @@ export async function getNextChunk(
       return null;
     }
 
-    return interpretation;
+    return {
+      rawResponse,
+      chunk: interpretation
+    };
   } catch (error) {
     console.error("Failed to get chunk from Bean Counter:", error);
     return null;

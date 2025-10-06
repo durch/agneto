@@ -1468,7 +1468,7 @@ async function runExecutionStateMachine(
                         : undefined;
 
                     await checkAndWaitForInjectionPause('Bean Counter', taskStateMachine);
-                    const chunk = await getNextChunk(
+                    const result = await getNextChunk(
                         provider,
                         cwd,
                         planMd,
@@ -1483,11 +1483,13 @@ async function runExecutionStateMachine(
                         beanCounterInitialized = true;
                     }
 
-                    if (!chunk) {
+                    if (!result) {
                         log.orchestrator("Failed to get chunk from Bean Counter");
                         stateMachine.transition(Event.ERROR_OCCURRED, new Error("Bean Counter failed"));
                         break;
                     }
+
+                    const { rawResponse, chunk } = result;
 
                     if (chunk.type === "TASK_COMPLETE") {
                         log.orchestrator("🎉 Bean Counter: Task completed!");
@@ -1495,9 +1497,8 @@ async function runExecutionStateMachine(
                     } else {
                         log.orchestrator(`📋 Bean Counter: Next chunk - ${chunk.description}`);
 
-                        // Capture Bean Counter output for UI
-                        const chunkOutput = `${chunk.description}\n\nRequirements:\n${chunk.requirements.map((r: string) => `- ${r}`).join('\n')}\n\nContext: ${chunk.context}`;
-                        stateMachine.setAgentOutput('bean', chunkOutput);
+                        // Capture Bean Counter output for UI (use raw formatted markdown)
+                        stateMachine.setAgentOutput('bean', rawResponse);
 
                         // Session strategy: Both agents get fresh sessions per chunk
                         // This prevents context accumulation and ensures clean state for each work unit
