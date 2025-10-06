@@ -16,8 +16,8 @@ export type Command =
   | { type: 'superreview:retry'; feedback: string }
   | { type: 'superreview:abandon' }
   | { type: 'humanreview:approve'; feedback: string }
-  | { type: 'humanreview:revise'; feedback: string }
-  | { type: 'humanreview:needs_human'; feedback: string };
+  | { type: 'humanreview:retry'; feedback: string }
+  | { type: 'humanreview:reject'; feedback: string };
 
 /**
  * CommandBus - Central command handler for UI → Orchestrator communication
@@ -103,10 +103,10 @@ export class CommandBus extends EventEmitter {
             case 'humanreview:approve':
               result = { decision: 'approve', feedback: command.feedback } as HumanInteractionResult;
               break;
-            case 'humanreview:revise':
+            case 'humanreview:retry':
               result = { decision: 'retry', feedback: command.feedback } as HumanInteractionResult;
               break;
-            case 'humanreview:needs_human':
+            case 'humanreview:reject':
               result = { decision: 'reject', feedback: command.feedback } as HumanInteractionResult;
               break;
           }
@@ -161,10 +161,10 @@ export class CommandBus extends EventEmitter {
             case 'humanreview:approve':
               result = { decision: 'approve', feedback: command.feedback } as HumanInteractionResult;
               break;
-            case 'humanreview:revise':
+            case 'humanreview:retry':
               result = { decision: 'retry', feedback: command.feedback } as HumanInteractionResult;
               break;
-            case 'humanreview:needs_human':
+            case 'humanreview:reject':
               result = { decision: 'reject', feedback: command.feedback } as HumanInteractionResult;
               break;
           }

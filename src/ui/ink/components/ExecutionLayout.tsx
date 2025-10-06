@@ -14,7 +14,6 @@ import { MarkdownText } from './MarkdownText.js';
 interface ExecutionLayoutProps {
   taskStateMachine: TaskStateMachine;
   commandBus: CommandBus;  // Required - event-driven architecture
-  onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
   onFullscreen?: (paneNum: number) => void;
 }
 
@@ -88,16 +87,13 @@ function getCurrentAgentForInjection(currentState: State): string {
 }
 
 // Execution Layout Component - handles TASK_EXECUTING with dynamic two-pane view
-export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine, onHumanReviewDecision, onFullscreen }) => {
+export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine, commandBus, onFullscreen }) => {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns || 120;
   const terminalHeight = stdout?.rows || 40;
 
   // Force update mechanism for event-driven re-rendering
   const [, forceUpdate] = useState({});
-
-  // Local state for human review decision resolver
-  const [humanReviewResolver, setHumanReviewResolver] = React.useState<((value: HumanInteractionResult) => void) | null>(null);
 
   // Retry modal state
   const [showRetryModal, setShowRetryModal] = React.useState(false);
@@ -120,25 +116,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       return;
     }
   });
-
-  // Wire up human review decision when callback is provided
-  React.useEffect(() => {
-    if (onHumanReviewDecision && executionStateMachine?.getNeedsHumanReview()) {
-      // Create a dummy promise to get the resolver attached by orchestrator
-      const dummyPromise = new Promise<HumanInteractionResult>((resolve) => {
-        // This resolve will be replaced by the orchestrator
-      });
-
-      // Call the callback which will attach the real resolver
-      onHumanReviewDecision(dummyPromise);
-
-      // Extract the resolver that was attached by orchestrator
-      const resolver = (dummyPromise as any).resolve;
-      if (resolver) {
-        setHumanReviewResolver(() => resolver);
-      }
-    }
-  }, [onHumanReviewDecision, executionStateMachine?.getNeedsHumanReview()]);
 
   // Monitor injection pause and show modal when chunk operation completes
   React.useEffect(() => {
@@ -382,7 +359,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         </Box>
 
         {/* Human Review Menu */}
-        {executionStateMachine.getNeedsHumanReview() && humanReviewResolver && (
+        {executionStateMachine.getNeedsHumanReview() && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="yellow" bold>⚠ Human Review Required</Text>
             <MarkdownText>{executionStateMachine.getHumanReviewContext() || ''}</MarkdownText>
@@ -393,17 +370,15 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
                   { label: 'Retry - Provide feedback for revision', value: 'retry' },
                   { label: 'Reject - Skip this chunk', value: 'reject' }
                 ]}
-                onSelect={(item) => {
+                onSelect={async (item) => {
                   if (item.value === 'approve') {
-                    humanReviewResolver({ decision: 'approve' });
+                    await commandBus.sendCommand({ type: 'humanreview:approve', feedback: '' });
                     executionStateMachine.clearHumanReview();
-                    setHumanReviewResolver(null);
                   } else if (item.value === 'retry') {
                     setShowRetryModal(true);
                   } else if (item.value === 'reject') {
-                    humanReviewResolver({ decision: 'reject' });
+                    await commandBus.sendCommand({ type: 'humanreview:reject', feedback: 'User chose to skip this chunk' });
                     executionStateMachine.clearHumanReview();
-                    setHumanReviewResolver(null);
                   }
                 }}
               />
@@ -417,12 +392,9 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         <TextInputModal
           title="Provide Retry Feedback"
           placeholder="Describe what needs to be fixed..."
-          onSubmit={(feedbackText) => {
-            if (humanReviewResolver) {
-              humanReviewResolver({ decision: 'retry', feedback: feedbackText });
-              setHumanReviewResolver(null);
-              executionStateMachine?.clearHumanReview();
-            }
+          onSubmit={async (feedbackText) => {
+            await commandBus.sendCommand({ type: 'humanreview:retry', feedback: feedbackText });
+            executionStateMachine?.clearHumanReview();
             setShowRetryModal(false);
             setRetryFeedback("");
           }}

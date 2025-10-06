@@ -1663,26 +1663,11 @@ async function runExecutionStateMachine(
                             break;
 
                         case 'needs-human':
-                            // Create promise with resolver for human decision
-                            let humanReviewResolverFunc: ((value: HumanInteractionResult) => void) | null = null;
-                            const humanReviewDecisionPromise = new Promise<HumanInteractionResult>((resolve) => {
-                                humanReviewResolverFunc = resolve;
-                            });
-                            (humanReviewDecisionPromise as any).resolve = humanReviewResolverFunc;
-
-                            // Create callback for UI to wire up
-                            const humanReviewCallback = (decision: Promise<HumanInteractionResult>) => {
-                                (decision as any).resolve = humanReviewResolverFunc;
-                            };
-
                             // Set human review state in execution state machine
                             stateMachine.setNeedsHumanReview(true, verdict.feedback || "Reviewer requires human input");
 
-                            // UI will detect getNeedsHumanReview() flag and show prompt
-                            // Callback mechanism remains for now (to be migrated to CommandBus later)
-
-                            // Wait for UI decision
-                            const planDecision = await humanReviewDecisionPromise;
+                            // Wait for human decision via CommandBus (event-driven)
+                            const planDecision = await commandBus.waitForAnyCommand<HumanInteractionResult>(['humanreview:approve', 'humanreview:retry', 'humanreview:reject']);
 
                             // Clear human review state
                             stateMachine.clearHumanReview();

@@ -16,7 +16,6 @@ interface AppProps {
   taskStateMachine: TaskStateMachine;
   commandBus: CommandBus;  // Required - event-driven architecture
   onRefinementFeedback?: (feedback: RefinementFeedback) => void;
-  onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
 }
 
 // Helper function to convert TaskState enum to human-readable format
@@ -68,7 +67,7 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefinementFeedback, onHumanReviewDecision }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefinementFeedback }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
@@ -407,7 +406,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
           <ExecutionLayout
             taskStateMachine={taskStateMachine}
             commandBus={commandBus}
-            onHumanReviewDecision={onHumanReviewDecision}
             onFullscreen={handleFullscreen}
           />
         ) : (
