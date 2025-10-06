@@ -137,7 +137,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       if (to === State.TASK_COMPLETE) return;
 
       // Don't show modal if there are conflicting modals
-      const isHumanReviewActive = executionStateMachine.getNeedsHumanReview();
+      const isHumanReviewActive = needsHumanReview;
       const isRetryModalActive = showRetryModal;
       if (isHumanReviewActive || isRetryModalActive) return;
 
@@ -322,8 +322,8 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
                 <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
               </Box>
             )}
-            {getActiveAgent(currentState) !== 'coder' && executionStateMachine.getSummary('coder') && (
-              <MarkdownText>{executionStateMachine.getSummary('coder') || ''}</MarkdownText>
+            {getActiveAgent(currentState) !== 'coder' && coderSummary && (
+              <MarkdownText>{coderSummary || ''}</MarkdownText>
             )}
           </Box>
 
@@ -348,8 +348,8 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
                 <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
               </Box>
             )}
-            {getActiveAgent(currentState) !== 'reviewer' && executionStateMachine.getSummary('reviewer') && (
-              <MarkdownText>{executionStateMachine.getSummary('reviewer') || ''}</MarkdownText>
+            {getActiveAgent(currentState) !== 'reviewer' && reviewerSummary && (
+              <MarkdownText>{reviewerSummary || ''}</MarkdownText>
             )}
           </Box>
         </Box>
@@ -359,7 +359,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       <Box
         flexDirection="column"
         borderStyle="single"
-        borderColor={executionStateMachine.getNeedsHumanReview() ? "yellow" : "blue"}
+        borderColor={needsHumanReview ? "yellow" : "blue"}
         paddingX={1}
       >
         {/* Tool status display */}
@@ -380,10 +380,10 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         </Box>
 
         {/* Human Review Menu */}
-        {executionStateMachine.getNeedsHumanReview() && (
+        {needsHumanReview && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="yellow" bold>⚠ Human Review Required</Text>
-            <MarkdownText>{executionStateMachine.getHumanReviewContext() || ''}</MarkdownText>
+            <MarkdownText>{humanReviewContext || ''}</MarkdownText>
             <Box marginTop={1}>
               <SelectInput
                 items={[
