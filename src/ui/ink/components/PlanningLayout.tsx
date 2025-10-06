@@ -68,15 +68,19 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Injection modal state
   const [showInjectionModal, setShowInjectionModal] = useState(false);
 
-  // Get data from TaskStateMachine (needed for useEffects)
-  const context = taskStateMachine.getContext();
+  // React state mirroring TaskStateMachine data (event-driven updates)
+  const [context, setContext] = useState(taskStateMachine.getContext());
+  const [pendingRefinement, setPendingRefinement] = useState(taskStateMachine.getPendingRefinement());
+  const [planMd, setPlanMd] = useState(taskStateMachine.getPlanMd());
+  const [planPath, setPlanPath] = useState(taskStateMachine.getPlanPath());
+  const [curmudgeonFeedback, setCurmudgeonFeedback] = useState(taskStateMachine.getCurmudgeonFeedback());
+  const [simplificationCount, setSimplificationCount] = useState(taskStateMachine.getSimplificationCount());
+  const [isAnsweringQuestion, setIsAnsweringQuestion] = useState(taskStateMachine.getAnsweringQuestion());
+  const [liveActivityMessage, setLiveActivityMessage] = useState(taskStateMachine.getLiveActivityMessage());
+  const [taskToolStatus, setTaskToolStatus] = useState(taskStateMachine.getToolStatus());
+
+  // Derived data
   const taskToUse = context.taskToUse || context.humanTask;
-  const pendingRefinement = taskStateMachine.getPendingRefinement();
-  const planMd = taskStateMachine.getPlanMd();
-  const planPath = taskStateMachine.getPlanPath();
-  const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
-  const simplificationCount = taskStateMachine.getSimplificationCount();
-  const isAnsweringQuestion = taskStateMachine.getAnsweringQuestion();
 
   // Unified helper to open text input modal with context
   const openTextInputModal = (
@@ -111,6 +115,46 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       setPreviousCurmudgeonFeedback(curmudgeonFeedback);
     }
   }, [currentState, taskStateMachine]);
+
+  // Subscribe to TaskStateMachine events for automatic re-rendering
+  React.useEffect(() => {
+    const handleDataUpdate = () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] handleDataUpdate: updating React state from TaskStateMachine');
+      }
+      // Update all relevant state from TaskStateMachine
+      setContext(taskStateMachine.getContext());
+      setPendingRefinement(taskStateMachine.getPendingRefinement());
+      setPlanMd(taskStateMachine.getPlanMd());
+      setPlanPath(taskStateMachine.getPlanPath());
+      setCurmudgeonFeedback(taskStateMachine.getCurmudgeonFeedback());
+      setSimplificationCount(taskStateMachine.getSimplificationCount());
+      setIsAnsweringQuestion(taskStateMachine.getAnsweringQuestion());
+      setLiveActivityMessage(taskStateMachine.getLiveActivityMessage());
+      setTaskToolStatus(taskStateMachine.getToolStatus());
+    };
+
+    // Subscribe to events
+    taskStateMachine.on('activity:updated', handleDataUpdate);
+    taskStateMachine.on('tool:status', handleDataUpdate);
+    taskStateMachine.on('plan:ready', handleDataUpdate);
+    taskStateMachine.on('refinement:ready', handleDataUpdate);
+    taskStateMachine.on('question:asked', handleDataUpdate);
+    taskStateMachine.on('question:answering', handleDataUpdate);
+
+    // Cleanup on unmount
+    return () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] Cleanup: removing event listeners from TaskStateMachine');
+      }
+      taskStateMachine.off('activity:updated', handleDataUpdate);
+      taskStateMachine.off('tool:status', handleDataUpdate);
+      taskStateMachine.off('plan:ready', handleDataUpdate);
+      taskStateMachine.off('refinement:ready', handleDataUpdate);
+      taskStateMachine.off('question:asked', handleDataUpdate);
+      taskStateMachine.off('question:answering', handleDataUpdate);
+    };
+  }, [taskStateMachine]);
 
   // Handle approve action
   const handleApprove = async () => {
@@ -555,7 +599,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           {(() => {
             // Check execution state machine first (if in execution phase)
             const executionStateMachine = taskStateMachine.getExecutionStateMachine();
-            const toolStatus = executionStateMachine?.getToolStatus() || taskStateMachine.getToolStatus();
+            const toolStatus = executionStateMachine?.getToolStatus() || taskToolStatus;
 
             // Base status message without redundant agent names
             let baseStatus = '';
