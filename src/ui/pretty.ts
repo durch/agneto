@@ -42,13 +42,107 @@ export function prettyPrint(raw: string, opts: PrettyOpts = {}): string {
   let inFence = false;
   let fenceLang = "";
 
+  const emitParagraph = (paragraph: string[]) => {
+    if (!paragraph.length) return;
+
+    if (paragraph.length === 1 && isHorizontalRule(paragraph[0])) {
+      out.push(indent + chalk.dim('─'.repeat(Math.min(width - indent.length, 120))), "");
+      return;
+    }
+
+    if (paragraph.some(isHeader)) {
+      let hasHeaders = false;
+      for (let i = 0; i < paragraph.length; i++) {
+        const line = paragraph[i];
+        if (isHeader(line)) {
+          hasHeaders = true;
+          const level = line.match(/^(#{1,6})/)?.[1].length || 1;
+          const text = line.replace(/^#{1,6}\s+/, '');
+          const enhanced = enhanceInlineFormatting(text);
+
+          const styled = level === 1 ? chalk.cyan.bold(enhanced) :
+                         level === 2 ? chalk.yellow.bold(enhanced) :
+                         level === 3 ? chalk.blue.bold(enhanced) :
+                         chalk.bold(enhanced);
+
+          out.push(indent + styled);
+        } else if (line.trim() === "") {
+          out.push("");
+        } else {
+          const enhanced = enhanceInlineFormatting(line);
+          const wrapped = wrapAnsi(enhanced, width - indent.length, { hard: false, trim: true });
+          const indented = wrapped.split("\n").map(ln => indent + ln).join("\n");
+          out.push(indented);
+        }
+      }
+      if (hasHeaders) out.push("");
+      return;
+    }
+
+    if (paragraph.some(isBullet)) {
+      for (const line of paragraph) {
+        const m = line.match(/^(\s*)([-*•]|\d+\.)\s+(.*)$/);
+        if (m) {
+          const [, lead = "", bullet, rest] = m;
+          const bulletChar = bullet.includes('.') ? bullet : '•';
+          const bulletLabel = `${bulletChar} `;
+          const firstPrefix = indent + lead + bulletLabel;
+          const availableWidth = Math.max(1, width - visibleWidth(firstPrefix));
+          const enhanced = enhanceInlineFormatting(rest);
+          const wrappedLines = wrapAnsi(enhanced, availableWidth, {
+            hard: false,
+            trim: true
+          }).split("\n");
+          const continuationPrefix = indent + lead + " ".repeat(visibleWidth(bulletLabel));
+          const formatted = wrappedLines
+            .map((ln, i) => (i === 0 ? firstPrefix : continuationPrefix) + ln)
+            .join("\n");
+          out.push(formatted);
+        } else {
+          const enhanced = enhanceInlineFormatting(line.trim());
+          const wrapped = wrapAnsi(enhanced, Math.max(1, width - indent.length), {
+            hard: false,
+            trim: true
+          }).split("\n").map(ln => indent + ln).join("\n");
+          out.push(wrapped);
+        }
+      }
+      out.push("");
+      return;
+    }
+
+    if (paragraph.every(isQuote)) {
+      const stripped = paragraph.map(l => l.replace(/^\s*>\s?/, "")).join("\n");
+      const enhanced = enhanceInlineFormatting(stripped);
+      const quotePrefix = indent + chalk.gray("│ ");
+      const availableWidth = Math.max(1, width - visibleWidth(quotePrefix));
+      const wrapped = wrapAnsi(enhanced, availableWidth, { hard: false, trim: true })
+        .split("\n").map(ln => quotePrefix + ln).join("\n");
+      out.push(wrapped, "");
+      return;
+    }
+
+    const text = paragraph.join(" ").replace(/\s+/g, " ").trim();
+    if (text.length > 0) {
+      const enhanced = enhanceInlineFormatting(text);
+      const wrapped = wrapAnsi(enhanced, width - indent.length, { hard: false, trim: true });
+      const indented = wrapped.split("\n").map(ln => indent + ln).join("\n");
+      out.push(indented, "");
+    }
+  };
+
   for (const p of paras) {
     // Handle code fences spanning multiple paragraphs
     if (p.some(line => isCodeFence(line))) {
+      const pending: string[] = [];
       for (let line of p) {
         const trimmed = line.trim();
         if (isCodeFence(trimmed)) {
           if (!inFence) {
+            if (pending.length) {
+              emitParagraph(pending);
+              pending.length = 0;
+            }
             inFence = true;
             fenceLang = trimmed.replace(/```+/, "").trim();
           } else {
@@ -65,109 +159,37 @@ export function prettyPrint(raw: string, opts: PrettyOpts = {}): string {
             fenceLang = "";
           }
         } else if (inFence) {
-          // accumulate code lines
-          const last = out.pop() ?? "";
-          const payload = last.startsWith("\u0000CODE:")
-            ? last.slice("\u0000CODE:".length) + "\n" + line
-            : line;
-          out.push("\u0000CODE:" + payload);
+          // accumulate code lines without dropping prior output
+          const sentinelIndex = out.length - 1;
+          const sentinel = out[sentinelIndex];
+          if (sentinel?.startsWith("\u0000CODE:")) {
+            out[sentinelIndex] = "\u0000CODE:" + sentinel.slice("\u0000CODE:".length) + "\n" + line;
+          } else {
+            out.push("\u0000CODE:" + line);
+          }
+        } else {
+          pending.push(line);
         }
       }
+      if (pending.length) emitParagraph(pending);
       continue;
     }
 
     if (inFence) {
       // Continue collecting fenced code lines
       for (const line of p) {
-        const last = out.pop() ?? "";
-        const payload = last.startsWith("\u0000CODE:")
-          ? last.slice("\u0000CODE:".length) + "\n" + line
-          : line;
-        out.push("\u0000CODE:" + payload);
-      }
-      continue;
-    }
-
-    // Handle headers - check each line in the paragraph
-    let hasHeaders = false;
-    for (let i = 0; i < p.length; i++) {
-      const line = p[i];
-      if (isHeader(line)) {
-        hasHeaders = true;
-        const level = line.match(/^(#{1,6})/)?.[1].length || 1;
-        const text = line.replace(/^#{1,6}\s+/, '');
-        const enhanced = enhanceInlineFormatting(text);
-
-        const styled = level === 1 ? chalk.cyan.bold(enhanced) :
-                       level === 2 ? chalk.yellow.bold(enhanced) :
-                       level === 3 ? chalk.blue.bold(enhanced) :
-                       chalk.bold(enhanced);
-
-        out.push(indent + styled);
-      } else if (line.trim() === "") {
-        out.push(""); // Preserve blank lines
-      } else {
-        // Regular text line in a paragraph with headers
-        const enhanced = enhanceInlineFormatting(line);
-        const wrapped = wrapAnsi(enhanced, width - indent.length, { hard: false, trim: true });
-        out.push(indent + wrapped);
-      }
-    }
-    if (hasHeaders) {
-      out.push(""); // Add spacing after header paragraph
-      continue;
-    }
-
-    // Handle horizontal rules
-    if (p.length === 1 && isHorizontalRule(p[0])) {
-      out.push(indent + chalk.dim('─'.repeat(Math.min(width - indent.length, 120))), "");
-      continue;
-    }
-
-    // Handle bullet lists
-    if (p.some(isBullet)) {
-      for (const line of p) {
-        const m = line.match(/^(\s*)([-*•]|\d+\.)\s+(.*)$/);
-        if (m) {
-          const [, lead, bullet, rest] = m;
-          const bulletChar = bullet.includes('.') ? bullet : '•';
-          const bulletPrefix = (lead ?? "") + bulletChar + " ";
-          const enhanced = enhanceInlineFormatting(rest);
-          const wrapped = wrapAnsi(enhanced, width - visibleWidth(bulletPrefix), {
-            hard: false,
-            trim: true
-          }).split("\n").map((ln, i) => (i === 0 ? bulletPrefix + ln : " ".repeat(bulletPrefix.length) + ln));
-          out.push(indent + wrapped.join("\n"));
+        const sentinelIndex = out.length - 1;
+        const sentinel = out[sentinelIndex];
+        if (sentinel?.startsWith("\u0000CODE:")) {
+          out[sentinelIndex] = "\u0000CODE:" + sentinel.slice("\u0000CODE:".length) + "\n" + line;
         } else {
-          // plain line inside a bullet group
-          const enhanced = enhanceInlineFormatting(line.trim());
-          const wrapped = wrapAnsi(enhanced, width - (indent.length), {
-            hard: false, trim: true
-          });
-          out.push(indent + wrapped);
+          out.push("\u0000CODE:" + line);
         }
       }
-      out.push(""); // paragraph gap
       continue;
     }
 
-    // Handle blockquotes
-    if (p.every(isQuote)) {
-      const stripped = p.map(l => l.replace(/^\s*>\s?/, "")).join("\n");
-      const enhanced = enhanceInlineFormatting(stripped);
-      const wrapped = wrapAnsi(enhanced, width - 2, { hard: false, trim: true })
-        .split("\n").map(ln => chalk.gray("│ ") + ln).join("\n");
-      out.push(indent + wrapped, "");
-      continue;
-    }
-
-    // Normal paragraph: collapse to single line, then wrap
-    const text = p.join(" ").replace(/\s+/g, " ").trim();
-    if (text.length > 0) {
-      const enhanced = enhanceInlineFormatting(text);
-      const wrapped = wrapAnsi(enhanced, width - indent.length, { hard: false, trim: true });
-      out.push(indent + wrapped, "");
-    }
+    emitParagraph(p);
   }
 
   // Materialize any remaining code payloads
@@ -221,13 +243,16 @@ function renderCodeBlock(code: string, lang: string, width: number, boxed: boole
     highlighted = code;
   }
 
-  const wrapped = highlighted.split("\n").map(line =>
-    wrapAnsi(line, width - (boxed ? 4 : 0), { hard: false, trim: false })
-  ).join("\n");
+  const codeIndent = "    ";
+  const availableWidth = Math.max(1, width - (boxed ? 4 : codeIndent.length));
+  const wrapped = highlighted
+    .split("\n")
+    .map(line => wrapAnsi(line, availableWidth, { hard: false, trim: false }))
+    .join("\n");
 
   if (!boxed) {
     // Add simple indentation for code blocks
-    return wrapped.split('\n').map(line => '    ' + line).join('\n');
+    return wrapped.split('\n').map(line => codeIndent + line).join('\n');
   }
 
   return boxen(wrapped, {

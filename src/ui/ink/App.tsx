@@ -443,7 +443,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
         {/* Keyboard Shortcuts Footer */}
         <Box marginTop={1} paddingX={1}>
           <Text dimColor>
-            [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+I] Inject  [Ctrl+D] Debug  [Ctrl+Q/W/E] Fullscreen  [Esc] Close
+            [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+D] Debug  [Ctrl+Q/W/E] Fullscreen  [Esc] Close
           </Text>
         </Box>
       </Box>
