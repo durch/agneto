@@ -151,22 +151,20 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   React.useEffect(() => {
     if (!executionStateMachine) return;
 
-    const handleOutputUpdate = () => {
-      forceUpdate({}); // Trigger re-render when agent output updates
-    };
-
-    const handleSummaryUpdate = () => {
-      forceUpdate({}); // Trigger re-render when agent summary updates
+    const handleUpdate = () => {
+      forceUpdate({}); // Trigger re-render when agent output, summary, or phase changes
     };
 
     // Subscribe to execution events
-    executionStateMachine.on('execution:output:updated', handleOutputUpdate);
-    executionStateMachine.on('execution:summary:updated', handleSummaryUpdate);
+    executionStateMachine.on('execution:output:updated', handleUpdate);
+    executionStateMachine.on('execution:summary:updated', handleUpdate);
+    executionStateMachine.on('execution:phase:changed', handleUpdate);
 
     // Cleanup on unmount
     return () => {
-      executionStateMachine.off('execution:output:updated', handleOutputUpdate);
-      executionStateMachine.off('execution:summary:updated', handleSummaryUpdate);
+      executionStateMachine.off('execution:output:updated', handleUpdate);
+      executionStateMachine.off('execution:summary:updated', handleUpdate);
+      executionStateMachine.off('execution:phase:changed', handleUpdate);
     };
   }, [executionStateMachine]);
 
