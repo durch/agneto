@@ -919,16 +919,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // UI already updated via gardener:complete event from setGardenerResult()
                         // and will update again on transition
 
-                        // Re-enable logging before showing merge instructions
-                        log.setSilent(false);
-
-                        // Log merge instructions to terminal
-                        log.info('\n📦 Task complete! Review and merge:');
-                        log.info(`   cd .worktrees/${taskId} && git log --oneline -5`);
-                        log.info(`   npm run merge-task ${taskId}`);
-                        log.info('   Or cleanup without merging:');
-                        log.info(`   npm run cleanup-task ${taskId}\n`);
-
                         // Transition to TASK_COMPLETE
                         taskStateMachine.transition(TaskEvent.GARDENING_COMPLETE);
                     } catch (error) {
