@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import type { PlanFeedback } from './planning-interface.js';
 import type { RefinementFeedback } from './refinement-interface.js';
-import type { SuperReviewerDecision, HumanInteractionResult, MergeApprovalDecision } from '../types.js';
+import type { SuperReviewerDecision, HumanInteractionResult } from '../types.js';
 
 /**
  * Command types for UI → Orchestrator communication
@@ -17,9 +17,7 @@ export type Command =
   | { type: 'superreview:abandon' }
   | { type: 'humanreview:approve'; feedback: string }
   | { type: 'humanreview:revise'; feedback: string }
-  | { type: 'humanreview:needs_human'; feedback: string }
-  | { type: 'merge:approve' }
-  | { type: 'merge:skip' };
+  | { type: 'humanreview:needs_human'; feedback: string };
 
 /**
  * CommandBus - Central command handler for UI → Orchestrator communication
@@ -111,12 +109,6 @@ export class CommandBus extends EventEmitter {
             case 'humanreview:needs_human':
               result = { decision: 'reject', feedback: command.feedback } as HumanInteractionResult;
               break;
-            case 'merge:approve':
-              result = { action: 'proceed' } as MergeApprovalDecision;
-              break;
-            case 'merge:skip':
-              result = { action: 'cancel' } as MergeApprovalDecision;
-              break;
           }
 
           commandResolve(result);
@@ -174,12 +166,6 @@ export class CommandBus extends EventEmitter {
               break;
             case 'humanreview:needs_human':
               result = { decision: 'reject', feedback: command.feedback } as HumanInteractionResult;
-              break;
-            case 'merge:approve':
-              result = { action: 'proceed' } as MergeApprovalDecision;
-              break;
-            case 'merge:skip':
-              result = { action: 'cancel' } as MergeApprovalDecision;
               break;
           }
 

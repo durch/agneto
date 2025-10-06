@@ -6,7 +6,7 @@ import { State } from '../../../state-machine.js';
 import { CommandBus } from '../../../ui/command-bus.js';
 import { getPlanFeedback, type PlanFeedback } from '../../planning-interface.js';
 import type { RefinementFeedback, RefinementAction } from '../../refinement-interface.js';
-import type { SuperReviewerDecision, GardenerResult, MergeApprovalDecision } from '../../../types.js';
+import type { SuperReviewerDecision, GardenerResult } from '../../../types.js';
 import { FullscreenModal } from './FullscreenModal.js';
 import { TextInputModal } from './TextInputModal.js';
 import { MarkdownText } from './MarkdownText.js';
@@ -178,32 +178,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         }
       }
     );
-  };
-
-  // Handle merge approve action
-  const handleMergeApprove = async () => {
-    setIsProcessingFeedback(true);
-    setLastAction('Approved merge');
-
-    try {
-      await commandBus.sendCommand({ type: 'merge:approve' });
-    } catch (error) {
-      setLastAction('Error processing merge approval');
-      setIsProcessingFeedback(false); // Only reset on error
-    }
-  };
-
-  // Handle merge skip action
-  const handleMergeSkip = async () => {
-    setIsProcessingFeedback(true);
-    setLastAction('Skipped merge');
-
-    try {
-      await commandBus.sendCommand({ type: 'merge:skip' });
-    } catch (error) {
-      setLastAction('Error processing merge skip');
-      setIsProcessingFeedback(false); // Only reset on error
-    }
   };
 
   // Handle modal submit - calls the active resolver and closes modal

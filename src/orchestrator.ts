@@ -33,7 +33,7 @@ import { bell } from "./utils/terminal-bell.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
 import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
 import { CommandBus } from "./ui/command-bus.js";
-import type { SuperReviewerDecision, HumanInteractionResult, MergeApprovalDecision, RefinedTask } from './types.js';
+import type { SuperReviewerDecision, HumanInteractionResult, RefinedTask } from './types.js';
 import {
   revertLastCommit,
   commitChanges,
@@ -447,6 +447,15 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         // Reset the execution state machine for a fresh cycle
                         taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger));
+
+                        // AIDEV-FIX: Reset agent session state to prevent stale data from previous cycle
+                        log.orchestrator("🔄 Resetting agent sessions for new cycle...");
+                        beanCounterSessionId = generateUUID();
+                        coderSessionId = generateUUID();
+                        reviewerSessionId = generateUUID();
+                        beanCounterInitialized = false;
+                        coderInitialized = false;
+                        reviewerInitialized = false;
                     }
 
                     const interactive = !options?.nonInteractive;
@@ -860,7 +869,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
 
                         // Wait for UI decision via CommandBus
-                        const humanDecision = await commandBus.waitForCommand<SuperReviewerDecision>('superreview:approve');
+                        const humanDecision = await commandBus.waitForAnyCommand<SuperReviewerDecision>(['superreview:approve', 'superreview:retry', 'superreview:abandon']);
 
                         if (humanDecision.action === "approve") {
                             log.orchestrator("Human accepted work despite identified issues.");
@@ -931,56 +940,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     break;
                 }
 
-<<<<<<< HEAD
-=======
-                case TaskState.TASK_FINALIZING: {
-                    // Finalization phase - merge or manual review
-
-                    // Build merge instructions string
-                    const instructions = `Next steps:
-1. Review changes in worktree: ${cwd}
-2. Run tests to verify
-3. Merge to master:
-   git checkout master
-   git merge sandbox/${taskId} --squash
-   git commit -m "Task ${taskId} completed"
-4. Clean up:
-   git worktree remove .worktrees/${taskId}
-   git branch -D sandbox/${taskId}`;
-
-                    // Copy to clipboard and store result
-                    let clipboardStatus: 'success' | 'failed';
-                    try {
-                        await clipboardy.write(instructions);
-                        clipboardStatus = 'success';
-                    } catch (error) {
-                        clipboardStatus = 'failed';
-                    }
-                    taskStateMachine.setMergeInstructions(instructions, clipboardStatus);
-
-                    // Conditional flow: auto-merge vs interactive
-                    if (options?.autoMerge) {
-                        // Preserve existing auto-merge behavior
-                        log.orchestrator("📦 Auto-merging to master...");
-                        mergeToMaster(taskId, cwd);
-                        cleanupWorktree(taskId, cwd);
-                        taskStateMachine.transition(TaskEvent.AUTO_MERGE);
-                    } else {
-                        // Interactive approval flow via CommandBus (following SuperReviewer pattern)
-                        // Wait for UI decision via CommandBus
-                        const userDecision = await commandBus.waitForCommand<MergeApprovalDecision>('merge:approve');
-
-                        if (userDecision.action === 'proceed') {
-                            taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
-                        } else {
-                            // User cancelled - still transition to manual merge state
-                            taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
-                        }
-                    }
-                    break;
-                }
-
->>>>>>> 39dd2fb (Cleanup superreviewer)
                 case TaskState.TASK_COMPLETE:
                     bell();
                     log.orchestrator("🎉 Task completed successfully!");
@@ -1330,9 +1289,7 @@ async function runRestoredTask(
                         if (inkInstance) {
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
-                                commandBus,
-                                onRefinementFeedback: undefined,
-                                onSuperReviewerDecision: undefined
+                                commandBus
                             }));
                         }
 
@@ -1360,9 +1317,7 @@ async function runRestoredTask(
                         if (inkInstance) {
                             inkInstance.rerender(React.createElement(App, {
                                 taskStateMachine,
-                                commandBus,
-                                onRefinementFeedback: undefined,
-                                onSuperReviewerDecision: undefined
+                                commandBus
                             }));
                         }
 
@@ -1371,7 +1326,7 @@ async function runRestoredTask(
                             taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
 
                             // Wait for UI decision via CommandBus (event-driven pattern)
-                            const humanDecision = await commandBus.waitForCommand<SuperReviewerDecision>('superreview:approve', 'superreview:retry', 'superreview:abandon');
+                            const humanDecision = await commandBus.waitForAnyCommand<SuperReviewerDecision>(['superreview:approve', 'superreview:retry', 'superreview:abandon']);
 
                             if (humanDecision.action === "approve") {
                                 log.orchestrator("Human accepted work despite identified issues.");
