@@ -299,9 +299,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const coderOutput = executionStateMachine?.getAgentOutput('coder');
   const reviewerOutput = executionStateMachine?.getAgentOutput('reviewer');
 
-  // Calculate content height for each pane in split view
-  const paneContentHeight = Math.floor(availableContentHeight / 2) - 4; // Divide by 2 for two rows, subtract for borders/padding
-
   // Determine if a query is in progress based on state and data availability
   const isQueryInProgress =
     (currentState === TaskState.TASK_REFINING && !pendingRefinement) ||
@@ -325,6 +322,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       <Box
         flexDirection={isWideTerminal ? "row" : "column"}
         marginBottom={1}
+        flexGrow={1}
       >
         {/* Left Panel: Dynamic content - Refined Task, Plan (during curmudgeon), or Old Feedback (during replanning) */}
         <Box
@@ -348,7 +346,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {beanCounterOutput ? (
-                  <MarkdownText maxLines={paneContentHeight}>{beanCounterOutput}</MarkdownText>
+                  <MarkdownText>{beanCounterOutput}</MarkdownText>
                 ) : (
                   <Text dimColor>Determining work chunk...</Text>
                 )}
@@ -367,7 +365,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   if (superReviewResult) {
                     return (
                       <Box flexDirection="column">
-                        <MarkdownText maxLines={paneContentHeight - 5}>{superReviewResult.summary}</MarkdownText>
+                        <MarkdownText>{superReviewResult.summary}</MarkdownText>
                         {superReviewResult.issues && superReviewResult.issues.length > 0 && (
                           <Box marginTop={1} flexDirection="column">
                             <Text color="yellow" bold>Issues Found:</Text>
@@ -398,7 +396,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {planMd ? (
                   <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
+                    <MarkdownText>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -415,7 +413,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
-                <MarkdownText maxLines={paneContentHeight}>{previousCurmudgeonFeedback}</MarkdownText>
+                <MarkdownText>{previousCurmudgeonFeedback}</MarkdownText>
               </Box>
             </>
           ) : (
@@ -426,13 +424,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
-                  <MarkdownText maxLines={paneContentHeight}>
+                  <MarkdownText>
                     {pendingRefinement}
                   </MarkdownText>
                 ) : currentState === TaskState.TASK_REFINING ? (
                   <Text dimColor>Refining task description...</Text>
                 ) : taskToUse ? (
-                  <MarkdownText maxLines={paneContentHeight}>{taskToUse}</MarkdownText>
+                  <MarkdownText>{taskToUse}</MarkdownText>
                 ) : (
                   <Text dimColor>No task description available</Text>
                 )}
@@ -462,7 +460,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {reviewerOutput || coderOutput ? (
-                  <MarkdownText maxLines={paneContentHeight}>
+                  <MarkdownText>
                     {reviewerOutput || coderOutput || ''}
                   </MarkdownText>
                 ) : (
@@ -517,7 +515,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {curmudgeonFeedback ? (
                   <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight - 2}>{curmudgeonFeedback}</MarkdownText>
+                    <MarkdownText>{curmudgeonFeedback}</MarkdownText>
                     <Box marginTop={1}>
                       <Text dimColor>Simplification attempt {simplificationCount + 1}/4</Text>
                     </Box>
@@ -536,7 +534,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {planMd ? (
                   <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
+                    <MarkdownText>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -559,7 +557,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   <Text dimColor>Creating strategic plan...</Text>
                 ) : planMd ? (
                   <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
+                    <MarkdownText>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
