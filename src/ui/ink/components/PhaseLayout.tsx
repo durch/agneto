@@ -114,30 +114,24 @@ const InitLayout: React.FC<{ currentState: TaskState; taskStateMachine: TaskStat
 
 // Main PhaseLayout component with conditional rendering logic
 export const PhaseLayout: React.FC<PhaseLayoutProps> = ({ taskStateMachine, commandBus }) => {
-  // Phase detection with error handling
-  const getCurrentPhaseData = (): { state: TaskState; group: PhaseGroup } => {
-    try {
-      if (!taskStateMachine) {
-        throw new Error('TaskStateMachine is not available');
-      }
+  // Event-driven state tracking
+  const [currentState, setCurrentState] = React.useState(taskStateMachine.getCurrentState());
 
-      const currentState = taskStateMachine.getCurrentState();
-      const phaseGroup = getPhaseGroup(currentState);
+  // Subscribe to phase change events
+  React.useEffect(() => {
+    const handlePhaseChange = (data: { from: TaskState; to: TaskState }) => {
+      setCurrentState(data.to);
+    };
 
-      return {
-        state: currentState,
-        group: phaseGroup
-      };
-    } catch (error) {
-      // Fallback to safe defaults on error
-      return {
-        state: TaskState.TASK_INIT,
-        group: PhaseGroup.INIT
-      };
-    }
-  };
+    taskStateMachine.on('phase:changed', handlePhaseChange);
 
-  const { state: currentState, group: phaseGroup } = getCurrentPhaseData();
+    return () => {
+      taskStateMachine.off('phase:changed', handlePhaseChange);
+    };
+  }, [taskStateMachine]);
+
+  // Calculate phase group from current state
+  const phaseGroup = getPhaseGroup(currentState);
 
   // Conditional rendering based on phase group
   const renderPhaseContent = (): React.ReactElement => {

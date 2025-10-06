@@ -1,96 +1,118 @@
-# Minimal Event-Driven UI Synchronization
+# Synchronize UI Phase Transitions with State Machine Events
 
 ## Context
-Previous attempt over-scoped by inventing new events. After codebase verification:
-- TaskStateMachine already emits `phase:changed` (line 448) ✅
-- CoderReviewerStateMachine already emits `execution:state:changed` (line 297) ✅
-- PhaseLayout currently uses synchronous `getCurrentState()` (line 124) ❌
-- ExecutionLayout uses timer-based polling (lines 120-147) ❌
 
-**Root cause**: UI components don't subscribe to existing events. No new events needed.
+The task requires making UI components event-driven by subscribing to orchestrator state machine events rather than polling state synchronously. 
+
+**Current State:**
+- TaskStateMachine emits `state:changed` event (src/task-state-machine.ts:446) on every transition
+- CoderReviewerStateMachine emits `execution:state:changed` (src/state-machine.ts:297) 
+- PhaseLayout calls `getCurrentState()` synchronously (line 124)
+- ExecutionLayout already refactored to event-driven pattern (lines 142-146)
+
+**Root Cause of Previous Failure:**
+The previous plan incorrectly claimed `phase:changed` event existed when only `state:changed` exists. The implementation then invented a new event, violating the "reuse existing events" principle. Additionally, PhaseLayout was never actually refactored - only a single case statement was added.
+
+**Key Insight:**
+The event `state:changed` **already exists and carries all necessary data** (`{ from, to }` payload). We just need to subscribe to it. No new events required.
 
 ## Acceptance Criteria
-- [ ] PhaseLayout derives current phase from `phase:changed` event subscription (no `getCurrentState()`)
-- [ ] ExecutionLayout injection modal visibility driven by `execution:state:changed` events (no timer polling)
-- [ ] All UI event subscriptions have proper cleanup (`.off()` in useEffect return)
-- [ ] TypeScript builds successfully
-- [ ] No new events invented - only use existing `phase:changed` and `execution:state:changed`
+
+- [ ] PhaseLayout subscribes to `state:changed` event via `useEffect` hook
+- [ ] PhaseLayout tracks current phase in local state updated by event handler
+- [ ] PhaseLayout no longer calls `getCurrentState()` directly for rendering decisions
+- [ ] Event subscription cleanup properly implemented (`.off()` in useEffect return)
+- [ ] TASK_GARDENING state displays in correct PhaseGroup (REVIEW, not PLANNING)
+- [ ] TypeScript compiles with zero errors (`npm run build`)
+- [ ] No memory leaks (event listeners cleaned up on unmount)
 
 ## Steps
 
-### 1. Refactor PhaseLayout to subscribe to phase:changed event
-**Intent**: Replace synchronous `getCurrentState()` call with event-driven state tracking
+### 1. Refactor PhaseLayout to event-driven phase tracking
 
-**Files**: `src/ui/ink/components/PhaseLayout.tsx`
+**Intent:** Replace synchronous `getCurrentState()` polling with event subscription to existing `state:changed` event
 
-**Changes**:
+**Files:** `src/ui/ink/components/PhaseLayout.tsx`
+
+**Changes:**
 ```typescript
-// Add at top of component (after props destructure):
+// Add state tracking (after imports, ~line 20)
 const [currentPhase, setCurrentPhase] = React.useState(taskStateMachine.getCurrentState());
 
+// Add event subscription (after state declaration, ~line 22)
 React.useEffect(() => {
-  const handlePhaseChange = (data: { to: TaskState }) => setCurrentPhase(data.to);
-  taskStateMachine.on('phase:changed', handlePhaseChange);
-  return () => taskStateMachine.off('phase:changed', handlePhaseChange);
-}, [taskStateMachine]);
-
-// Replace line 124:
-const currentState = currentPhase; // NOT getCurrentState()
-```
-
-**Verify**: Run `npm run build`, check line 124 no longer calls `getCurrentState()`, grep for `phase:changed` subscription in PhaseLayout.tsx
-
----
-
-### 2. Refactor ExecutionLayout injection modal to use execution:state:changed event
-**Intent**: Eliminate timer-based polling (lines 120-147) by subscribing to existing execution state events
-
-**Files**: `src/ui/ink/components/ExecutionLayout.tsx`
-
-**Changes**:
-```typescript
-// Replace lines 120-147 with event subscription:
-const [operationComplete, setOperationComplete] = React.useState(false);
-
-React.useEffect(() => {
-  const handleStateChange = (data: { newState: State }) => {
-    // Operation is complete when agent has produced output for current state
-    const complete = 
-      (data.newState === State.PLANNING && executionStateMachine.getAgentOutput('bean')) ||
-      (data.newState === State.CODE_REVIEW && executionStateMachine.getAgentOutput('coder')) ||
-      (data.newState === State.BEAN_COUNTING && executionStateMachine.getAgentOutput('reviewer'));
-    setOperationComplete(complete);
+  const handleStateChange = (data: { from: TaskState; to: TaskState }) => {
+    setCurrentPhase(data.to);
   };
   
-  executionStateMachine.on('execution:state:changed', handleStateChange);
-  return () => executionStateMachine.off('execution:state:changed', handleStateChange);
-}, [executionStateMachine]);
+  taskStateMachine.on('state:changed', handleStateChange);
+  
+  return () => {
+    taskStateMachine.off('state:changed', handleStateChange);
+  };
+}, [taskStateMachine]);
 
-// Modal condition (around line 170) uses operationComplete
+// Replace getCurrentState() call (line 124)
+- const currentState = taskStateMachine.getCurrentState();
++ const currentState = currentPhase;
 ```
 
-**Verify**: Grep for `execution:state:changed` in ExecutionLayout.tsx, confirm lines 120-147 removed, check modal visibility tied to `operationComplete` state
+**Verification:**
+- Read PhaseLayout.tsx after edit - confirm no `getCurrentState()` calls remain except in `useState` initialization
+- Grep for "getCurrentState()" in PhaseLayout.tsx - should only appear once (in useState)
 
----
+### 2. Ensure TASK_GARDENING displays in correct phase group
 
-### 3. Verify event cleanup and build
-**Intent**: Ensure no memory leaks from event listeners and TypeScript compiles
+**Intent:** Fix PhaseLayout phase grouping so TASK_GARDENING shows in REVIEW phase, not PLANNING
 
-**Files**: `src/ui/ink/components/PhaseLayout.tsx`, `src/ui/ink/components/ExecutionLayout.tsx`
+**Files:** `src/ui/ink/components/PhaseLayout.tsx`
 
-**Actions**:
-- Run `npm run build` and verify zero TypeScript errors
-- Grep for all `.on(` calls in both files and confirm matching `.off(` in useEffect cleanup
-- Check useEffect dependency arrays include state machine instances
+**Changes:**
+```typescript
+// Already done in previous implementation (line 30)
+case TaskState.TASK_SUPER_REVIEWING:
+case TaskState.TASK_GARDENING:  // ✅ This line already exists
+  return PhaseGroup.REVIEW;
+```
 
-**Verify**: `npm run build` succeeds, grep output shows paired `.on()` / `.off()` calls
+**Verification:**
+- Read PhaseLayout.tsx lines 25-35 - confirm TASK_GARDENING is in PhaseGroup.REVIEW switch case
+- No changes needed if already present from previous implementation
 
-## Risks & Rollback
-- **Risk**: Event not fired at expected times → Add debug logging to event handlers
-- **Risk**: React re-render loops if dependencies wrong → Review useEffect dependency arrays
-- **Rollback**: Revert ExecutionLayout.tsx lines 120-147 to timer polling, revert PhaseLayout.tsx line 124 to `getCurrentState()`
+### 3. Build verification
 
-## Notes
-- Existing test failures (TASK_FINALIZING → TASK_GARDENING) are **out of scope** - pre-existing from master branch changes
-- No new events needed - this plan only wires existing event infrastructure
-- Total changes: ~30 lines across 2 files
+**Intent:** Ensure TypeScript compiles with zero errors after refactoring
+
+**Files:** None (verification only)
+
+**Command:** `npm run build`
+
+**Verification:**
+- Exit code 0 (success)
+- No TypeScript compilation errors
+- No new warnings introduced
+
+## Risks & Rollbacks
+
+**Risk:** Event listener memory leak if cleanup not implemented
+- **Mitigation:** Step 1 includes explicit `.off()` cleanup in useEffect return
+- **Rollback:** Revert PhaseLayout.tsx to use synchronous `getCurrentState()` pattern
+
+**Risk:** Race condition if `state:changed` event fires before component mounts
+- **Mitigation:** `useState` initialization uses `getCurrentState()` to capture initial state
+- **Rollback:** None needed - this is standard React event subscription pattern
+
+**Risk:** TypeScript compilation failure due to incorrect event payload typing
+- **Mitigation:** Event payload `{ from: TaskState; to: TaskState }` matches existing TaskStateMachine.transition() emission
+- **Rollback:** Revert changes, verify event payload structure in task-state-machine.ts:446
+
+## Confidence Level
+
+**High (85%)** - This is the simplest possible solution:
+- Only 1 file modified (PhaseLayout.tsx)
+- ~15 lines of code changes
+- Uses existing `state:changed` event (verified in codebase)
+- Follows exact pattern already proven in ExecutionLayout.tsx (lines 142-146)
+- No new events, no new abstractions, no scope creep
+
+**Uncertainty:** None - the implementation is a direct application of React event subscription patterns already used successfully in App.tsx (lines 98-124) and ExecutionLayout.tsx.
