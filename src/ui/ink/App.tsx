@@ -184,6 +184,14 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
       return;
     }
 
+    // Handle Ctrl+T to toggle task description modal
+    if (key.ctrl && (input === 't' || input === 'T')) {
+      if (context.taskToUse || context.humanTask) {
+        setIsTaskModalOpen(!isTaskModalOpen);
+      }
+      return;
+    }
+
     // Handle Ctrl+I to trigger dynamic prompt injection pause
     // This sets a pause flag that allows user to inject additional context mid-execution
     if (key.ctrl && (input === 'i' || input === 'I')) {
