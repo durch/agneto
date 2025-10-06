@@ -106,9 +106,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   const [humanReviewContext, setHumanReviewContext] = useState<string | undefined>(executionStateMachine?.getHumanReviewContext());
   const [toolStatus, setToolStatus] = useState<ToolStatus | null>(executionStateMachine?.getToolStatus() || null);
 
-  // Force re-render trigger for state propagation to child components (fallback mechanism)
-  const [, forceUpdate] = useState({});
-
   // Retry modal state
   const [showRetryModal, setShowRetryModal] = React.useState(false);
   const [retryFeedback, setRetryFeedback] = React.useState("");
@@ -173,7 +170,6 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       setNeedsHumanReview(executionStateMachine.getNeedsHumanReview());
       setHumanReviewContext(executionStateMachine.getHumanReviewContext());
       setToolStatus(executionStateMachine.getToolStatus());
-      forceUpdate({}); // Fallback mechanism (kept for backward compatibility)
     };
 
     // Initialize state on mount
@@ -186,6 +182,9 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
     // Cleanup on unmount
     return () => {
+      if (process.env.DEBUG) {
+        console.log('[ExecutionLayout.tsx] Cleanup: removing all event listeners from executionStateMachine');
+      }
       executionStateMachine.off('execution:output:updated', handleUpdate);
       executionStateMachine.off('execution:summary:updated', handleUpdate);
       executionStateMachine.off('execution:phase:changed', handleUpdate);

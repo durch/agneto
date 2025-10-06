@@ -103,9 +103,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
   const [pendingInjection, setPendingInjection] = useState<string | null>(taskStateMachine.getPendingInjection());
   const [context, setContext] = useState(taskStateMachine.getContext());
 
-  // Force re-render trigger for state propagation to child components (fallback mechanism)
-  const [, forceUpdate] = useState({});
-
   // Subscribe to TaskStateMachine events for automatic re-rendering
   React.useEffect(() => {
     const handleStateChange = () => {
@@ -114,7 +111,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
         console.log('[App.tsx] handleStateChange: setState called with state:', newState);
       }
       setCurrentTaskState(newState);
-      forceUpdate({}); // Fallback mechanism (kept for backward compatibility)
     };
 
     const handleDataUpdate = () => {
@@ -131,7 +127,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
       setCurmudgeonFeedback(taskStateMachine.getCurmudgeonFeedback());
       setPendingInjection(taskStateMachine.getPendingInjection());
       setContext(taskStateMachine.getContext());
-      forceUpdate({}); // Fallback mechanism (kept for backward compatibility)
     };
 
     // Subscribe to all relevant events
@@ -144,6 +139,9 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
 
     // Cleanup on unmount
     return () => {
+      if (process.env.DEBUG) {
+        console.log('[App.tsx] Cleanup: removing all event listeners from TaskStateMachine');
+      }
       taskStateMachine.off('state:changed', handleStateChange);
       taskStateMachine.off('plan:ready', handleDataUpdate);
       taskStateMachine.off('refinement:ready', handleDataUpdate);
@@ -198,7 +196,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
         // Normal case: first injection request
         taskStateMachine.requestInjectionPause();
       }
-      forceUpdate({}); // Trigger re-render to propagate state to child components
       return;
     }
 
