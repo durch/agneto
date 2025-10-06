@@ -296,6 +296,9 @@ export class CoderReviewerStateMachine extends EventEmitter {
       // Emit state change event for debug overlay
       this.emit('execution:state:changed', { oldState, newState: this.state, event });
 
+      // Emit phase change event (mirrors TaskStateMachine pattern)
+      this.emit('execution:phase:changed', { from: oldState, to: this.state });
+
       // Emit audit event for state transition
       if (this.auditLogger) {
         this.auditLogger.captureEvent('system', 'phase_transition', `State transition: ${oldState} → ${this.state}`, {
