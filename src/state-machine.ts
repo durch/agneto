@@ -208,10 +208,13 @@ export class CoderReviewerStateMachine extends EventEmitter {
 
   setToolStatus(agent: string, tool: string, summary: string): void {
     this.toolStatus = { agent, tool, summary };
+    this.emit('tool:status', { agent, tool, summary });  // UI auto-updates
   }
 
   clearToolStatus(): void {
     this.toolStatus = null;
+    // Emit event with null values to notify UI to clear tool status display
+    this.emit('tool:status', { agent: null, tool: null, summary: null });
   }
 
   // Setters for testing and external manipulation
@@ -295,6 +298,9 @@ export class CoderReviewerStateMachine extends EventEmitter {
 
       // Emit state change event for debug overlay
       this.emit('execution:state:changed', { oldState, newState: this.state, event });
+
+      // Emit phase change event (mirrors TaskStateMachine pattern)
+      this.emit('execution:phase:changed', { from: oldState, to: this.state });
 
       // Emit audit event for state transition
       if (this.auditLogger) {

@@ -9,7 +9,7 @@ import { TaskView } from './components/TaskView.js';
 import { DebugOverlay } from './components/DebugOverlay.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
-import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.js';
+import type { SuperReviewerDecision, HumanInteractionResult, SuperReviewerResult, GardenerResult } from '../../types.js';
 
 // TypeScript interface for component props
 interface AppProps {
@@ -91,17 +91,42 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
     process.env.AGNETO_DEBUG_OVERLAY === 'true'
   );
 
-  // Force re-render trigger for state propagation to child components
-  const [, forceUpdate] = useState({});
+  // React state mirroring TaskStateMachine data (event-driven updates)
+  const [currentTaskState, setCurrentTaskState] = useState<TaskState>(taskStateMachine.getCurrentState());
+  const [planMd, setPlanMd] = useState<string | undefined>(taskStateMachine.getPlanMd());
+  const [planPath, setPlanPath] = useState<string | undefined>(taskStateMachine.getPlanPath());
+  const [pendingRefinement, setPendingRefinement] = useState<string | undefined>(taskStateMachine.getPendingRefinement());
+  const [currentQuestion, setCurrentQuestion] = useState<string | null>(taskStateMachine.getCurrentQuestion());
+  const [superReviewResult, setSuperReviewResult] = useState<SuperReviewerResult | undefined>(taskStateMachine.getSuperReviewResult());
+  const [gardenerResult, setGardenerResult] = useState<GardenerResult | null>(taskStateMachine.getGardenerResult());
+  const [curmudgeonFeedback, setCurmudgeonFeedback] = useState<string | undefined>(taskStateMachine.getCurmudgeonFeedback());
+  const [pendingInjection, setPendingInjection] = useState<string | null>(taskStateMachine.getPendingInjection());
+  const [context, setContext] = useState(taskStateMachine.getContext());
 
   // Subscribe to TaskStateMachine events for automatic re-rendering
   React.useEffect(() => {
     const handleStateChange = () => {
-      forceUpdate({}); // Trigger re-render when state changes
+      const newState = taskStateMachine.getCurrentState();
+      if (process.env.DEBUG) {
+        console.log('[App.tsx] handleStateChange: setState called with state:', newState);
+      }
+      setCurrentTaskState(newState);
     };
 
     const handleDataUpdate = () => {
-      forceUpdate({}); // Trigger re-render when data updates
+      if (process.env.DEBUG) {
+        console.log('[App.tsx] handleDataUpdate: updating all React state from TaskStateMachine');
+      }
+      // Update all relevant state from TaskStateMachine
+      setPlanMd(taskStateMachine.getPlanMd());
+      setPlanPath(taskStateMachine.getPlanPath());
+      setPendingRefinement(taskStateMachine.getPendingRefinement());
+      setCurrentQuestion(taskStateMachine.getCurrentQuestion());
+      setSuperReviewResult(taskStateMachine.getSuperReviewResult());
+      setGardenerResult(taskStateMachine.getGardenerResult());
+      setCurmudgeonFeedback(taskStateMachine.getCurmudgeonFeedback());
+      setPendingInjection(taskStateMachine.getPendingInjection());
+      setContext(taskStateMachine.getContext());
     };
 
     // Subscribe to all relevant events
@@ -109,15 +134,22 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
     taskStateMachine.on('plan:ready', handleDataUpdate);
     taskStateMachine.on('refinement:ready', handleDataUpdate);
     taskStateMachine.on('question:asked', handleDataUpdate);
+    taskStateMachine.on('question:cleared', handleDataUpdate);
+    taskStateMachine.on('task:refined', handleDataUpdate);
     taskStateMachine.on('superreview:complete', handleDataUpdate);
     taskStateMachine.on('gardener:complete', handleDataUpdate);
 
     // Cleanup on unmount
     return () => {
+      if (process.env.DEBUG) {
+        console.log('[App.tsx] Cleanup: removing all event listeners from TaskStateMachine');
+      }
       taskStateMachine.off('state:changed', handleStateChange);
       taskStateMachine.off('plan:ready', handleDataUpdate);
       taskStateMachine.off('refinement:ready', handleDataUpdate);
       taskStateMachine.off('question:asked', handleDataUpdate);
+      taskStateMachine.off('question:cleared', handleDataUpdate);
+      taskStateMachine.off('task:refined', handleDataUpdate);
       taskStateMachine.off('superreview:complete', handleDataUpdate);
       taskStateMachine.off('gardener:complete', handleDataUpdate);
     };
@@ -125,14 +157,13 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
 
   // Exit UI when task completes
   useEffect(() => {
-    const currentState = taskStateMachine.getCurrentState();
-    if (currentState === TaskState.TASK_COMPLETE || currentState === TaskState.TASK_ABANDONED) {
+    if (currentTaskState === TaskState.TASK_COMPLETE || currentTaskState === TaskState.TASK_ABANDONED) {
       // Small delay to ensure final state renders before exit
       setTimeout(() => {
         exit();
       }, 100);
     }
-  }, [taskStateMachine, exit]);
+  }, [currentTaskState, exit]);
 
   // Global keyboard handler for plan modal and execution phase modals
   useInput((input, key) => {
@@ -147,7 +178,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
 
     // Handle Ctrl+P to toggle plan modal
     if (key.ctrl && (input === 'p' || input === 'P')) {
-      const planMd = taskStateMachine.getPlanMd();
       if (planMd) {
         setIsPlanModalOpen(true);
       }
@@ -158,7 +188,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
     // This sets a pause flag that allows user to inject additional context mid-execution
     if (key.ctrl && (input === 'i' || input === 'I')) {
       // Check if there's already a pending injection
-      if (taskStateMachine.hasPendingInjection()) {
+      if (pendingInjection !== null) {
         // Override pattern: user wants to replace the pending injection
         if (process.env.DEBUG) {
           console.log('Injection override: replacing pending injection');
@@ -170,7 +200,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
         // Normal case: first injection request
         taskStateMachine.requestInjectionPause();
       }
-      forceUpdate({}); // Trigger re-render to propagate state to child components
       return;
     }
 
@@ -188,13 +217,12 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
     }
   });
 
-  // Read current state dynamically from taskStateMachine
+  // Read current state from React state
   const getPhaseInfo = (): { state: TaskState; displayName: string; color: string } => {
-    const currentState = taskStateMachine.getCurrentState();
     return {
-      state: currentState,
-      displayName: getPhaseDisplayName(currentState),
-      color: getPhaseColor(currentState)
+      state: currentTaskState,
+      displayName: getPhaseDisplayName(currentTaskState),
+      color: getPhaseColor(currentTaskState)
     };
   };
 
@@ -209,7 +237,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
         };
       }
 
-      const context = taskStateMachine.getContext();
       const status = taskStateMachine.getStatus();
 
       return {
@@ -228,10 +255,9 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
 
   // Get pane content by number based on current state
   const getPaneContent = (paneNum: number): { title: string; content: string } | null => {
-    const currentState = taskStateMachine.getCurrentState();
 
     // Execution phase: 3 numbered panes
-    if (currentState === TaskState.TASK_EXECUTING) {
+    if (currentTaskState === TaskState.TASK_EXECUTING) {
       const executionStateMachine = taskStateMachine.getExecutionStateMachine();
       switch (paneNum) {
         case 1:
@@ -256,34 +282,29 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
 
     // Planning phases: 2 numbered panes
     if (
-      currentState === TaskState.TASK_REFINING ||
-      currentState === TaskState.TASK_PLANNING ||
-      currentState === TaskState.TASK_CURMUDGEONING ||
-      currentState === TaskState.TASK_SUPER_REVIEWING
+      currentTaskState === TaskState.TASK_REFINING ||
+      currentTaskState === TaskState.TASK_PLANNING ||
+      currentTaskState === TaskState.TASK_CURMUDGEONING ||
+      currentTaskState === TaskState.TASK_SUPER_REVIEWING
     ) {
-      const context = taskStateMachine.getContext();
-      const planMd = taskStateMachine.getPlanMd();
-      const pendingRefinement = taskStateMachine.getPendingRefinement();
-      const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
-      const superReviewResult = taskStateMachine.getSuperReviewResult();
-      const previousCurmudgeonFeedback = currentState === TaskState.TASK_PLANNING && curmudgeonFeedback;
+      const previousCurmudgeonFeedback = currentTaskState === TaskState.TASK_PLANNING && curmudgeonFeedback;
 
       if (paneNum === 1) {
         // Left pane - dynamic based on state
-        if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+        if (currentTaskState === TaskState.TASK_SUPER_REVIEWING) {
           return { title: '📋 Original Plan', content: planMd || 'No plan available' };
-        } else if (currentState === TaskState.TASK_CURMUDGEONING) {
+        } else if (currentTaskState === TaskState.TASK_CURMUDGEONING) {
           return { title: '📋 Current Plan', content: planMd || 'No plan available' };
         } else if (previousCurmudgeonFeedback) {
           return { title: '🧐 Previous Feedback', content: curmudgeonFeedback || '' };
-        } else if (currentState === TaskState.TASK_REFINING && pendingRefinement) {
+        } else if (currentTaskState === TaskState.TASK_REFINING && pendingRefinement) {
           return { title: '📝 Refined Task', content: pendingRefinement || '' };
         } else {
           return { title: '📝 Refined Task', content: context.taskToUse || context.humanTask || 'No task description' };
         }
       } else if (paneNum === 2) {
         // Right pane - dynamic based on state
-        if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+        if (currentTaskState === TaskState.TASK_SUPER_REVIEWING) {
           const summary = superReviewResult?.summary || 'Performing final quality check...';
           const issues = superReviewResult?.issues?.map((issue, idx) => `• ${issue}`).join('\n') || '';
           const verdict = superReviewResult?.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review';
@@ -291,7 +312,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
             title: '🔍 Quality Check Results',
             content: `${summary}\n\n${issues ? `Issues Found:\n${issues}\n\n` : ''}Verdict: ${verdict}`
           };
-        } else if (currentState === TaskState.TASK_CURMUDGEONING) {
+        } else if (currentTaskState === TaskState.TASK_CURMUDGEONING) {
           return { title: '🧐 Curmudgeon Feedback', content: curmudgeonFeedback || 'Reviewing plan for over-engineering...' };
         } else if (previousCurmudgeonFeedback) {
           return { title: '📋 New Plan', content: planMd || 'Creating simplified plan...' };
@@ -329,9 +350,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
 
   // Render plan modal if open
   if (isPlanModalOpen) {
-    const planMd = taskStateMachine.getPlanMd();
-    const planPath = taskStateMachine.getPlanPath();
-
     return (
       <FullscreenModal
         title="📋 Strategic Plan"
@@ -400,7 +418,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
             terminalHeight={terminalHeight}
             terminalWidth={terminalWidth}
             availableContentHeight={availableContentHeight}
-            gardenerResult={taskStateMachine.getGardenerResult()}
+            gardenerResult={gardenerResult}
           />
         ) : phase.state === TaskState.TASK_EXECUTING ? (
           <ExecutionLayout

@@ -212,6 +212,7 @@ export class TaskStateMachine extends EventEmitter {
 
   setLiveActivityMessage(agent: string, message: string): void {
     this.liveActivityMessage = { agent, message };
+    this.emit('activity:updated', { agent, message });
   }
 
   clearLiveActivityMessage(): void {
@@ -225,10 +226,13 @@ export class TaskStateMachine extends EventEmitter {
 
   setToolStatus(agent: string, tool: string, summary: string): void {
     this.toolStatus = { agent, tool, summary };
+    this.emit('tool:status', { agent, tool, summary });  // UI auto-updates
   }
 
   clearToolStatus(): void {
     this.toolStatus = null;
+    // Emit event with null values to notify UI to clear tool status display
+    this.emit('tool:status', { agent: null, tool: null, summary: null });
   }
 
   // Setters for context updates
@@ -256,6 +260,8 @@ export class TaskStateMachine extends EventEmitter {
 
   clearCurrentQuestion(): void {
     this.currentQuestion = null;
+    // Emit event for UI to clear question display
+    this.emit('question:cleared');
   }
 
   getAnsweringQuestion(): boolean {
@@ -273,6 +279,8 @@ export class TaskStateMachine extends EventEmitter {
     this.context.taskToUse = taskToUse;
     // Clear pending once approved
     this.context.pendingRefinement = undefined;
+    // Emit event for UI to update task display
+    this.emit('task:refined', { refinedTask, taskToUse });
   }
 
   setPlan(planMd: string | undefined, planPath: string) {
@@ -445,6 +453,7 @@ export class TaskStateMachine extends EventEmitter {
 
       // Emit event for UI to react to state change
       this.emit('state:changed', { oldState, newState: this.state, event });
+      this.emit('phase:changed', { from: oldState, to: this.state });
     }
 
     return this.state;
