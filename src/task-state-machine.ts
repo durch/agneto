@@ -445,6 +445,7 @@ export class TaskStateMachine extends EventEmitter {
 
       // Emit event for UI to react to state change
       this.emit('state:changed', { oldState, newState: this.state, event });
+      this.emit('phase:changed', { from: oldState, to: this.state });
     }
 
     return this.state;
