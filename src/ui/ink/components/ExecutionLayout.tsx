@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { Text, Box, useStdout, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
-import { TaskStateMachine } from '../../../task-state-machine.js';
+import { TaskStateMachine, ToolStatus } from '../../../task-state-machine.js';
 import { CommandBus } from '../../../ui/command-bus.js';
 import { State } from '../../../state-machine.js';
 import { StatusIndicator } from './StatusIndicator.js';
-import type { HumanInteractionResult } from '../../../types.js';
 import { TextInputModal } from './TextInputModal.js';
 import { Spinner } from './Spinner.js';
 import { MarkdownText } from './MarkdownText.js';
@@ -92,21 +91,21 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   const terminalWidth = stdout?.columns || 120;
   const terminalHeight = stdout?.rows || 40;
 
-  // Force update mechanism for event-driven re-rendering
-  const [, forceUpdate] = useState({});
-
-  // Retry modal state
-  const [showRetryModal, setShowRetryModal] = React.useState(false);
-  const [retryFeedback, setRetryFeedback] = React.useState("");
-
-  // Injection modal state
-  const [showInjectionModal, setShowInjectionModal] = React.useState(false);
-
   // Get execution state machine
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
 
-  // Get tool status to determine if spinner should animate
-  const toolStatus = executionStateMachine?.getToolStatus();
+  // Reactive view-model state
+  const [currentPhase, setCurrentPhase] = useState<State>(executionStateMachine?.getCurrentState() || State.BEAN_COUNTING);
+  const [beanCounterOutput, setBeanCounterOutput] = useState<string | undefined>(executionStateMachine?.getAgentOutput('bean'));
+  const [coderSummary, setCoderSummary] = useState<string | undefined>(executionStateMachine?.getSummary('coder'));
+  const [reviewerSummary, setReviewerSummary] = useState<string | undefined>(executionStateMachine?.getSummary('reviewer'));
+  const [needsHumanReview, setNeedsHumanReview] = useState<boolean>(executionStateMachine?.getNeedsHumanReview() || false);
+  const [humanReviewContext, setHumanReviewContext] = useState<string | undefined>(executionStateMachine?.getHumanReviewContext());
+  const [toolStatus, setToolStatus] = useState<ToolStatus | null>((executionStateMachine?.getToolStatus() || taskStateMachine.getToolStatus() || null));
+
+  // Modal state
+  const [showRetryModal, setShowRetryModal] = useState(false);
+  const [showInjectionModal, setShowInjectionModal] = useState(false);
 
   // Intercept Ctrl+Q/W/E for fullscreen panes
   useInput((input, key) => {
@@ -117,56 +116,70 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
     }
   });
 
-  // Subscribe to execution phase changes for injection modal
+  // Monitor execution phase changes for injection pauses
   React.useEffect(() => {
-    if (!executionStateMachine) return;
+    if (!executionStateMachine) {
+      return;
+    }
 
     const handlePhaseChange = ({ to }: { from: State; to: State }) => {
-      // Check if injection is pending
-      if (!taskStateMachine.isInjectionPauseRequested()) return;
+      if (!taskStateMachine.isInjectionPauseRequested()) {
+        return;
+      }
 
-      // Don't show modal if task is complete
-      if (to === State.TASK_COMPLETE) return;
+      if (to === State.TASK_COMPLETE || to === State.TASK_FAILED || to === State.TASK_ABORTED) {
+        taskStateMachine.clearInjectionPause();
+        return;
+      }
 
-      // Don't show modal if there are conflicting modals
-      const isHumanReviewActive = executionStateMachine.getNeedsHumanReview();
-      const isRetryModalActive = showRetryModal;
-      if (isHumanReviewActive || isRetryModalActive) return;
+      if (needsHumanReview || showRetryModal) {
+        return;
+      }
 
-      // Phase transition detected with pending injection → show modal
       setShowInjectionModal(true);
       taskStateMachine.clearInjectionPause();
     };
 
-    // Subscribe to phase change events
     executionStateMachine.on('execution:phase:changed', handlePhaseChange);
 
-    // Cleanup on unmount
     return () => {
       executionStateMachine.off('execution:phase:changed', handlePhaseChange);
     };
-  }, [executionStateMachine, taskStateMachine, showRetryModal]);
+  }, [executionStateMachine, taskStateMachine, needsHumanReview, showRetryModal]);
 
-  // Subscribe to execution data updates for automatic re-rendering
+  // Subscribe to execution events and sync local state
   React.useEffect(() => {
-    if (!executionStateMachine) return;
+    if (!executionStateMachine) {
+      return;
+    }
 
-    const handleUpdate = () => {
-      forceUpdate({}); // Trigger re-render when agent output, summary, or phase changes
+    const syncState = () => {
+      setCurrentPhase(executionStateMachine.getCurrentState());
+      setBeanCounterOutput(executionStateMachine.getAgentOutput('bean'));
+      setCoderSummary(executionStateMachine.getSummary('coder'));
+      setReviewerSummary(executionStateMachine.getSummary('reviewer'));
+      setNeedsHumanReview(executionStateMachine.getNeedsHumanReview());
+      setHumanReviewContext(executionStateMachine.getHumanReviewContext());
+      setToolStatus(executionStateMachine.getToolStatus() || taskStateMachine.getToolStatus());
     };
 
-    // Subscribe to execution events
-    executionStateMachine.on('execution:output:updated', handleUpdate);
-    executionStateMachine.on('execution:summary:updated', handleUpdate);
-    executionStateMachine.on('execution:phase:changed', handleUpdate);
+    syncState();
 
-    // Cleanup on unmount
+    executionStateMachine.on('execution:output:updated', syncState);
+    executionStateMachine.on('execution:summary:updated', syncState);
+    executionStateMachine.on('execution:phase:changed', syncState);
+
+    taskStateMachine.on('activity:updated', syncState);
+    taskStateMachine.on('tool:status', syncState);
+
     return () => {
-      executionStateMachine.off('execution:output:updated', handleUpdate);
-      executionStateMachine.off('execution:summary:updated', handleUpdate);
-      executionStateMachine.off('execution:phase:changed', handleUpdate);
+      executionStateMachine.off('execution:output:updated', syncState);
+      executionStateMachine.off('execution:summary:updated', syncState);
+      executionStateMachine.off('execution:phase:changed', syncState);
+      taskStateMachine.off('activity:updated', syncState);
+      taskStateMachine.off('tool:status', syncState);
     };
-  }, [executionStateMachine]);
+  }, [executionStateMachine, taskStateMachine]);
 
   if (!executionStateMachine) {
     return (
@@ -176,10 +189,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
     );
   }
 
-  const currentState = executionStateMachine.getCurrentState();
-  const beanCounterOutput = executionStateMachine.getAgentOutput('bean');
-  const coderOutput = executionStateMachine.getAgentOutput('coder');
-  const reviewerOutput = executionStateMachine.getAgentOutput('reviewer');
+  const currentState = currentPhase;
 
   // Calculate pane dimensions
   const isWideTerminal = terminalWidth > 120;
@@ -187,21 +197,11 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   const rightPanelWidth = Math.floor(terminalWidth * 0.49);
   // Bean Counter pane gets most of available vertical space (minus header, status panel, margins)
   const beanCounterHeight = Math.max(15, Math.floor(terminalHeight * 0.5));
-  const agentPaneHeight = Math.floor(terminalHeight * 0.2);
 
   // Determine left and right pane content based on current state
-  let leftTitle = '';
-  let leftContent = '';
-  let leftColor = 'gray';
-  let rightTitle = '';
-  let rightContent = '';
-  let rightColor = 'gray';
-  let statusMessage = '';
-
-  // Left pane: Always show latest Bean Counter chunk
-  leftTitle = '🧮 Bean Counter Chunk';
-  leftContent = currentState === State.BEAN_COUNTING ? 'Bean Counting!' : (beanCounterOutput || 'Determining work chunk...');
-  leftColor = 'cyan';
+  const leftTitle = '🧮 Bean Counter Chunk';
+  const leftContent = currentState === State.BEAN_COUNTING ? 'Bean Counting!' : (beanCounterOutput || 'Determining work chunk...');
+  const leftColor = 'cyan';
 
   // Status message based on execution state - includes tool status when active
   const baseStatusMessage = (() => {
@@ -224,11 +224,9 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   })();
 
   // Merge tool status into status message when active
-  if (toolStatus) {
-    statusMessage = `${baseStatusMessage} → ${toolStatus.tool}: ${toolStatus.summary}`;
-  } else {
-    statusMessage = baseStatusMessage;
-  }
+  const statusMessage = toolStatus
+    ? `${baseStatusMessage} → ${toolStatus.tool}: ${toolStatus.summary}`
+    : baseStatusMessage;
 
   // Handle injection modal submit
   const handleInjectionSubmit = (content: string) => {
@@ -300,8 +298,8 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
                 <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
               </Box>
             )}
-            {getActiveAgent(currentState) !== 'coder' && executionStateMachine.getSummary('coder') && (
-              <MarkdownText>{executionStateMachine.getSummary('coder') || ''}</MarkdownText>
+            {getActiveAgent(currentState) !== 'coder' && coderSummary && (
+              <MarkdownText>{coderSummary}</MarkdownText>
             )}
           </Box>
 
@@ -326,8 +324,8 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
                 <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
               </Box>
             )}
-            {getActiveAgent(currentState) !== 'reviewer' && executionStateMachine.getSummary('reviewer') && (
-              <MarkdownText>{executionStateMachine.getSummary('reviewer') || ''}</MarkdownText>
+            {getActiveAgent(currentState) !== 'reviewer' && reviewerSummary && (
+              <MarkdownText>{reviewerSummary}</MarkdownText>
             )}
           </Box>
         </Box>
@@ -337,7 +335,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       <Box
         flexDirection="column"
         borderStyle="single"
-        borderColor={executionStateMachine.getNeedsHumanReview() ? "yellow" : "blue"}
+        borderColor={needsHumanReview ? "yellow" : "blue"}
         paddingX={1}
       >
         {/* Tool status display */}
@@ -358,10 +356,10 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         </Box>
 
         {/* Human Review Menu */}
-        {executionStateMachine.getNeedsHumanReview() && (
+        {needsHumanReview && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="yellow" bold>⚠ Human Review Required</Text>
-            <MarkdownText>{executionStateMachine.getHumanReviewContext() || ''}</MarkdownText>
+            <MarkdownText>{humanReviewContext || ''}</MarkdownText>
             <Box marginTop={1}>
               <SelectInput
                 items={[
@@ -373,11 +371,15 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
                   if (item.value === 'approve') {
                     await commandBus.sendCommand({ type: 'humanreview:approve', feedback: '' });
                     executionStateMachine.clearHumanReview();
+                    setNeedsHumanReview(false);
+                    setHumanReviewContext(undefined);
                   } else if (item.value === 'retry') {
                     setShowRetryModal(true);
                   } else if (item.value === 'reject') {
                     await commandBus.sendCommand({ type: 'humanreview:reject', feedback: 'User chose to skip this chunk' });
                     executionStateMachine.clearHumanReview();
+                    setNeedsHumanReview(false);
+                    setHumanReviewContext(undefined);
                   }
                 }}
               />
@@ -388,20 +390,20 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
       {/* Retry Feedback Modal */}
       {showRetryModal && (
-        <TextInputModal
-          title="Provide Retry Feedback"
-          placeholder="Describe what needs to be fixed..."
-          onSubmit={async (feedbackText) => {
-            await commandBus.sendCommand({ type: 'humanreview:retry', feedback: feedbackText });
-            executionStateMachine?.clearHumanReview();
-            setShowRetryModal(false);
-            setRetryFeedback("");
-          }}
-          onCancel={() => {
-            setShowRetryModal(false);
-            setRetryFeedback("");
-          }}
-        />
+          <TextInputModal
+            title="Provide Retry Feedback"
+            placeholder="Describe what needs to be fixed..."
+            onSubmit={async (feedbackText) => {
+              await commandBus.sendCommand({ type: 'humanreview:retry', feedback: feedbackText });
+              executionStateMachine?.clearHumanReview();
+              setShowRetryModal(false);
+              setNeedsHumanReview(false);
+              setHumanReviewContext(undefined);
+            }}
+            onCancel={() => {
+              setShowRetryModal(false);
+            }}
+          />
       )}
 
       {/* Injection Modal - for dynamic prompt injection */}

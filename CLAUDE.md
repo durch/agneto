@@ -495,6 +495,7 @@ Set `DEBUG=true` to see:
 - ✅ **Curmudgeon interpreter pattern** - Structured verdict extraction prevents approval loop bugs
 - ✅ **Unified event-driven architecture** - All approval flows and question answering use CommandBus pattern for consistency (plan approval, refinement approval, question answering)
 - ✅ **Non-interactive task completion** - UI exits cleanly after Gardener, terminal displays copy-pasteable merge commands for manual execution
+- ✅ **Execution phase-driven UI updates** - ExecutionLayout subscribes to `execution:phase:changed` events for automatic progress tracker and output pane updates independent of agent output
 
 
 ### Common Gotchas
@@ -587,6 +588,7 @@ const feedback = await commandBus.waitForCommand<RefinementFeedback>('refinement
 - `question:answering` - Processing answer (modal visibility control)
 - `superreview:complete` - SuperReviewer results ready
 - `gardener:complete` - Documentation update results ready
+- `execution:phase:changed` - Execution state machine phase transitions (Bean Counter/Coder/Reviewer)
 
 **Command Types:**
 - `refinement:approve` / `refinement:reject` - Refinement approval
