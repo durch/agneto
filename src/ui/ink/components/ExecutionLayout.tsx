@@ -264,7 +264,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             <Text dimColor>[Q]</Text>
           </Box>
           <Box marginTop={1}>
-            <Text wrap="wrap">{truncateContent(leftContent, beanCounterHeight).display}</Text>
+            <MarkdownText maxLines={beanCounterHeight}>{leftContent}</MarkdownText>
           </Box>
         </Box>
 
