@@ -9,7 +9,7 @@ import { TaskView } from './components/TaskView.js';
 import { DebugOverlay } from './components/DebugOverlay.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
-import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.js';
+import type { SuperReviewerDecision, HumanInteractionResult, SuperReviewerResult, GardenerResult } from '../../types.js';
 
 // TypeScript interface for component props
 interface AppProps {
@@ -91,17 +91,45 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
     process.env.AGNETO_DEBUG_OVERLAY === 'true'
   );
 
-  // Force re-render trigger for state propagation to child components
+  // React state mirroring TaskStateMachine data (event-driven updates)
+  const [currentTaskState, setCurrentTaskState] = useState<TaskState>(taskStateMachine.getCurrentState());
+  const [planMd, setPlanMd] = useState<string | undefined>(taskStateMachine.getPlanMd());
+  const [planPath, setPlanPath] = useState<string | undefined>(taskStateMachine.getPlanPath());
+  const [pendingRefinement, setPendingRefinement] = useState<string | undefined>(taskStateMachine.getPendingRefinement());
+  const [currentQuestion, setCurrentQuestion] = useState<string | null>(taskStateMachine.getCurrentQuestion());
+  const [superReviewResult, setSuperReviewResult] = useState<SuperReviewerResult | undefined>(taskStateMachine.getSuperReviewResult());
+  const [gardenerResult, setGardenerResult] = useState<GardenerResult | null>(taskStateMachine.getGardenerResult());
+  const [curmudgeonFeedback, setCurmudgeonFeedback] = useState<string | undefined>(taskStateMachine.getCurmudgeonFeedback());
+  const [pendingInjection, setPendingInjection] = useState<string | null>(taskStateMachine.getPendingInjection());
+
+  // Force re-render trigger for state propagation to child components (fallback mechanism)
   const [, forceUpdate] = useState({});
 
   // Subscribe to TaskStateMachine events for automatic re-rendering
   React.useEffect(() => {
     const handleStateChange = () => {
-      forceUpdate({}); // Trigger re-render when state changes
+      const newState = taskStateMachine.getCurrentState();
+      if (process.env.DEBUG) {
+        console.log('[App.tsx] handleStateChange: setState called with state:', newState);
+      }
+      setCurrentTaskState(newState);
+      forceUpdate({}); // Fallback mechanism (kept for backward compatibility)
     };
 
     const handleDataUpdate = () => {
-      forceUpdate({}); // Trigger re-render when data updates
+      if (process.env.DEBUG) {
+        console.log('[App.tsx] handleDataUpdate: updating all React state from TaskStateMachine');
+      }
+      // Update all relevant state from TaskStateMachine
+      setPlanMd(taskStateMachine.getPlanMd());
+      setPlanPath(taskStateMachine.getPlanPath());
+      setPendingRefinement(taskStateMachine.getPendingRefinement());
+      setCurrentQuestion(taskStateMachine.getCurrentQuestion());
+      setSuperReviewResult(taskStateMachine.getSuperReviewResult());
+      setGardenerResult(taskStateMachine.getGardenerResult());
+      setCurmudgeonFeedback(taskStateMachine.getCurmudgeonFeedback());
+      setPendingInjection(taskStateMachine.getPendingInjection());
+      forceUpdate({}); // Fallback mechanism (kept for backward compatibility)
     };
 
     // Subscribe to all relevant events
