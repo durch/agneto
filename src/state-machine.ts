@@ -242,6 +242,8 @@ export class CoderReviewerStateMachine extends EventEmitter {
   setNeedsHumanReview(needed: boolean, context?: string): void {
     this.context.needsHumanReview = needed;
     this.context.humanReviewContext = context;
+    // Emit event for UI to react to human review state change
+    this.emit('execution:humanreview', { needed, context });
   }
 
   getNeedsHumanReview(): boolean {
@@ -255,6 +257,8 @@ export class CoderReviewerStateMachine extends EventEmitter {
   clearHumanReview(): void {
     this.context.needsHumanReview = false;
     this.context.humanReviewContext = undefined;
+    // Emit event for UI to react to human review state cleared
+    this.emit('execution:humanreview', { needed: false });
   }
 
   // Increment attempts - should be called before each attempt
