@@ -240,11 +240,12 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   };
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1} flexGrow={0}>
       {/* Two-pane layout */}
       <Box
         flexDirection={isWideTerminal ? "row" : "column"}
         marginBottom={1}
+        flexShrink={1}
       >
         {/* Left Panel - Bean Counter */}
         <Box
@@ -337,6 +338,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         borderStyle="single"
         borderColor={needsHumanReview ? "yellow" : "blue"}
         paddingX={1}
+        flexShrink={0}
       >
         {/* Tool status display */}
         {toolStatus && (
