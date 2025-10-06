@@ -47,6 +47,10 @@ function parseInline(text: string): InlineSegment[] {
       if (i < text.length) {
         segments.push({ text: text.substring(start, i), bold: true });
         i += 2;
+      } else {
+        // No closing **, treat as regular text
+        current = '**' + text.substring(start);
+        i = text.length;
       }
       continue;
     }
@@ -65,6 +69,10 @@ function parseInline(text: string): InlineSegment[] {
       if (i < text.length) {
         segments.push({ text: text.substring(start, i), italic: true });
         i += 1;
+      } else {
+        // No closing *, treat as regular text
+        current = '*' + text.substring(start);
+        i = text.length;
       }
       continue;
     }
@@ -83,6 +91,10 @@ function parseInline(text: string): InlineSegment[] {
       if (i < text.length) {
         segments.push({ text: text.substring(start, i), code: true });
         i += 1;
+      } else {
+        // No closing `, treat as regular text
+        current = '`' + text.substring(start);
+        i = text.length;
       }
       continue;
     }
@@ -168,7 +180,7 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }
 
         const color = level === 1 ? 'cyan' : level === 2 ? 'yellow' : level === 3 ? 'blue' : 'white';
         elements.push(
-          <Box key={key} marginTop={level === 1 ? 1 : 0}>
+          <Box key={key} marginTop={level === 1 ? 1 : 0} flexDirection="row">
             {segments.map((seg, sIdx) => (
               <Text key={`seg-${sIdx}`} color={color} bold italic={seg.italic}>
                 {seg.text}
@@ -199,7 +211,7 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }
         const segments = parseInline(text);
 
         elements.push(
-          <Box key={key} paddingLeft={Math.floor(indent / 2)}>
+          <Box key={key} paddingLeft={Math.floor(indent / 2)} flexDirection="row">
             <Text>• </Text>
             {segments.map((seg, sIdx) => {
               const highlighted = highlightKeywords(seg);
@@ -230,7 +242,7 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }
     // Regular paragraphs
     const segments = parseInline(line);
     elements.push(
-      <Box key={key}>
+      <Box key={key} flexDirection="row">
         {segments.map((seg, sIdx) => {
           const highlighted = highlightKeywords(seg);
           return (
