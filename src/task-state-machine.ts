@@ -217,6 +217,7 @@ export class TaskStateMachine extends EventEmitter {
 
   clearLiveActivityMessage(): void {
     this.liveActivityMessage = null;
+    this.emit('activity:updated', { message: null });
   }
 
   // Tool status management for UI display
@@ -327,6 +328,7 @@ export class TaskStateMachine extends EventEmitter {
 
   setCurmudgeonFeedback(feedback: string) {
     this.context.curmudgeonFeedback = feedback;
+    this.emit('curmudgeon:feedback', { feedback });
   }
 
   getCurmudgeonFeedback(): string | undefined {
@@ -335,6 +337,7 @@ export class TaskStateMachine extends EventEmitter {
 
   clearCurmudgeonFeedback() {
     this.context.curmudgeonFeedback = undefined;
+    this.emit('curmudgeon:feedback', { feedback: undefined });
   }
 
   setUserHasReviewedPlan(value: boolean) {
