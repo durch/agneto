@@ -317,12 +317,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                      (isExecuting ? 'yellow' : 'blue');
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={phaseColor} padding={1} flexGrow={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={phaseColor} padding={1} flexGrow={0}>
       {/* Top row: Refined Task and Plan Content panels */}
       <Box
         flexDirection={isWideTerminal ? "row" : "column"}
         marginBottom={1}
-        flexGrow={1}
+        flexGrow={0}
+        flexShrink={1}
       >
         {/* Left Panel: Dynamic content - Refined Task, Plan (during curmudgeon), or Old Feedback (during replanning) */}
         <Box
@@ -335,6 +336,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           width={isWideTerminal ? panelWidth : undefined}
           marginRight={isWideTerminal ? 1 : 0}
           marginBottom={isWideTerminal ? 0 : 1}
+          flexShrink={1}
         >
           {/* Dynamic header and content based on current state */}
           {currentState === TaskState.TASK_EXECUTING ? (
@@ -447,6 +449,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           paddingX={1}
           width={isWideTerminal ? panelWidth : undefined}
           marginBottom={isWideTerminal ? 0 : 1}
+          flexShrink={1}
         >
           {/* Dynamic header and content based on current state */}
           {currentState === TaskState.TASK_EXECUTING ? (
@@ -584,6 +587,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             : "blue"
         }
         paddingX={1}
+        flexShrink={0}
       >
         <Box flexDirection="column">
           {/* Injection pending indicator */}
