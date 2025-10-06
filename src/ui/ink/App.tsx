@@ -325,7 +325,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
         } else if (previousCurmudgeonFeedback) {
           return { title: '📋 New Plan', content: planMd || 'Creating simplified plan...' };
         } else {
-          return { title: '📋 Plan Content', content: planMd || 'Creating strategic plan...' };
+          return { title: '📋 Plan Content', content: planMd || 'Creating plan...' };
         }
       }
     }
@@ -360,7 +360,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
   if (isPlanModalOpen) {
     return (
       <FullscreenModal
-        title="📋 Strategic Plan"
+        title="📋 Plan"
         content={planMd || 'No plan available'}
         terminalHeight={terminalHeight}
         terminalWidth={terminalWidth}

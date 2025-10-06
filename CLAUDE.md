@@ -643,7 +643,7 @@ inkInstance.rerender(<App taskStateMachine={taskStateMachine} />);
 ```typescript
 // Check BOTH state AND data existence
 {currentState === TaskState.TASK_PLANNING && !planMd ? (
-  <Text>Creating strategic plan...</Text>  // Still generating
+  <Text>Creating plan...</Text>  // Still generating
 ) : planMd ? (
   <Text>{planMd}</Text>  // Show the plan
 ) : (

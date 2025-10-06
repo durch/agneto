@@ -415,14 +415,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   const superReviewResult = taskStateMachine.getSuperReviewResult();
                   if (superReviewResult) {
                     return (
-                      <Box flexDirection="column">
+                      <>
                         <MarkdownText>{superReviewResult.summary}</MarkdownText>
                         {superReviewResult.issues && superReviewResult.issues.length > 0 && (
                           <Box marginTop={1} flexDirection="column">
                             <Text color="yellow" bold>Issues Found:</Text>
                             {superReviewResult.issues.map((issue, idx) => (
-                              <Box key={idx}>
-                                <Text color="yellow">• </Text>
+                              <Box key={idx} marginTop={idx > 0 ? 1 : 0}>
                                 <MarkdownText>{issue}</MarkdownText>
                               </Box>
                             ))}
@@ -431,7 +430,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                         <Box marginTop={1}>
                           <Text dimColor>Verdict: {superReviewResult.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review'}</Text>
                         </Box>
-                      </Box>
+                      </>
                     );
                   }
                   return <Text dimColor>Performing final quality check...</Text>;
@@ -446,12 +445,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
-                  <Box flexDirection="column">
+                  <>
                     <MarkdownText>{planMd}</MarkdownText>
-                    {planPath && (
-                      <Text dimColor color="gray">Saved to: {planPath}</Text>
-                    )}
-                  </Box>
+                  </>
                 ) : (
                   <Text dimColor>No plan available</Text>
                 )}
@@ -475,9 +471,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
-                  <MarkdownText>
-                    {pendingRefinement}
-                  </MarkdownText>
+                  <MarkdownText>{pendingRefinement}</MarkdownText>
                 ) : currentState === TaskState.TASK_REFINING ? (
                   <Text dimColor>Refining task description...</Text>
                 ) : taskToUse ? (
@@ -512,9 +506,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {reviewerOutput || coderOutput ? (
-                  <MarkdownText>
-                    {reviewerOutput || coderOutput || ''}
-                  </MarkdownText>
+                  <MarkdownText>{reviewerOutput || coderOutput || ''}</MarkdownText>
                 ) : (
                   <Text dimColor>Processing...</Text>
                 )}
@@ -566,12 +558,12 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {curmudgeonFeedback ? (
-                  <Box flexDirection="column">
+                  <>
                     <MarkdownText>{curmudgeonFeedback}</MarkdownText>
                     <Box marginTop={1}>
                       <Text dimColor>Simplification attempt {simplificationCount + 1}/4</Text>
                     </Box>
-                  </Box>
+                  </>
                 ) : (
                   <Text dimColor>Reviewing plan for over-engineering...</Text>
                 )}
@@ -585,12 +577,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
-                  <Box flexDirection="column">
+                  <>
                     <MarkdownText>{planMd}</MarkdownText>
-                    {planPath && (
-                      <Text dimColor color="gray">Saved to: {planPath}</Text>
-                    )}
-                  </Box>
+                  </>
                 ) : (
                   <Text dimColor>Creating simplified plan...</Text>
                 )}
@@ -606,14 +595,11 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 {currentState === TaskState.TASK_REFINING ? (
                   <Text dimColor>Waiting for task refinement...</Text>
                 ) : currentState === TaskState.TASK_PLANNING && !planMd ? (
-                  <Text dimColor>Creating strategic plan...</Text>
+                  <Text dimColor>Creating plan...</Text>
                 ) : planMd ? (
-                  <Box flexDirection="column">
+                  <>
                     <MarkdownText>{planMd}</MarkdownText>
-                    {planPath && (
-                      <Text dimColor color="gray">Saved to: {planPath}</Text>
-                    )}
-                  </Box>
+                  </>
                 ) : (
                   <Text dimColor>Plan created, under review...</Text>
                 )}
@@ -657,7 +643,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             if (currentState === TaskState.TASK_REFINING) {
               baseStatus = 'Refining task description...';
             } else if (currentState === TaskState.TASK_PLANNING) {
-              baseStatus = 'Creating strategic plan...';
+              baseStatus = 'Creating plan...';
             } else if (currentState === TaskState.TASK_CURMUDGEONING) {
               baseStatus = 'Reviewing plan complexity...';
             } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
