@@ -73,6 +73,19 @@ async function checkAndWaitForInjectionPause(
   }
 }
 
+/**
+ * Wait for user approval or rejection of the plan.
+ * AIDEV-NOTE: This helper prevents deadlock by listening for both approve and reject commands.
+ * Historical bug: Using waitForCommand('plan:approve') alone caused deadlock on rejection.
+ */
+async function waitForPlanApproval(
+  commandBus: CommandBus,
+  taskStateMachine: TaskStateMachine
+): Promise<PlanFeedback> {
+  taskStateMachine.setPlanAwaitingApproval();
+  return await commandBus.waitForAnyCommand<PlanFeedback>(['plan:approve', 'plan:reject']);
+}
+
 export async function runTask(taskId: string, humanTask: string, options?: TaskOptions) {
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId, options?.baseBranch);
@@ -386,6 +399,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             }
                         }
 
+                        // Signal UI that refinement is ready for approval
+                        taskStateMachine.setRefinementAwaitingApproval();
+
                         // Wait for approval/rejection via CommandBus
                         const approvalFeedback = await commandBus.waitForAnyCommand<RefinementFeedback>(['refinement:approve', 'refinement:reject']);
 
@@ -522,11 +538,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         // Interactive mode: show plan to user for approval
                         if (inkInstance && !options?.nonInteractive) {
-                            // Signal UI that plan is ready for approval
-                            taskStateMachine.setPlanAwaitingApproval();
-
-                            // Wait for plan feedback via CommandBus
-                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
+                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                             if (feedback.type === "approve") {
                                 log.orchestrator("Plan approved by user.");
@@ -550,11 +563,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         // Interactive mode: show plan to user for approval
                         if (inkInstance && !options?.nonInteractive) {
-                            // Signal UI that plan is ready for approval
-                            taskStateMachine.setPlanAwaitingApproval();
-
-                            // Wait for plan feedback via CommandBus
-                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
+                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                             if (feedback.type === "approve") {
                                 log.orchestrator("Plan approved by user after max simplification attempts.");
@@ -593,11 +603,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                             // Interactive mode: show plan to user for approval
                             if (inkInstance && !options?.nonInteractive) {
-                                // Signal UI that plan is ready for approval
-                                taskStateMachine.setPlanAwaitingApproval();
-
-                                // Wait for plan feedback via CommandBus
-                                const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
+                                // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                                 if (feedback.type === "approve") {
                                     log.orchestrator("Plan approved by user (Curmudgeon had no concerns).");
@@ -632,11 +639,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                         // Interactive mode: show plan to user for final approval
                                         if (inkInstance && !options?.nonInteractive) {
-                                            // Signal UI that plan is ready for approval
-                                            taskStateMachine.setPlanAwaitingApproval();
-
-                                            // Wait for plan feedback via CommandBus
-                                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
+                                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                                             if (feedback.type === "approve") {
                                                 log.orchestrator("Plan approved by user.");
@@ -662,11 +666,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                             // Interactive mode: show plan to user for approval
                                             if (inkInstance && !options?.nonInteractive) {
-                                                // Signal UI that plan is ready for approval
-                                                taskStateMachine.setPlanAwaitingApproval();
-
-                                                // Wait for plan feedback via CommandBus
-                                                const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
+                                                // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                                const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                                                 if (feedback.type === "approve") {
                                                     log.orchestrator("Plan approved by user after max simplification attempts.");
@@ -696,11 +697,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                         // Interactive mode: show to user for decision
                                         if (inkInstance && !options?.nonInteractive) {
-                                            // Signal UI that plan is ready for approval
-                                            taskStateMachine.setPlanAwaitingApproval();
-
-                                            // Wait for plan feedback via CommandBus
-                                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
+                                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                                             if (feedback.type === "approve") {
                                                 log.orchestrator("User overrode Curmudgeon rejection.");
@@ -724,11 +722,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                         // Always show to user when human review needed
                                         if (inkInstance && !options?.nonInteractive) {
-                                            // Signal UI that plan is ready for approval
-                                            taskStateMachine.setPlanAwaitingApproval();
-
-                                            // Wait for plan feedback via CommandBus
-                                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
+                                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                                             if (feedback.type === "approve") {
                                                 log.orchestrator("Human approved plan.");
@@ -758,11 +753,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         if (inkInstance && !options?.nonInteractive) {
                             log.orchestrator("Curmudgeon review failed. Requesting user approval for plan.");
 
-                            // Signal UI that plan is ready for approval
-                            taskStateMachine.setPlanAwaitingApproval();
-
-                            // Wait for plan feedback via CommandBus
-                            const feedback = await commandBus.waitForCommand<PlanFeedback>('plan:approve');
+                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                             if (feedback.type === "approve") {
                                 log.orchestrator("Plan approved by user (Curmudgeon review failed).");
@@ -891,6 +883,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (superReviewResult.verdict === "needs-human") {
                         log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
+
+                        // Signal UI that SuperReviewer results are ready for approval
+                        taskStateMachine.setSuperReviewAwaitingApproval();
 
                         // Wait for UI decision via CommandBus
                         const humanDecision = await commandBus.waitForAnyCommand<SuperReviewerDecision>(['superreview:approve', 'superreview:retry', 'superreview:abandon']);
@@ -1348,6 +1343,9 @@ async function runRestoredTask(
                         if (superReviewResult.verdict === "needs-human") {
                             log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
                             taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
+
+                            // Signal UI that SuperReviewer results are ready for approval
+                            taskStateMachine.setSuperReviewAwaitingApproval();
 
                             // Wait for UI decision via CommandBus (event-driven pattern)
                             const humanDecision = await commandBus.waitForAnyCommand<SuperReviewerDecision>(['superreview:approve', 'superreview:retry', 'superreview:abandon']);

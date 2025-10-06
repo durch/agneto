@@ -413,6 +413,16 @@ export class TaskStateMachine extends EventEmitter {
     this.emit('plan:awaiting_approval');
   }
 
+  // Signal that refinement is ready for user approval
+  setRefinementAwaitingApproval(): void {
+    this.emit('refinement:awaiting_approval');
+  }
+
+  // Signal that SuperReviewer results are ready for user decision
+  setSuperReviewAwaitingApproval(): void {
+    this.emit('superreview:awaiting_approval');
+  }
+
   // Check if we can continue processing
   canContinue(): boolean {
     return ![TaskState.TASK_COMPLETE, TaskState.TASK_ABANDONED].includes(

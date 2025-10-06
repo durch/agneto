@@ -51,6 +51,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const [isProcessingFeedback, setIsProcessingFeedback] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [showPlanApproval, setShowPlanApproval] = useState(false);
+  const [showRefinementApproval, setShowRefinementApproval] = useState(false);
+  const [showSuperReviewApproval, setShowSuperReviewApproval] = useState(false);
 
   // Structured modal state
   const [modalState, setModalState] = useState<ModalState>({
@@ -142,6 +144,20 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       setShowPlanApproval(true);
     };
 
+    const handleRefinementAwaitingApproval = () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] handleRefinementAwaitingApproval: showing refinement approval menu');
+      }
+      setShowRefinementApproval(true);
+    };
+
+    const handleSuperReviewAwaitingApproval = () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] handleSuperReviewAwaitingApproval: showing superreview approval menu');
+      }
+      setShowSuperReviewApproval(true);
+    };
+
     // Subscribe to events
     taskStateMachine.on('activity:updated', handleDataUpdate);
     taskStateMachine.on('tool:status', handleDataUpdate);
@@ -151,6 +167,8 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     taskStateMachine.on('question:answering', handleDataUpdate);
     taskStateMachine.on('curmudgeon:feedback', handleDataUpdate);
     taskStateMachine.on('plan:awaiting_approval', handlePlanAwaitingApproval);
+    taskStateMachine.on('refinement:awaiting_approval', handleRefinementAwaitingApproval);
+    taskStateMachine.on('superreview:awaiting_approval', handleSuperReviewAwaitingApproval);
 
     // Cleanup on unmount
     return () => {
@@ -165,13 +183,21 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       taskStateMachine.off('question:answering', handleDataUpdate);
       taskStateMachine.off('curmudgeon:feedback', handleDataUpdate);
       taskStateMachine.off('plan:awaiting_approval', handlePlanAwaitingApproval);
+      taskStateMachine.off('refinement:awaiting_approval', handleRefinementAwaitingApproval);
+      taskStateMachine.off('superreview:awaiting_approval', handleSuperReviewAwaitingApproval);
     };
   }, [taskStateMachine]);
 
-  // Reset showPlanApproval when leaving TASK_CURMUDGEONING state
+  // Reset approval flags when leaving their respective states
   React.useEffect(() => {
     if (currentState !== TaskState.TASK_CURMUDGEONING) {
       setShowPlanApproval(false);
+    }
+    if (currentState !== TaskState.TASK_REFINING) {
+      setShowRefinementApproval(false);
+    }
+    if (currentState !== TaskState.TASK_SUPER_REVIEWING) {
+      setShowSuperReviewApproval(false);
     }
   }, [currentState]);
 
@@ -213,6 +239,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Handle refinement approve action
   const handleRefinementApprove = async () => {
+    setShowRefinementApproval(false); // Hide menu immediately
     setIsProcessingFeedback(true);
     setLastAction('Approved refinement');
 
@@ -226,6 +253,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Handle refinement reject action - opens modal to collect feedback
   const handleRefinementReject = () => {
+    setShowRefinementApproval(false); // Hide menu immediately
     openTextInputModal(
       'refinement',
       'Reject Refinement',
@@ -600,10 +628,10 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor={
-          pendingRefinement ||
+          showRefinementApproval ||
           showPlanApproval ||
-          (taskStateMachine.getCurrentQuestion() && !isAnsweringQuestion) ||
-          (taskStateMachine.getSuperReviewResult()?.verdict === 'needs-human')
+          showSuperReviewApproval ||
+          (taskStateMachine.getCurrentQuestion() && !isAnsweringQuestion)
             ? "yellow"
             : "blue"
         }
@@ -663,7 +691,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           })()}
 
           {/* Interactive Instructions - Show for refinement or planning states */}
-          {currentState === TaskState.TASK_REFINING && pendingRefinement && (
+          {showRefinementApproval && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Refined Task Ready for Review</Text>
               <Box marginTop={1}>
@@ -719,7 +747,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult() && (
+          {showSuperReviewApproval && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Quality Check Complete</Text>
               <Box marginTop={1}>
@@ -730,6 +758,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                     { label: 'Abandon Task', value: 'abandon' }
                   ]}
                   onSelect={async (item) => {
+                    setShowSuperReviewApproval(false); // Hide menu immediately
                     if (item.value === 'approve') {
                       await commandBus.sendCommand({ type: 'superreview:approve' });
                     } else if (item.value === 'retry') {

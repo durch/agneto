@@ -169,13 +169,11 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }
         const color = level === 1 ? 'cyan' : level === 2 ? 'yellow' : level === 3 ? 'blue' : 'white';
         elements.push(
           <Box key={key} marginTop={level === 1 ? 1 : 0}>
-            <Text>
-              {segments.map((seg, sIdx) => (
-                <Text key={`seg-${sIdx}`} color={color} bold italic={seg.italic}>
-                  {seg.text}
-                </Text>
-              ))}
-            </Text>
+            {segments.map((seg, sIdx) => (
+              <Text key={`seg-${sIdx}`} color={color} bold italic={seg.italic}>
+                {seg.text}
+              </Text>
+            ))}
           </Box>
         );
       }
@@ -203,22 +201,20 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }
         elements.push(
           <Box key={key} paddingLeft={Math.floor(indent / 2)}>
             <Text>• </Text>
-            <Text>
-              {segments.map((seg, sIdx) => {
-                const highlighted = highlightKeywords(seg);
-                return (
-                  <Text
-                    key={`seg-${sIdx}`}
-                    bold={highlighted.bold}
-                    italic={highlighted.italic}
-                    color={highlighted.code ? 'yellow' : highlighted.color}
-                    dimColor={highlighted.code}
-                  >
-                    {highlighted.text}
-                  </Text>
-                );
-              })}
-            </Text>
+            {segments.map((seg, sIdx) => {
+              const highlighted = highlightKeywords(seg);
+              return (
+                <Text
+                  key={`seg-${sIdx}`}
+                  bold={highlighted.bold}
+                  italic={highlighted.italic}
+                  color={highlighted.code ? 'yellow' : highlighted.color}
+                  dimColor={highlighted.code}
+                >
+                  {highlighted.text}
+                </Text>
+              );
+            })}
           </Box>
         );
       }
@@ -235,22 +231,20 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }
     const segments = parseInline(line);
     elements.push(
       <Box key={key}>
-        <Text>
-          {segments.map((seg, sIdx) => {
-            const highlighted = highlightKeywords(seg);
-            return (
-              <Text
-                key={`seg-${sIdx}`}
-                bold={highlighted.bold}
-                italic={highlighted.italic}
-                color={highlighted.code ? 'yellow' : highlighted.color}
-                dimColor={highlighted.code}
-              >
-                {highlighted.text}
-              </Text>
-            );
-          })}
-        </Text>
+        {segments.map((seg, sIdx) => {
+          const highlighted = highlightKeywords(seg);
+          return (
+            <Text
+              key={`seg-${sIdx}`}
+              bold={highlighted.bold}
+              italic={highlighted.italic}
+              color={highlighted.code ? 'yellow' : highlighted.color}
+              dimColor={highlighted.code}
+            >
+              {highlighted.text}
+            </Text>
+          );
+        })}
       </Box>
     );
   });
