@@ -9,6 +9,7 @@ import { Text, Box } from 'ink';
 interface MarkdownTextProps {
   children: string;
   maxLines?: number;
+  maxHeight?: number;
 }
 
 // Markdown detection helpers
@@ -129,10 +130,11 @@ function highlightKeywords(segment: InlineSegment): InlineSegment {
   return segment;
 }
 
-export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }) => {
+export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines, maxHeight }) => {
   const lines = children.split('\n');
-  const displayLines = maxLines ? lines.slice(0, maxLines) : lines;
-  const isTruncated = maxLines && lines.length > maxLines;
+  const estimatedMaxLines = maxHeight ? Math.floor(maxHeight * 0.8) : maxLines;
+  const displayLines = estimatedMaxLines ? lines.slice(0, estimatedMaxLines) : lines;
+  const isTruncated = estimatedMaxLines && lines.length > estimatedMaxLines;
 
   const elements: React.ReactNode[] = [];
   let inCodeBlock = false;
