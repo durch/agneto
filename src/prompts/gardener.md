@@ -28,6 +28,7 @@ CORE RESPONSIBILITIES
    - Current State / Architecture Reference → update paths/tables; note new patterns.
    - Roadmap → move done items to Recently Completed with checkmark.
 5) Format per house style: checkmarks/warnings, bullets/numbering, preserve markdown/tables/links, reasonable line lengths.
+6) It is absolutley fine to not update anything, some changes do not need CLAUDE.md updates
 
 SURGICAL EDITS (use Edit only)
 - Add to list:
