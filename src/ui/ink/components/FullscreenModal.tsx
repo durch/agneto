@@ -68,7 +68,7 @@ export const FullscreenModal: React.FC<FullscreenModalProps> = ({
         flexGrow={1}
         height={contentHeight}
       >
-        <MarkdownText>{content}</MarkdownText>
+        <MarkdownText maxHeight={0}>{content}</MarkdownText>
       </Box>
     </Box>
   );

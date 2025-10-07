@@ -369,7 +369,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         {needsHumanReview && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="yellow" bold>⚠ Human Review Required</Text>
-            <MarkdownText>{humanReviewContext || ''}</MarkdownText>
+            <MarkdownText maxHeight={50}>{humanReviewContext || ''}</MarkdownText>
             <Box marginTop={1}>
               <SelectInput
                 items={[

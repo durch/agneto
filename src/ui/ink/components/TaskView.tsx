@@ -64,7 +64,7 @@ export const TaskView: React.FC<TaskViewProps> = ({
         flexGrow={1}
         height={contentHeight}
       >
-        <MarkdownText>{taskDescription}</MarkdownText>
+        <MarkdownText maxHeight={0}>{taskDescription}</MarkdownText>
       </Box>
     </Box>
   );
