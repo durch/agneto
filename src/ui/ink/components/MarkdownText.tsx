@@ -10,14 +10,18 @@ import { prettyPrint } from '../../pretty.js';
 interface MarkdownTextProps {
   children: string;
   maxLines?: number;
+  maxHeight?: number;
 }
 
-export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines }) => {
-  // Use prettyPrint to format markdown with chalk ANSI codes
+export const MarkdownText: React.FC<MarkdownTextProps> = ({ children, maxLines, maxHeight }) => {
   const formatted = prettyPrint(children, { width: 120 });
   const lines = formatted.split('\n');
-  const displayLines = maxLines ? lines.slice(0, maxLines) : lines;
-  const isTruncated = maxLines && lines.length > maxLines;
+
+  const normalizedMaxHeight = typeof maxHeight === 'number' && maxHeight > 0 ? Math.floor(maxHeight) : undefined;
+  const limit = maxLines ?? normalizedMaxHeight;
+
+  const displayLines = limit ? lines.slice(0, limit) : lines;
+  const isTruncated = typeof limit === 'number' && lines.length > limit;
   const content = displayLines.join('\n');
 
   return (

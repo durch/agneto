@@ -365,6 +365,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                      isGardening ? 'cyan' :
                      (isExecuting ? 'yellow' : 'blue');
 
+  // Calculate maxHeight for MarkdownText instances (side-by-side panels = full height per pane)
+  const paneHeight = availableContentHeight;
+
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={phaseColor} padding={1} flexGrow={0}>
       {/* Top row: Refined Task and Plan Content panels */}
@@ -397,7 +400,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {beanCounterOutput ? (
-                  <MarkdownText>{beanCounterOutput}</MarkdownText>
+                  <MarkdownText maxHeight={paneHeight}>{beanCounterOutput}</MarkdownText>
                 ) : (
                   <Text dimColor>Determining work chunk...</Text>
                 )}
@@ -414,15 +417,20 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 {(() => {
                   const superReviewResult = taskStateMachine.getSuperReviewResult();
                   if (superReviewResult) {
+                    // Calculate proportional height for issues list (reserve space for summary + verdict)
+                    const issueHeight = superReviewResult.issues && superReviewResult.issues.length > 0
+                      ? Math.floor(paneHeight / (superReviewResult.issues.length + 2))
+                      : paneHeight;
                     return (
-                      <>
-                        <MarkdownText>{superReviewResult.summary}</MarkdownText>
+                      <Box flexDirection="column">
+                        <MarkdownText maxHeight={issueHeight}>{superReviewResult.summary}</MarkdownText>
                         {superReviewResult.issues && superReviewResult.issues.length > 0 && (
                           <Box marginTop={1} flexDirection="column">
                             <Text color="yellow" bold>Issues Found:</Text>
                             {superReviewResult.issues.map((issue, idx) => (
-                              <Box key={idx} marginTop={idx > 0 ? 1 : 0}>
-                                <MarkdownText>{issue}</MarkdownText>
+                              <Box key={idx}>
+                                <Text color="yellow">• </Text>
+                                <MarkdownText maxHeight={issueHeight}>{issue}</MarkdownText>
                               </Box>
                             ))}
                           </Box>
@@ -430,7 +438,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                         <Box marginTop={1}>
                           <Text dimColor>Verdict: {superReviewResult.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review'}</Text>
                         </Box>
-                      </>
+                      </Box>
                     );
                   }
                   return <Text dimColor>Performing final quality check...</Text>;
@@ -445,9 +453,12 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
-                  <>
-                    <MarkdownText>{planMd}</MarkdownText>
-                  </>
+                  <Box flexDirection="column">
+                    <MarkdownText maxHeight={paneHeight}>{planMd}</MarkdownText>
+                    {planPath && (
+                      <Text dimColor color="gray">Saved to: {planPath}</Text>
+                    )}
+                  </Box>
                 ) : (
                   <Text dimColor>No plan available</Text>
                 )}
@@ -460,7 +471,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
-                <MarkdownText>{previousCurmudgeonFeedback}</MarkdownText>
+                <MarkdownText maxHeight={paneHeight}>{previousCurmudgeonFeedback}</MarkdownText>
               </Box>
             </>
           ) : (
@@ -471,11 +482,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
-                  <MarkdownText>{pendingRefinement}</MarkdownText>
+                  <MarkdownText maxHeight={paneHeight}>
+                    {pendingRefinement}
+                  </MarkdownText>
                 ) : currentState === TaskState.TASK_REFINING ? (
                   <Text dimColor>Refining task description...</Text>
                 ) : taskToUse ? (
-                  <MarkdownText>{taskToUse}</MarkdownText>
+                  <MarkdownText maxHeight={paneHeight}>{taskToUse}</MarkdownText>
                 ) : (
                   <Text dimColor>No task description available</Text>
                 )}
@@ -506,7 +519,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {reviewerOutput || coderOutput ? (
-                  <MarkdownText>{reviewerOutput || coderOutput || ''}</MarkdownText>
+                  <MarkdownText maxHeight={paneHeight}>
+                    {reviewerOutput || coderOutput || ''}
+                  </MarkdownText>
                 ) : (
                   <Text dimColor>Processing...</Text>
                 )}
@@ -558,12 +573,12 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {curmudgeonFeedback ? (
-                  <>
-                    <MarkdownText>{curmudgeonFeedback}</MarkdownText>
+                  <Box flexDirection="column">
+                    <MarkdownText maxHeight={paneHeight}>{curmudgeonFeedback}</MarkdownText>
                     <Box marginTop={1}>
                       <Text dimColor>Simplification attempt {simplificationCount + 1}/4</Text>
                     </Box>
-                  </>
+                  </Box>
                 ) : (
                   <Text dimColor>Reviewing plan for over-engineering...</Text>
                 )}
@@ -577,9 +592,12 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {planMd ? (
-                  <>
-                    <MarkdownText>{planMd}</MarkdownText>
-                  </>
+                  <Box flexDirection="column">
+                    <MarkdownText maxHeight={paneHeight}>{planMd}</MarkdownText>
+                    {planPath && (
+                      <Text dimColor color="gray">Saved to: {planPath}</Text>
+                    )}
+                  </Box>
                 ) : (
                   <Text dimColor>Creating simplified plan...</Text>
                 )}
@@ -595,11 +613,14 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 {currentState === TaskState.TASK_REFINING ? (
                   <Text dimColor>Waiting for task refinement...</Text>
                 ) : currentState === TaskState.TASK_PLANNING && !planMd ? (
-                  <Text dimColor>Creating plan...</Text>
+                  <Text dimColor>Creating strategic plan...</Text>
                 ) : planMd ? (
-                  <>
-                    <MarkdownText>{planMd}</MarkdownText>
-                  </>
+                  <Box flexDirection="column">
+                    <MarkdownText maxHeight={paneHeight}>{planMd}</MarkdownText>
+                    {planPath && (
+                      <Text dimColor color="gray">Saved to: {planPath}</Text>
+                    )}
+                  </Box>
                 ) : (
                   <Text dimColor>Plan created, under review...</Text>
                 )}
@@ -643,7 +664,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             if (currentState === TaskState.TASK_REFINING) {
               baseStatus = 'Refining task description...';
             } else if (currentState === TaskState.TASK_PLANNING) {
-              baseStatus = 'Creating plan...';
+              baseStatus = 'Creating strategic plan...';
             } else if (currentState === TaskState.TASK_CURMUDGEONING) {
               baseStatus = 'Reviewing plan complexity...';
             } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
