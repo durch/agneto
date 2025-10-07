@@ -25,6 +25,27 @@ export interface CurmudgeonResult {
   feedback: string;
 }
 
+// Agneto configuration types
+export interface AgnetoConfig {
+  prompts?: Record<string, string>;
+}
+
+/**
+ * Runtime validation for AgnetoConfig prompts field
+ * Ensures prompts is a valid object (not array, not null) if present
+ */
+export function isValidPromptsConfig(config: any): config is AgnetoConfig {
+  // Config can be undefined or have no prompts field - that's valid
+  if (!config || !config.prompts) return true;
+
+  // If prompts exists, it must be a plain object
+  return (
+    typeof config.prompts === 'object' &&
+    config.prompts !== null &&
+    !Array.isArray(config.prompts)
+  );
+}
+
 // Task refinement types
 export interface RefinedTask {
   goal: string;
