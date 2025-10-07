@@ -200,6 +200,12 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   // Bean Counter pane gets most of available vertical space (minus header, status panel, margins)
   const beanCounterHeight = Math.max(15, Math.floor(terminalHeight * 0.5));
 
+  // Calculate heights for Coder and Reviewer panes
+  const HEADER_FOOTER_HEIGHT = 10; // Overhead for borders, padding, status panel
+  const agentPaneHeight = Math.max(10, Math.floor((terminalHeight - HEADER_FOOTER_HEIGHT) * 0.5));
+  const coderHeight = Math.floor(agentPaneHeight / 2);
+  const reviewerHeight = Math.floor(agentPaneHeight / 2);
+
   // Determine left and right pane content based on current state
   const leftTitle = '🧮 Bean Counter Chunk';
   const leftContent = currentState === State.BEAN_COUNTING ? 'Bean Counting!' : (beanCounterOutput || 'Determining work chunk...');
@@ -267,7 +273,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             <Text dimColor>[Q]</Text>
           </Box>
           <Box marginTop={1}>
-            <MarkdownText maxLines={beanCounterHeight}>{leftContent}</MarkdownText>
+            <MarkdownText maxHeight={beanCounterHeight}>{leftContent}</MarkdownText>
           </Box>
         </Box>
 
@@ -302,7 +308,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               </Box>
             )}
             {getActiveAgent(currentState) !== 'coder' && coderSummary && (
-              <MarkdownText>{coderSummary}</MarkdownText>
+              <MarkdownText maxHeight={coderHeight}>{coderSummary}</MarkdownText>
             )}
           </Box>
 
@@ -328,7 +334,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               </Box>
             )}
             {getActiveAgent(currentState) !== 'reviewer' && reviewerSummary && (
-              <MarkdownText>{reviewerSummary}</MarkdownText>
+              <MarkdownText maxHeight={reviewerHeight}>{reviewerSummary}</MarkdownText>
             )}
           </Box>
         </Box>
