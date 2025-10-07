@@ -1586,6 +1586,7 @@ async function runExecutionStateMachine(
 
                     if (chunk.type === "TASK_COMPLETE") {
                         log.orchestrator("🎉 Bean Counter: Task completed!");
+                        stateMachine.setAgentOutput('bean', rawResponse);
                         stateMachine.transition(Event.TASK_COMPLETED);
                     } else {
                         log.orchestrator(`📋 Bean Counter: Next chunk - ${chunk.description}`);
