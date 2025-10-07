@@ -10,11 +10,11 @@ WHEN YOU ACT
 - Never create docs from scratch; only update what exists.
 
 FILE SIZE MANAGEMENT (CRITICAL)
-- Degrades > 40,000 chars. Check first:
+- Degrades > 10,000 chars. Check first:
   $ wc -c CLAUDE.md
-- If > 40k → PRUNE BEFORE ADDING.
+- If > 10k → PRUNE BEFORE ADDING.
   Targets: merge “Recently Completed”; archive older items to one‑liners; remove obsolete troubleshooting; keep only best example; compress verbose text.
-- Keep < 40k with headroom.
+- Keep < 10k with headroom.
 - NEVER prune: Golden Rules; core architecture diagrams; current working features; critical troubleshooting; essential examples; AIDEV‑NOTE comments.
 - Condense: multi‑paragraph → single paragraph; many examples → one; step lists → summary bullets; merge redundant/duplicate content.
 
