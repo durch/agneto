@@ -28,6 +28,7 @@ export type Command =
 export class CommandBus extends EventEmitter {
   private commandQueue: Array<{ command: Command; resolve: (value: any) => void }> = [];
   private processing: boolean = false;
+  private pendingCommandTypes: Set<string> = new Set();
 
   /**
    * Send a command from UI to orchestrator
@@ -68,57 +69,65 @@ export class CommandBus extends EventEmitter {
    * Used by orchestrator to wait for user input
    */
   async waitForCommand<T = void>(type: Command['type']): Promise<T> {
-    return new Promise((resolve) => {
-      const handler = (command: Command, commandResolve: (value: any) => void) => {
-        if (command.type === type) {
-          this.off('command', handler);
+    // Register that we're waiting for this command type
+    this.pendingCommandTypes.add(type);
 
-          // Extract the relevant data based on command type
-          let result: any;
-          switch (command.type) {
-            case 'plan:approve':
-              result = { type: 'approve' } as PlanFeedback;
-              break;
-            case 'plan:reject':
-              result = { type: 'wrong-approach', details: command.details } as PlanFeedback;
-              break;
-            case 'refinement:approve':
-              result = { type: 'approve' } as RefinementFeedback;
-              break;
-            case 'refinement:reject':
-              result = { type: 'reject', details: command.details } as RefinementFeedback;
-              break;
-            case 'question:answer':
-              result = command.answer;
-              break;
-            case 'superreview:approve':
-              result = { action: 'approve' } as SuperReviewerDecision;
-              break;
-            case 'superreview:retry':
-              result = { action: 'retry', feedback: command.feedback } as SuperReviewerDecision;
-              break;
-            case 'superreview:abandon':
-              result = { action: 'abandon' } as SuperReviewerDecision;
-              break;
-            case 'humanreview:approve':
-              result = { decision: 'approve', feedback: command.feedback } as HumanInteractionResult;
-              break;
-            case 'humanreview:retry':
-              result = { decision: 'retry', feedback: command.feedback } as HumanInteractionResult;
-              break;
-            case 'humanreview:reject':
-              result = { decision: 'reject', feedback: command.feedback } as HumanInteractionResult;
-              break;
+    try {
+      return await new Promise((resolve) => {
+        const handler = (command: Command, commandResolve: (value: any) => void) => {
+          if (command.type === type) {
+            this.off('command', handler);
+
+            // Extract the relevant data based on command type
+            let result: any;
+            switch (command.type) {
+              case 'plan:approve':
+                result = { type: 'approve' } as PlanFeedback;
+                break;
+              case 'plan:reject':
+                result = { type: 'wrong-approach', details: command.details } as PlanFeedback;
+                break;
+              case 'refinement:approve':
+                result = { type: 'approve' } as RefinementFeedback;
+                break;
+              case 'refinement:reject':
+                result = { type: 'reject', details: command.details } as RefinementFeedback;
+                break;
+              case 'question:answer':
+                result = command.answer;
+                break;
+              case 'superreview:approve':
+                result = { action: 'approve' } as SuperReviewerDecision;
+                break;
+              case 'superreview:retry':
+                result = { action: 'retry', feedback: command.feedback } as SuperReviewerDecision;
+                break;
+              case 'superreview:abandon':
+                result = { action: 'abandon' } as SuperReviewerDecision;
+                break;
+              case 'humanreview:approve':
+                result = { decision: 'approve', feedback: command.feedback } as HumanInteractionResult;
+                break;
+              case 'humanreview:retry':
+                result = { decision: 'retry', feedback: command.feedback } as HumanInteractionResult;
+                break;
+              case 'humanreview:reject':
+                result = { decision: 'reject', feedback: command.feedback } as HumanInteractionResult;
+                break;
+            }
+
+            commandResolve(result);
+            this.commandComplete();
+            resolve(result);
           }
+        };
 
-          commandResolve(result);
-          this.commandComplete();
-          resolve(result);
-        }
-      };
-
-      this.on('command', handler);
-    });
+        this.on('command', handler);
+      });
+    } finally {
+      // Always clean up the pending command type, even on error/timeout
+      this.pendingCommandTypes.delete(type);
+    }
   }
 
   /**
@@ -126,57 +135,65 @@ export class CommandBus extends EventEmitter {
    * Useful when multiple command types are valid
    */
   async waitForAnyCommand<T = void>(types: Command['type'][]): Promise<T> {
-    return new Promise((resolve) => {
-      const handler = (command: Command, commandResolve: (value: any) => void) => {
-        if (types.includes(command.type)) {
-          this.off('command', handler);
+    // Register all command types we're waiting for
+    types.forEach((type) => this.pendingCommandTypes.add(type));
 
-          // Extract the relevant data (same logic as waitForCommand)
-          let result: any;
-          switch (command.type) {
-            case 'plan:approve':
-              result = { type: 'approve' } as PlanFeedback;
-              break;
-            case 'plan:reject':
-              result = { type: 'wrong-approach', details: command.details } as PlanFeedback;
-              break;
-            case 'refinement:approve':
-              result = { type: 'approve' } as RefinementFeedback;
-              break;
-            case 'refinement:reject':
-              result = { type: 'reject', details: command.details } as RefinementFeedback;
-              break;
-            case 'question:answer':
-              result = command.answer;
-              break;
-            case 'superreview:approve':
-              result = { action: 'approve' } as SuperReviewerDecision;
-              break;
-            case 'superreview:retry':
-              result = { action: 'retry', feedback: command.feedback } as SuperReviewerDecision;
-              break;
-            case 'superreview:abandon':
-              result = { action: 'abandon' } as SuperReviewerDecision;
-              break;
-            case 'humanreview:approve':
-              result = { decision: 'approve', feedback: command.feedback } as HumanInteractionResult;
-              break;
-            case 'humanreview:retry':
-              result = { decision: 'retry', feedback: command.feedback } as HumanInteractionResult;
-              break;
-            case 'humanreview:reject':
-              result = { decision: 'reject', feedback: command.feedback } as HumanInteractionResult;
-              break;
+    try {
+      return await new Promise((resolve) => {
+        const handler = (command: Command, commandResolve: (value: any) => void) => {
+          if (types.includes(command.type)) {
+            this.off('command', handler);
+
+            // Extract the relevant data (same logic as waitForCommand)
+            let result: any;
+            switch (command.type) {
+              case 'plan:approve':
+                result = { type: 'approve' } as PlanFeedback;
+                break;
+              case 'plan:reject':
+                result = { type: 'wrong-approach', details: command.details } as PlanFeedback;
+                break;
+              case 'refinement:approve':
+                result = { type: 'approve' } as RefinementFeedback;
+                break;
+              case 'refinement:reject':
+                result = { type: 'reject', details: command.details } as RefinementFeedback;
+                break;
+              case 'question:answer':
+                result = command.answer;
+                break;
+              case 'superreview:approve':
+                result = { action: 'approve' } as SuperReviewerDecision;
+                break;
+              case 'superreview:retry':
+                result = { action: 'retry', feedback: command.feedback } as SuperReviewerDecision;
+                break;
+              case 'superreview:abandon':
+                result = { action: 'abandon' } as SuperReviewerDecision;
+                break;
+              case 'humanreview:approve':
+                result = { decision: 'approve', feedback: command.feedback } as HumanInteractionResult;
+                break;
+              case 'humanreview:retry':
+                result = { decision: 'retry', feedback: command.feedback } as HumanInteractionResult;
+                break;
+              case 'humanreview:reject':
+                result = { decision: 'reject', feedback: command.feedback } as HumanInteractionResult;
+                break;
+            }
+
+            commandResolve(result);
+            this.commandComplete();
+            resolve(result);
           }
+        };
 
-          commandResolve(result);
-          this.commandComplete();
-          resolve(result);
-        }
-      };
-
-      this.on('command', handler);
-    });
+        this.on('command', handler);
+      });
+    } finally {
+      // Always clean up all pending command types, even on error/timeout
+      types.forEach((type) => this.pendingCommandTypes.delete(type));
+    }
   }
 
   /**
@@ -185,5 +202,14 @@ export class CommandBus extends EventEmitter {
   clear(): void {
     this.commandQueue = [];
     this.processing = false;
+  }
+
+  /**
+   * Get list of command types currently being awaited by orchestrator
+   * Returns empty array if no commands are pending
+   * Used by UI to detect if orchestrator is waiting for user input after remounting
+   */
+  getPendingCommandTypes(): string[] {
+    return Array.from(this.pendingCommandTypes);
   }
 }
