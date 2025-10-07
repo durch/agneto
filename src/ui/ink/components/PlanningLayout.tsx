@@ -365,6 +365,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                      isGardening ? 'cyan' :
                      (isExecuting ? 'yellow' : 'blue');
 
+  // Calculate maxHeight for MarkdownText instances (side-by-side panels = full height per pane)
+  const paneHeight = availableContentHeight;
+
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={phaseColor} padding={1} flexGrow={0}>
       {/* Top row: Refined Task and Plan Content panels */}
@@ -397,7 +400,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {beanCounterOutput ? (
-                  <MarkdownText>{beanCounterOutput}</MarkdownText>
+                  <MarkdownText maxHeight={paneHeight}>{beanCounterOutput}</MarkdownText>
                 ) : (
                   <Text dimColor>Determining work chunk...</Text>
                 )}
@@ -414,16 +417,20 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 {(() => {
                   const superReviewResult = taskStateMachine.getSuperReviewResult();
                   if (superReviewResult) {
+                    // Calculate proportional height for issues list (reserve space for summary + verdict)
+                    const issueHeight = superReviewResult.issues && superReviewResult.issues.length > 0
+                      ? Math.floor(paneHeight / (superReviewResult.issues.length + 2))
+                      : paneHeight;
                     return (
                       <Box flexDirection="column">
-                        <MarkdownText>{superReviewResult.summary}</MarkdownText>
+                        <MarkdownText maxHeight={issueHeight}>{superReviewResult.summary}</MarkdownText>
                         {superReviewResult.issues && superReviewResult.issues.length > 0 && (
                           <Box marginTop={1} flexDirection="column">
                             <Text color="yellow" bold>Issues Found:</Text>
                             {superReviewResult.issues.map((issue, idx) => (
                               <Box key={idx}>
                                 <Text color="yellow">• </Text>
-                                <MarkdownText>{issue}</MarkdownText>
+                                <MarkdownText maxHeight={issueHeight}>{issue}</MarkdownText>
                               </Box>
                             ))}
                           </Box>
@@ -447,7 +454,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {planMd ? (
                   <Box flexDirection="column">
-                    <MarkdownText>{planMd}</MarkdownText>
+                    <MarkdownText maxHeight={paneHeight}>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -464,7 +471,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
-                <MarkdownText>{previousCurmudgeonFeedback}</MarkdownText>
+                <MarkdownText maxHeight={paneHeight}>{previousCurmudgeonFeedback}</MarkdownText>
               </Box>
             </>
           ) : (
@@ -475,13 +482,13 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
-                  <MarkdownText>
+                  <MarkdownText maxHeight={paneHeight}>
                     {pendingRefinement}
                   </MarkdownText>
                 ) : currentState === TaskState.TASK_REFINING ? (
                   <Text dimColor>Refining task description...</Text>
                 ) : taskToUse ? (
-                  <MarkdownText>{taskToUse}</MarkdownText>
+                  <MarkdownText maxHeight={paneHeight}>{taskToUse}</MarkdownText>
                 ) : (
                   <Text dimColor>No task description available</Text>
                 )}
@@ -512,7 +519,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {reviewerOutput || coderOutput ? (
-                  <MarkdownText>
+                  <MarkdownText maxHeight={paneHeight}>
                     {reviewerOutput || coderOutput || ''}
                   </MarkdownText>
                 ) : (
@@ -567,7 +574,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {curmudgeonFeedback ? (
                   <Box flexDirection="column">
-                    <MarkdownText>{curmudgeonFeedback}</MarkdownText>
+                    <MarkdownText maxHeight={paneHeight}>{curmudgeonFeedback}</MarkdownText>
                     <Box marginTop={1}>
                       <Text dimColor>Simplification attempt {simplificationCount + 1}/4</Text>
                     </Box>
@@ -586,7 +593,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {planMd ? (
                   <Box flexDirection="column">
-                    <MarkdownText>{planMd}</MarkdownText>
+                    <MarkdownText maxHeight={paneHeight}>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -609,7 +616,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   <Text dimColor>Creating strategic plan...</Text>
                 ) : planMd ? (
                   <Box flexDirection="column">
-                    <MarkdownText>{planMd}</MarkdownText>
+                    <MarkdownText maxHeight={paneHeight}>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
