@@ -158,8 +158,28 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       setBeanCounterOutput(executionStateMachine.getAgentOutput('bean'));
       setCoderSummary(executionStateMachine.getSummary('coder'));
       setReviewerSummary(executionStateMachine.getSummary('reviewer'));
-      setNeedsHumanReview(executionStateMachine.getNeedsHumanReview());
-      setHumanReviewContext(executionStateMachine.getHumanReviewContext());
+
+      // Check if orchestrator is waiting for human review commands
+      const pendingCommands = commandBus.getPendingCommandTypes();
+      const isWaitingForHumanReview = pendingCommands.some(type =>
+        type === 'humanreview:approve' ||
+        type === 'humanreview:retry' ||
+        type === 'humanreview:reject'
+      );
+
+      // Restore human review state if orchestrator is waiting
+      if (isWaitingForHumanReview) {
+        const context = executionStateMachine.getHumanReviewContext();
+        if (context) {
+          setNeedsHumanReview(true);
+          setHumanReviewContext(context);
+        }
+      } else {
+        // Normal operation - read state from execution state machine
+        setNeedsHumanReview(executionStateMachine.getNeedsHumanReview());
+        setHumanReviewContext(executionStateMachine.getHumanReviewContext());
+      }
+
       setToolStatus(executionStateMachine.getToolStatus() || taskStateMachine.getToolStatus());
     };
 
