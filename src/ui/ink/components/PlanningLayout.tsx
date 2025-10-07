@@ -53,6 +53,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const [showPlanApproval, setShowPlanApproval] = useState(false);
   const [showRefinementApproval, setShowRefinementApproval] = useState(false);
   const [showSuperReviewApproval, setShowSuperReviewApproval] = useState(false);
+  const [superReviewComplete, setSuperReviewComplete] = useState(false);
 
   // Structured modal state
   const [modalState, setModalState] = useState<ModalState>({
@@ -121,6 +122,11 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Subscribe to TaskStateMachine events for automatic re-rendering
   React.useEffect(() => {
+    const handleSuperReviewComplete = () => {
+      setSuperReviewComplete(true);
+      handleDataUpdate();
+    };
+
     const handleDataUpdate = () => {
       if (process.env.DEBUG) {
         console.log('[PlanningLayout.tsx] handleDataUpdate: updating React state from TaskStateMachine');
@@ -196,6 +202,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     taskStateMachine.on('plan:awaiting_approval', handlePlanAwaitingApproval);
     taskStateMachine.on('refinement:awaiting_approval', handleRefinementAwaitingApproval);
     taskStateMachine.on('superreview:awaiting_approval', handleSuperReviewAwaitingApproval);
+    taskStateMachine.on('superreview:complete', handleSuperReviewComplete);
 
     // Initialize menu state on mount - restore menus if commands pending
     handleDataUpdate();
@@ -215,6 +222,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       taskStateMachine.off('plan:awaiting_approval', handlePlanAwaitingApproval);
       taskStateMachine.off('refinement:awaiting_approval', handleRefinementAwaitingApproval);
       taskStateMachine.off('superreview:awaiting_approval', handleSuperReviewAwaitingApproval);
+      taskStateMachine.off('superreview:complete', handleSuperReviewComplete);
     };
   }, [taskStateMachine]);
 
@@ -228,6 +236,10 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
     if (currentState !== TaskState.TASK_SUPER_REVIEWING) {
       setShowSuperReviewApproval(false);
+    }
+    // Reset superReviewComplete when entering TASK_SUPER_REVIEWING (handles retries)
+    if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+      setSuperReviewComplete(false);
     }
   }, [currentState]);
 
