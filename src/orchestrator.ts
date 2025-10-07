@@ -977,11 +977,16 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         );
 
                         // Store result for UI display (even if null)
-                        if (gardenerResult) {
+                        if (gardenerResult?.success) {
                             taskStateMachine.setGardenerResult(gardenerResult);
                             log.orchestrator("✅ Documentation updated successfully");
+                            await commitChanges(cwd, 'docs: Update CLAUDE.md documentation');
+                        } else if (gardenerResult) {
+                            // Result exists but success=false
+                            taskStateMachine.setGardenerResult(gardenerResult);
+                            log.orchestrator("⚠️ Documentation update failed (non-blocking)");
                         } else {
-                            log.orchestrator("⚠️ Documentation update skipped or failed (non-blocking)");
+                            log.orchestrator("⚠️ Documentation update skipped (non-blocking)");
                         }
 
                         // UI already updated via gardener:complete event from setGardenerResult()
