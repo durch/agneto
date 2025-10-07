@@ -149,9 +149,6 @@ export function logMergeInstructions(taskId: string): void {
   log.info(`cd .worktrees/${taskId}`);
   log.info("git log --oneline -5");
   log.info("git diff master --stat");
-  log.info("npm run build\n");
-  log.info("To merge and cleanup:");
-  log.info(`npm run merge-task ${taskId}\n`);
-  log.info("Or cleanup without merging:");
-  log.info(`npm run cleanup-task ${taskId}`);
+  log.info("To merge:");
+  log.info(`git merge sandbox/${taskId}\n`);
 }
