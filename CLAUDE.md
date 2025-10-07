@@ -498,7 +498,7 @@ Set `DEBUG=true` to see:
 ### What Works Well
 - ✅ Interactive planning with feedback loop
 - ✅ **Streamlined approval flow** - Automatic Planner ↔ Curmudgeon cycles, single user approval
-- ✅ **Task Refiner clarifying questions** - Interactive Q&A loop for vague task descriptions using CommandBus event-driven pattern
+- ✅ **Task Refiner clarifying questions** - Interactive Q&A loop for vague task descriptions using CommandBus event-driven pattern; questions render with MarkdownText for formatted content display
 - ✅ Safe sandbox execution with git worktrees
 - ✅ Bean Counter coordinated work breakdown (prevents loops!)
 - ✅ Small chunk implementation with frequent review cycles
@@ -765,7 +765,7 @@ Agneto supports real-time agent behavior modification via the Ctrl+I keyboard sh
 - State read dynamically from `taskStateMachine.getXxx()`, not props
 - Commands sent via `commandBus.sendCommand()`, not callback props
 - Uses `ink-select-input` for menu navigation (arrow keys + Enter)
-- **Modal rendering pattern**: All user interaction modals render at App.tsx root level using event subscriptions (`question:asked`, `plan:ready`, `refinement:ready`) for visibility control
+- **Modal rendering pattern**: All user interaction modals render at App.tsx root level using event subscriptions (`question:asked`, `plan:ready`, `refinement:ready`) for visibility control; question content uses MarkdownText component for formatted rendering
 
 **Deprecated Patterns:**
 - ❌ Promise resolver callbacks passed as props - Replaced by CommandBus (completed: refinement approval, plan approval, question answering)
