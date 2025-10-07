@@ -8,6 +8,7 @@ import { StatusIndicator } from './StatusIndicator.js';
 import { TextInputModal } from './TextInputModal.js';
 import { Spinner } from './Spinner.js';
 import { MarkdownText } from './MarkdownText.js';
+import { BeanCounterAnimation } from './BeanCounterAnimation.js';
 
 // TypeScript interface for ExecutionLayout props
 interface ExecutionLayoutProps {
@@ -295,7 +296,11 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             <Text dimColor>[Q]</Text>
           </Box>
           <Box marginTop={1}>
-            <MarkdownText maxHeight={beanCounterHeight}>{leftContent}</MarkdownText>
+            {currentState === State.BEAN_COUNTING ? (
+              <BeanCounterAnimation />
+            ) : (
+              <MarkdownText maxHeight={beanCounterHeight}>{leftContent}</MarkdownText>
+            )}
           </Box>
         </Box>
 
