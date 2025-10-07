@@ -385,7 +385,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (inkInstance) {
                         // Use UI-based refinement with CommandBus flow
                         log.info("🔍 Refining task description...");
-                        const refinerAgent = new RefinerAgent(provider);
+                        const refinerAgent = new RefinerAgent(provider, taskStateMachine);
 
                         // Track Q&A state locally
                         let currentResponse = "";
@@ -466,7 +466,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                     } else {
                         // Fallback to interactive refinement if no UI
-                        const refinerAgent = new RefinerAgent(provider);
+                        const refinerAgent = new RefinerAgent(provider, taskStateMachine);
                         const refinedTask = await interactiveRefinement(refinerAgent, cwd, humanTask, taskId);
 
                         if (refinedTask) {
@@ -972,7 +972,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             cwd,
                             taskId,
                             description,
-                            planContent
+                            planContent,
+                            taskStateMachine
                         );
 
                         // Store result for UI display (even if null)
@@ -1100,7 +1101,7 @@ async function runRestoredTask(
                     case TaskState.TASK_REFINING: {
                         // Task refinement (interactive only)
                         log.info("🔍 Refining task description...");
-                        const refinerAgent = new RefinerAgent(provider);
+                        const refinerAgent = new RefinerAgent(provider, taskStateMachine);
                         const refinedTask = await interactiveRefinement(refinerAgent, cwd, taskStateMachine.getContext().humanTask, taskStateMachine.getContext().taskId);
 
                         if (refinedTask) {
@@ -1405,7 +1406,8 @@ async function runRestoredTask(
                                     cwd,
                                     taskStateMachine.getContext().taskId,
                                     taskDescription,
-                                    planMd
+                                    planMd,
+                                    taskStateMachine
                                 );
 
                                 if (gardenerResult?.success) {
@@ -1436,7 +1438,8 @@ async function runRestoredTask(
                                 cwd,
                                 taskStateMachine.getContext().taskId,
                                 taskDescription,
-                                planMd
+                                planMd,
+                                taskStateMachine
                             );
 
                             if (gardenerResult?.success) {

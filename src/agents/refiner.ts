@@ -10,13 +10,22 @@ export class RefinerAgent {
   private provider: LLMProvider;
   private systemPrompt: string;
   private sessionId: string | undefined;
+  private taskStateMachine?: TaskStateMachine;
 
-  constructor(provider: LLMProvider) {
+  constructor(provider: LLMProvider, taskStateMachine?: TaskStateMachine) {
     this.provider = provider;
+    this.taskStateMachine = taskStateMachine;
     this.systemPrompt = readFileSync(
       new URL("../prompts/refiner.md", import.meta.url),
       "utf8"
     );
+
+    // Append project-specific prompt additions if configured
+    const customPrompt = this.taskStateMachine?.getAgentPromptConfig('refiner');
+    if (customPrompt) {
+      this.systemPrompt += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
+      log.info("🔍 Refiner: Using project-specific prompt additions");
+    }
   }
 
   async refine(
