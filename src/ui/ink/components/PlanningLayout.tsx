@@ -135,6 +135,33 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       setIsAnsweringQuestion(taskStateMachine.getAnsweringQuestion());
       setLiveActivityMessage(taskStateMachine.getLiveActivityMessage());
       setTaskToolStatus(taskStateMachine.getToolStatus());
+
+      // Check if orchestrator is waiting for approval commands - restore menu visibility
+      const pendingCommands = commandBus.getPendingCommandTypes();
+
+      // Restore plan approval menu if waiting
+      const isWaitingForPlanApproval = pendingCommands.some(type =>
+        type === 'plan:approve' || type === 'plan:reject'
+      );
+      if (isWaitingForPlanApproval) {
+        setShowPlanApproval(true);
+      }
+
+      // Restore refinement approval menu if waiting
+      const isWaitingForRefinementApproval = pendingCommands.some(type =>
+        type === 'refinement:approve' || type === 'refinement:reject'
+      );
+      if (isWaitingForRefinementApproval) {
+        setShowRefinementApproval(true);
+      }
+
+      // Restore superreview approval menu if waiting
+      const isWaitingForSuperReviewApproval = pendingCommands.some(type =>
+        type === 'superreview:approve' || type === 'superreview:retry' || type === 'superreview:abandon'
+      );
+      if (isWaitingForSuperReviewApproval) {
+        setShowSuperReviewApproval(true);
+      }
     };
 
     const handlePlanAwaitingApproval = () => {
