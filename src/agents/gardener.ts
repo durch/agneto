@@ -53,14 +53,14 @@ export async function runGardener(
     const claudeMdContent = readFileSync(claudeMdPath, 'utf-8');
     const currentSize = claudeMdContent.length;
 
-    log.info(`📏 CLAUDE.md size: ${currentSize} characters`);
+    log.info(`💩 CLAUDE.md size: ${currentSize} characters`);
   } catch (error) {
     // File might not exist or be readable - continue anyway
     log.warn(`Could not check CLAUDE.md size: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  log.info(`🌱 Gardener: Analyzing task completion for ${params.taskId}`);
-  log.info(`📖 Reading CLAUDE.md from: ${claudeMdPath}`);
+  log.info(`💩 Gardener: Analyzing task completion for ${params.taskId}`);
+  log.info(`💩 Reading CLAUDE.md from: ${claudeMdPath}`);
 
   // Load system prompt from external file
   let systemPrompt = readFileSync(
