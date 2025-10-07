@@ -523,6 +523,7 @@ Set `DEBUG=true` to see:
 - ✅ **Unified event-driven architecture** - All approval flows and question answering use CommandBus pattern for consistency (plan approval, refinement approval, question answering)
 - ✅ **Non-interactive task completion** - UI exits cleanly after Gardener, terminal displays copy-pasteable merge commands for manual execution
 - ✅ **Execution phase-driven UI updates** - ExecutionLayout subscribes to `execution:phase:changed` events for automatic progress tracker and output pane updates independent of agent output
+- ✅ **Dynamic height sizing in ExecutionLayout** - Bean Counter, Coder, and Reviewer panes use `availableContentHeight` prop for responsive terminal boundary handling (matching PlanningLayout pattern)
 
 
 ### Common Gotchas
@@ -757,9 +758,9 @@ Agneto supports real-time agent behavior modification via the Ctrl+I keyboard sh
 
 ### File Organization
 
-- `src/ui/ink/App.tsx` - Main Ink app component; subscribes to TaskStateMachine events; **renders all modals at root level** (plan approval, task refinement, clarifying questions) for consistent fullscreen overlay behavior
-- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval via CommandBus; during `TASK_SUPER_REVIEWING`, displays Bean Counter output until `superreview:complete` event fires, then transitions to SuperReviewer results (left pane) + Gardener status (right pane); split-pane view persists during `TASK_GARDENING` state
-- `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review; injection modal integration
+- `src/ui/ink/App.tsx` - Main Ink app component; subscribes to TaskStateMachine events; **renders all modals at root level** (plan approval, task refinement, clarifying questions) for consistent fullscreen overlay behavior; calculates `availableContentHeight` for content panes (accounts for header, footer, status overhead, margins)
+- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval via CommandBus; during `TASK_SUPER_REVIEWING`, displays Bean Counter output until `superreview:complete` event fires, then transitions to SuperReviewer results (left pane) + Gardener status (right pane); split-pane view persists during `TASK_GARDENING` state; receives `availableContentHeight` for dynamic height sizing
+- `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review; injection modal integration; receives `availableContentHeight`, `terminalHeight`, `terminalWidth` for dynamic pane sizing (Bean Counter, Coder, Reviewer panes)
 - `src/ui/command-bus.ts` - CommandBus class for UI→Orchestrator communication
 - `src/task-state-machine.ts` - Extends EventEmitter, emits events on all state changes
 - State read dynamically from `taskStateMachine.getXxx()`, not props
