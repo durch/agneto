@@ -19,14 +19,20 @@ export async function proposePlan(
     taskStateMachine?: any
 ): Promise<CoderPlanProposal | null> {
     // Load the natural language prompt (no schema injection)
-    const template = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
+    let sys = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
 
     const messages: Msg[] = [];
 
     if (!isInitialized) {
         // First call: establish context with system prompt and chunk
+        const customPrompt = taskStateMachine?.getAgentPromptConfig?.('coder');
+        if (customPrompt) {
+            sys += `\n\n## Custom Instructions\n\n${customPrompt}`;
+            log.coder("🤖 Coder: Using custom prompt from .agneto.json");
+        }
+
         messages.push(
-            { role: "system", content: template },
+            { role: "system", content: sys },
             { role: "user", content: `Current Work Chunk:\n\n${stepDescription}\n\n[PLANNING MODE]\n\nPropose your implementation approach for this chunk.` }
         );
     } else {
@@ -105,14 +111,20 @@ export async function implementPlan(
     taskStateMachine?: any
 ): Promise<string> {
     // Load the natural language prompt (no schema injection)
-    const template = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
+    let sys = readFileSync(new URL("../prompts/coder.md", import.meta.url), "utf8");
 
     const messages: Msg[] = [];
 
     if (!isInitialized) {
         // Should not happen - we should have initialized during planning
+        const customPrompt = taskStateMachine?.getAgentPromptConfig?.('coder');
+        if (customPrompt) {
+            sys += `\n\n## Custom Instructions\n\n${customPrompt}`;
+            log.coder("🤖 Coder: Using custom prompt from .agneto.json");
+        }
+
         messages.push(
-            { role: "system", content: template }
+            { role: "system", content: sys }
         );
     }
 
