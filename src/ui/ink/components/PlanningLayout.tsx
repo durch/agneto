@@ -448,7 +448,22 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 )}
               </Box>
             </>
-          ) : (currentState === TaskState.TASK_SUPER_REVIEWING || currentState === TaskState.TASK_GARDENING) ? (
+          ) : currentState === TaskState.TASK_SUPER_REVIEWING && !superReviewComplete ? (
+            // SuperReviewer running but not complete: Keep showing Bean Counter context
+            <>
+              <Box justifyContent="space-between">
+                <Text color="cyan" bold>🧮 Bean Counter Chunk</Text>
+                <Text dimColor>[Q]</Text>
+              </Box>
+              <Box marginTop={1}>
+                {beanCounterOutput ? (
+                  <MarkdownText maxHeight={paneHeight}>{beanCounterOutput}</MarkdownText>
+                ) : (
+                  <Text dimColor>Determining work chunk...</Text>
+                )}
+              </Box>
+            </>
+          ) : ((currentState === TaskState.TASK_SUPER_REVIEWING && superReviewComplete) || currentState === TaskState.TASK_GARDENING) ? (
             // SuperReviewer/Gardening: Show quality check results on left
             <>
               <Box justifyContent="space-between">
