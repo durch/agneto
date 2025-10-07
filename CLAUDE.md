@@ -517,7 +517,7 @@ Set `DEBUG=true` to see:
 - ✅ **State machine architecture** - Clear task and execution lifecycle
 - ✅ **Natural language protocol** - Robust agent communication
 - ✅ **Menu-based UI navigation** - Arrow key + Enter selection for all approvals, no shortcut conflicts
-- ✅ **Separate SuperReviewer and Gardener states** - Independent `TASK_GARDENING` state ensures documentation update results are visible before task finalization; split-pane UI shows SuperReviewer (left) and Gardener (right) results
+- ✅ **Separate SuperReviewer and Gardener states** - Independent `TASK_GARDENING` state ensures documentation update results are visible before task finalization; split-pane UI preserves Bean Counter context during analysis, transitions to SuperReviewer (left) and Gardener (right) results after `superreview:complete` event
 - ✅ **Dynamic prompt injection** - Ctrl+I keyboard shortcut enables real-time agent behavior modification during execution
 - ✅ **Curmudgeon interpreter pattern** - Structured verdict extraction prevents approval loop bugs
 - ✅ **Unified event-driven architecture** - All approval flows and question answering use CommandBus pattern for consistency (plan approval, refinement approval, question answering)
@@ -758,7 +758,7 @@ Agneto supports real-time agent behavior modification via the Ctrl+I keyboard sh
 ### File Organization
 
 - `src/ui/ink/App.tsx` - Main Ink app component; subscribes to TaskStateMachine events; **renders all modals at root level** (plan approval, task refinement, clarifying questions) for consistent fullscreen overlay behavior
-- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval via CommandBus; displays SuperReviewer results (left pane) during `TASK_SUPER_REVIEWING`, then shows both SuperReviewer + Gardener results (split view) during `TASK_GARDENING` state
+- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval via CommandBus; during `TASK_SUPER_REVIEWING`, displays Bean Counter output until `superreview:complete` event fires, then transitions to SuperReviewer results (left pane) + Gardener status (right pane); split-pane view persists during `TASK_GARDENING` state
 - `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review; injection modal integration
 - `src/ui/command-bus.ts` - CommandBus class for UI→Orchestrator communication
 - `src/task-state-machine.ts` - Extends EventEmitter, emits events on all state changes
