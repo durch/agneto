@@ -15,6 +15,9 @@ interface ExecutionLayoutProps {
   taskStateMachine: TaskStateMachine;
   commandBus: CommandBus;  // Required - event-driven architecture
   onFullscreen?: (paneNum: number) => void;
+  availableContentHeight: number;
+  terminalHeight: number;
+  terminalWidth: number;
 }
 
 // Helper function to truncate content
@@ -87,10 +90,14 @@ function getCurrentAgentForInjection(currentState: State): string {
 }
 
 // Execution Layout Component - handles TASK_EXECUTING with dynamic two-pane view
-export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine, commandBus, onFullscreen }) => {
-  const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns || 120;
-  const terminalHeight = stdout?.rows || 40;
+export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({
+  taskStateMachine,
+  commandBus,
+  onFullscreen,
+  availableContentHeight,
+  terminalHeight,
+  terminalWidth
+}) => {
 
   // Get execution state machine
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
@@ -220,14 +227,12 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   const isWideTerminal = terminalWidth > 120;
   const leftPanelWidth = Math.floor(terminalWidth * 0.49);
   const rightPanelWidth = Math.floor(terminalWidth * 0.49);
-  // Bean Counter pane gets most of available vertical space (minus header, status panel, margins)
-  const beanCounterHeight = Math.max(15, Math.floor(terminalHeight * 0.5));
 
-  // Calculate heights for Coder and Reviewer panes
-  const HEADER_FOOTER_HEIGHT = 10; // Overhead for borders, padding, status panel
-  const agentPaneHeight = Math.max(10, Math.floor((terminalHeight - HEADER_FOOTER_HEIGHT) * 0.5));
-  const coderHeight = Math.floor(agentPaneHeight / 2);
-  const reviewerHeight = Math.floor(agentPaneHeight / 2);
+  // Calculate dynamic heights from availableContentHeight
+  const beanCounterHeight = availableContentHeight;
+  const coderReviewerAvailableHeight = availableContentHeight;
+  const coderHeight = Math.floor(coderReviewerAvailableHeight * 0.5);
+  const reviewerHeight = coderReviewerAvailableHeight - coderHeight;
 
   // Determine left and right pane content based on current state
   const leftTitle = '🧮 Bean Counter Chunk';

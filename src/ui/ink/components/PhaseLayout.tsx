@@ -147,7 +147,13 @@ export const PhaseLayout: React.FC<PhaseLayoutProps> = ({ taskStateMachine, comm
         />;
 
       case PhaseGroup.EXECUTION:
-        return <ExecutionLayout taskStateMachine={taskStateMachine} commandBus={commandBus} />;
+        return <ExecutionLayout
+          taskStateMachine={taskStateMachine}
+          commandBus={commandBus}
+          terminalHeight={40}
+          terminalWidth={120}
+          availableContentHeight={30}
+        />;
 
       case PhaseGroup.REVIEW:
         return <ReviewLayout currentState={currentState} taskStateMachine={taskStateMachine} />;

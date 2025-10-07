@@ -455,6 +455,9 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
             taskStateMachine={taskStateMachine}
             commandBus={commandBus}
             onFullscreen={handleFullscreen}
+            terminalHeight={terminalHeight}
+            terminalWidth={terminalWidth}
+            availableContentHeight={availableContentHeight}
           />
         ) : (
           <Text dimColor italic>
