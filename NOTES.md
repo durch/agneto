@@ -11,3 +11,5 @@
 + [ ] Initial chunk code review feedback does not show
 + [ ] Bean counter output has not markdown rendering
 + [ ] Comprehensive review and possible unification of the event emission across the board
++ [ ] Rejection goes to Bean Counter, instead of Coder, what is the conceptual difference between reject and revise anyway
++ [ ] While superreviewer is running we should have bean counter output on the left, then once it ran, we switch to the superreviewer | gardener setup
