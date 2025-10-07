@@ -12,7 +12,7 @@ flowchart TD
     Interactive -->|No| Plan
 
     Refine --> RefineApproval{👤 User<br/>Approves?}
-    RefineApproval -->|Yes| Plan[Planner:<br/>Create Strategic Plan]
+    RefineApproval -->|Yes| Plan[Planner:<br/>Create Plan]
     RefineApproval -->|No, use original| Plan
 
     Plan --> Curmudgeon[Curmudgeon:<br/>Review Plan]

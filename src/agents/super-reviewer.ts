@@ -13,10 +13,17 @@ export async function runSuperReviewer(
   taskStateMachine?: TaskStateMachine,
   baselineCommit?: string
 ): Promise<SuperReviewerResult> {
-  const sys = readFileSync(
+  let sys = readFileSync(
     new URL("../prompts/super-reviewer.md", import.meta.url),
     "utf8"
   );
+
+  // Append project-specific prompt additions if configured
+  const customPrompt = taskStateMachine?.getAgentPromptConfig('super-reviewer');
+  if (customPrompt) {
+    sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
+    log.info("🔬 Super-Reviewer: Using project-specific prompt additions");
+  }
 
   log.startStreaming("Super-Reviewer");
 
@@ -56,6 +63,7 @@ export async function runSuperReviewer(
       onComplete: (cost, duration) =>
         log.complete("Super-Reviewer", cost, duration),
     },
+    taskStateMachine,
   });
 
   // Use interpreter to extract verdict and details from response

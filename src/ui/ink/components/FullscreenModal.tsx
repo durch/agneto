@@ -31,16 +31,15 @@ export const FullscreenModal: React.FC<FullscreenModalProps> = ({
   });
 
   // Calculate modal sizing
-  // Width: 80% of terminal (feels spacious)
-  // Height: Grow to fit content, or use 90% of terminal (whichever is larger)
-  const modalWidth = Math.min(Math.floor(terminalWidth * 0.80));
+  // Use full terminal dimensions to match main Agneto TUI
+  const modalWidth = terminalWidth;
 
   // Calculate content line count
   const contentLines = content.split('\n').length;
   const overhead = 6; // Title bar (2) + margins (2) + borders (2)
 
-  // Use larger of: content height OR terminal height
-  const minModalHeight = Math.floor(terminalHeight * 0.90);
+  // Use larger of: content height OR full terminal height
+  const minModalHeight = terminalHeight;
   const contentBasedHeight = contentLines + overhead;
   const modalHeight = Math.max(contentBasedHeight, minModalHeight);
 

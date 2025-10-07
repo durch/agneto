@@ -3,9 +3,10 @@ import { Text, Box, useStdout, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import { TaskStateMachine, TaskState } from '../../../task-state-machine.js';
 import { State } from '../../../state-machine.js';
+import { CommandBus } from '../../../ui/command-bus.js';
 import { getPlanFeedback, type PlanFeedback } from '../../planning-interface.js';
-import type { RefinementFeedback } from '../../refinement-interface.js';
-import type { SuperReviewerDecision } from '../../../types.js';
+import type { RefinementFeedback, RefinementAction } from '../../refinement-interface.js';
+import type { SuperReviewerDecision, GardenerResult } from '../../../types.js';
 import { FullscreenModal } from './FullscreenModal.js';
 import { TextInputModal } from './TextInputModal.js';
 import { MarkdownText } from './MarkdownText.js';
@@ -15,35 +16,33 @@ import { Spinner } from './Spinner.js';
 interface PlanningLayoutProps {
   currentState: TaskState;
   taskStateMachine: TaskStateMachine;
-  onPlanFeedback?: (feedback: PlanFeedback) => void;
-  onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
-  onAnswerCallback?: (promise: Promise<string>) => void;
-  onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
+  commandBus: CommandBus;  // Required - event-driven architecture
+  onRefinementFeedback?: (feedback: RefinementFeedback) => void;
   onFullscreen?: (paneNum: number) => void;
   terminalHeight: number;
   terminalWidth: number;
   availableContentHeight: number;
+  gardenerResult?: GardenerResult | null;
 }
 
 // Planning Layout Component - handles TASK_PLANNING, TASK_REFINING, TASK_CURMUDGEONING
 export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   currentState,
   taskStateMachine,
-  onPlanFeedback,
+  commandBus,
   onRefinementFeedback,
-  onAnswerCallback,
-  onSuperReviewerDecision,
   onFullscreen,
   terminalHeight,
   terminalWidth,
-  availableContentHeight
+  availableContentHeight,
+  gardenerResult
 }) => {
   const { stdout } = useStdout();
 
   // Modal state interface
   interface ModalState {
     isOpen: boolean;
-    context: 'refinement' | 'plan' | 'superreviewer' | null;
+    context: 'refinement' | 'plan' | null;
     title: string;
     placeholder: string;
   }
@@ -51,9 +50,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Local state for interactive feedback
   const [isProcessingFeedback, setIsProcessingFeedback] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
-  const [refinementResolver, setRefinementResolver] = useState<((value: RefinementFeedback) => void) | null>(null);
-  const [answerResolver, setAnswerResolver] = useState<((answer: string) => void) | null>(null);
-  const [superReviewerResolver, setSuperReviewerResolver] = useState<((value: SuperReviewerDecision) => void) | null>(null);
+  const [showPlanApproval, setShowPlanApproval] = useState(false);
+  const [showRefinementApproval, setShowRefinementApproval] = useState(false);
+  const [showSuperReviewApproval, setShowSuperReviewApproval] = useState(false);
 
   // Structured modal state
   const [modalState, setModalState] = useState<ModalState>({
@@ -69,9 +68,26 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Track previous curmudgeon feedback to enable swap pattern when replanning
   const [previousCurmudgeonFeedback, setPreviousCurmudgeonFeedback] = useState<string | null>(null);
 
+  // Injection modal state
+  const [showInjectionModal, setShowInjectionModal] = useState(false);
+
+  // React state mirroring TaskStateMachine data (event-driven updates)
+  const [context, setContext] = useState(taskStateMachine.getContext());
+  const [pendingRefinement, setPendingRefinement] = useState(taskStateMachine.getPendingRefinement());
+  const [planMd, setPlanMd] = useState(taskStateMachine.getPlanMd());
+  const [planPath, setPlanPath] = useState(taskStateMachine.getPlanPath());
+  const [curmudgeonFeedback, setCurmudgeonFeedback] = useState(taskStateMachine.getCurmudgeonFeedback());
+  const [simplificationCount, setSimplificationCount] = useState(taskStateMachine.getSimplificationCount());
+  const [isAnsweringQuestion, setIsAnsweringQuestion] = useState(taskStateMachine.getAnsweringQuestion());
+  const [liveActivityMessage, setLiveActivityMessage] = useState(taskStateMachine.getLiveActivityMessage());
+  const [taskToolStatus, setTaskToolStatus] = useState(taskStateMachine.getToolStatus());
+
+  // Derived data
+  const taskToUse = context.taskToUse || context.humanTask;
+
   // Unified helper to open text input modal with context
   const openTextInputModal = (
-    context: 'refinement' | 'plan' | 'superreviewer',
+    context: 'refinement' | 'plan',
     title: string,
     placeholder: string,
     resolver: (value: string) => void
@@ -94,9 +110,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   });
 
-  // Get live activity to determine if spinner should animate
-  const liveActivity = taskStateMachine.getLiveActivityMessage();
-
   // Store curmudgeon feedback when it becomes available
   React.useEffect(() => {
     const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
@@ -106,72 +119,96 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     }
   }, [currentState, taskStateMachine]);
 
-  // Wire up refinement feedback when callback is provided
+  // Subscribe to TaskStateMachine events for automatic re-rendering
   React.useEffect(() => {
-    if (onRefinementFeedback && currentState === TaskState.TASK_REFINING && taskStateMachine.getPendingRefinement()) {
-      // Create a dummy promise to get the resolver attached by orchestrator
-      const dummyPromise = new Promise<RefinementFeedback>((resolve) => {
-        // This resolve will be replaced by the orchestrator
-      });
-
-      // Call the callback which will attach the real resolver
-      onRefinementFeedback(dummyPromise);
-
-      // Extract the resolver that was attached by orchestrator
-      const resolver = (dummyPromise as any).resolve;
-      if (resolver) {
-        setRefinementResolver(() => resolver);
+    const handleDataUpdate = () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] handleDataUpdate: updating React state from TaskStateMachine');
       }
-    }
-  }, [onRefinementFeedback, currentState]);
+      // Update all relevant state from TaskStateMachine
+      setContext(taskStateMachine.getContext());
+      setPendingRefinement(taskStateMachine.getPendingRefinement());
+      setPlanMd(taskStateMachine.getPlanMd());
+      setPlanPath(taskStateMachine.getPlanPath());
+      setCurmudgeonFeedback(taskStateMachine.getCurmudgeonFeedback());
+      setSimplificationCount(taskStateMachine.getSimplificationCount());
+      setIsAnsweringQuestion(taskStateMachine.getAnsweringQuestion());
+      setLiveActivityMessage(taskStateMachine.getLiveActivityMessage());
+      setTaskToolStatus(taskStateMachine.getToolStatus());
+    };
 
-  // Wire up answer callback when a question is asked
+    const handlePlanAwaitingApproval = () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] handlePlanAwaitingApproval: showing plan approval menu');
+      }
+      setShowPlanApproval(true);
+    };
+
+    const handleRefinementAwaitingApproval = () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] handleRefinementAwaitingApproval: showing refinement approval menu');
+      }
+      setShowRefinementApproval(true);
+    };
+
+    const handleSuperReviewAwaitingApproval = () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] handleSuperReviewAwaitingApproval: showing superreview approval menu');
+      }
+      setShowSuperReviewApproval(true);
+    };
+
+    // Subscribe to events
+    taskStateMachine.on('activity:updated', handleDataUpdate);
+    taskStateMachine.on('tool:status', handleDataUpdate);
+    taskStateMachine.on('plan:ready', handleDataUpdate);
+    taskStateMachine.on('refinement:ready', handleDataUpdate);
+    taskStateMachine.on('question:asked', handleDataUpdate);
+    taskStateMachine.on('question:answering', handleDataUpdate);
+    taskStateMachine.on('curmudgeon:feedback', handleDataUpdate);
+    taskStateMachine.on('plan:awaiting_approval', handlePlanAwaitingApproval);
+    taskStateMachine.on('refinement:awaiting_approval', handleRefinementAwaitingApproval);
+    taskStateMachine.on('superreview:awaiting_approval', handleSuperReviewAwaitingApproval);
+
+    // Cleanup on unmount
+    return () => {
+      if (process.env.DEBUG) {
+        console.log('[PlanningLayout.tsx] Cleanup: removing event listeners from TaskStateMachine');
+      }
+      taskStateMachine.off('activity:updated', handleDataUpdate);
+      taskStateMachine.off('tool:status', handleDataUpdate);
+      taskStateMachine.off('plan:ready', handleDataUpdate);
+      taskStateMachine.off('refinement:ready', handleDataUpdate);
+      taskStateMachine.off('question:asked', handleDataUpdate);
+      taskStateMachine.off('question:answering', handleDataUpdate);
+      taskStateMachine.off('curmudgeon:feedback', handleDataUpdate);
+      taskStateMachine.off('plan:awaiting_approval', handlePlanAwaitingApproval);
+      taskStateMachine.off('refinement:awaiting_approval', handleRefinementAwaitingApproval);
+      taskStateMachine.off('superreview:awaiting_approval', handleSuperReviewAwaitingApproval);
+    };
+  }, [taskStateMachine]);
+
+  // Reset approval flags when leaving their respective states
   React.useEffect(() => {
-    if (onAnswerCallback && currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion()) {
-      // Create a dummy promise to get the resolver attached by orchestrator
-      const dummyPromise = new Promise<string>((resolve) => {
-        // This resolve will be replaced by the orchestrator
-      });
-
-      // Call the callback which will attach the real resolver
-      onAnswerCallback(dummyPromise);
-
-      // Extract the resolver that was attached by orchestrator
-      const resolver = (dummyPromise as any).resolve;
-      if (resolver) {
-        setAnswerResolver(() => resolver);
-      }
+    if (currentState !== TaskState.TASK_CURMUDGEONING) {
+      setShowPlanApproval(false);
     }
-  }, [onAnswerCallback, currentState, taskStateMachine]);
-
-  // Wire up SuperReviewer decision when callback is provided
-  React.useEffect(() => {
-    if (onSuperReviewerDecision && currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult()) {
-      // Create a dummy promise to get the resolver attached by orchestrator
-      const dummyPromise = new Promise<SuperReviewerDecision>((resolve) => {
-        // This resolve will be replaced by the orchestrator
-      });
-
-      // Call the callback which will attach the real resolver
-      onSuperReviewerDecision(dummyPromise);
-
-      // Extract the resolver that was attached by orchestrator
-      const resolver = (dummyPromise as any).resolve;
-      if (resolver) {
-        setSuperReviewerResolver(() => resolver);
-      }
+    if (currentState !== TaskState.TASK_REFINING) {
+      setShowRefinementApproval(false);
     }
-  }, [onSuperReviewerDecision, currentState, taskStateMachine]);
-
+    if (currentState !== TaskState.TASK_SUPER_REVIEWING) {
+      setShowSuperReviewApproval(false);
+    }
+  }, [currentState]);
 
   // Handle approve action
   const handleApprove = async () => {
+    setShowPlanApproval(false); // Hide menu immediately
     setIsProcessingFeedback(true);
     setLastAction('Approved');
 
     try {
-      const feedback: PlanFeedback = { type: 'approve' };
-      onPlanFeedback?.(feedback);
+      await commandBus.sendCommand({ type: 'plan:approve' });
     } catch (error) {
       setLastAction('Error processing approval');
       setIsProcessingFeedback(false); // Only reset on error
@@ -180,17 +217,17 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Handle reject action - opens modal to collect feedback
   const handleReject = () => {
+    setShowPlanApproval(false); // Hide menu immediately
     openTextInputModal(
       'plan',
       'Reject Plan',
       'Explain what\'s wrong with this approach...',
-      (feedbackText: string) => {
+      async (feedbackText: string) => {
         setIsProcessingFeedback(true);
         setLastAction('Rejected - sending feedback');
 
         try {
-          const feedback: PlanFeedback = { type: 'wrong-approach', details: feedbackText };
-          onPlanFeedback?.(feedback);
+          await commandBus.sendCommand({ type: 'plan:reject', details: feedbackText });
           setLastAction('Rejection feedback sent');
         } catch (error) {
           setLastAction('Error processing rejection');
@@ -202,43 +239,35 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
   // Handle refinement approve action
   const handleRefinementApprove = async () => {
-    if (!refinementResolver) return;
-
+    setShowRefinementApproval(false); // Hide menu immediately
     setIsProcessingFeedback(true);
     setLastAction('Approved refinement');
 
     try {
-      const feedback: RefinementFeedback = { type: 'approve' };
-      refinementResolver(feedback);
-      setRefinementResolver(null);
+      await commandBus.sendCommand({ type: 'refinement:approve' });
     } catch (error) {
       setLastAction('Error processing refinement approval');
-    } finally {
-      setIsProcessingFeedback(false);
+      setIsProcessingFeedback(false); // Only reset on error
     }
   };
 
   // Handle refinement reject action - opens modal to collect feedback
   const handleRefinementReject = () => {
-    if (!refinementResolver) return;
-
+    setShowRefinementApproval(false); // Hide menu immediately
     openTextInputModal(
       'refinement',
       'Reject Refinement',
       'Why reject this refinement? Explain what\'s wrong...',
-      (feedbackText: string) => {
+      async (feedbackText: string) => {
         setIsProcessingFeedback(true);
         setLastAction('Rejected refinement - sending feedback');
 
         try {
-          const feedback: RefinementFeedback = { type: 'reject', details: feedbackText };
-          refinementResolver(feedback);
-          setRefinementResolver(null);
+          await commandBus.sendCommand({ type: 'refinement:reject', details: feedbackText });
           setLastAction('Refinement rejection sent');
         } catch (error) {
           setLastAction('Error processing refinement rejection');
-        } finally {
-          setIsProcessingFeedback(false);
+          setIsProcessingFeedback(false); // Only reset on error
         }
       }
     );
@@ -269,19 +298,48 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     setActiveResolver(null);
   };
 
+  // Handle injection modal submit
+  const handleInjectionSubmit = (content: string) => {
+    taskStateMachine.setPendingInjection(content);
+    setShowInjectionModal(false);
+  };
+
+  // Handle injection modal cancel
+  const handleInjectionCancel = () => {
+    setShowInjectionModal(false);
+  };
+
 
   // Calculate responsive layout based on terminal width
   const isWideTerminal = terminalWidth > 120;
   const panelWidth = Math.floor(terminalWidth * 0.49);
 
-  // Get data from TaskStateMachine
-  const context = taskStateMachine.getContext();
-  const taskToUse = context.taskToUse || context.humanTask;
-  const pendingRefinement = taskStateMachine.getPendingRefinement();
-  const planMd = taskStateMachine.getPlanMd();
-  const planPath = taskStateMachine.getPlanPath();
-  const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
-  const simplificationCount = taskStateMachine.getSimplificationCount();
+  // Monitor injection pause and show modal when appropriate
+  React.useEffect(() => {
+    const pauseRequested = taskStateMachine.isInjectionPauseRequested();
+
+    // Determine if current phase is complete
+    const isPlanningComplete = planMd !== null && !isProcessingFeedback;
+    const isCurmudgeoningComplete = curmudgeonFeedback !== null && !isProcessingFeedback;
+
+    const isPhaseComplete =
+      (currentState === TaskState.TASK_PLANNING && isPlanningComplete) ||
+      (currentState === TaskState.TASK_CURMUDGEONING && isCurmudgeoningComplete);
+
+    // Detect if other modals are active
+    const isQuestionModalActive =
+      currentState === TaskState.TASK_REFINING &&
+      taskStateMachine.getCurrentQuestion() &&
+      !isAnsweringQuestion;
+
+    const isAnyModalActive = isQuestionModalActive || modalState.isOpen;
+
+    // Show injection modal when pause requested, phase complete, and no conflicts
+    if (pauseRequested && isPhaseComplete && !isAnyModalActive) {
+      setShowInjectionModal(true);
+      taskStateMachine.clearInjectionPause();
+    }
+  }, [planMd, curmudgeonFeedback, isProcessingFeedback, modalState.isOpen, isAnsweringQuestion, currentState]);
 
   // Get execution state machine data if in TASK_EXECUTING
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
@@ -290,28 +348,34 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const coderOutput = executionStateMachine?.getAgentOutput('coder');
   const reviewerOutput = executionStateMachine?.getAgentOutput('reviewer');
 
-  // Calculate content height for each pane in split view
-  const paneContentHeight = Math.floor(availableContentHeight / 2) - 4; // Divide by 2 for two rows, subtract for borders/padding
-
   // Determine if a query is in progress based on state and data availability
   const isQueryInProgress =
     (currentState === TaskState.TASK_REFINING && !pendingRefinement) ||
     (currentState === TaskState.TASK_PLANNING && !planMd) ||
-    (currentState === TaskState.TASK_CURMUDGEONING && !curmudgeonFeedback) ||
-    !!liveActivity;
+    (currentState === TaskState.TASK_CURMUDGEONING && !curmudgeonFeedback);
 
   // Determine phase title and color
   const isExecuting = currentState === TaskState.TASK_EXECUTING;
   const isSuperReviewing = currentState === TaskState.TASK_SUPER_REVIEWING;
-  const phaseTitle = isSuperReviewing ? '🔍 Final Quality Check' : (isExecuting ? '⚡ Execution Phase' : '📋 Planning Phase');
-  const phaseColor = isSuperReviewing ? 'green' : (isExecuting ? 'yellow' : 'blue');
+  const isGardening = currentState === TaskState.TASK_GARDENING;
+  const phaseTitle = isSuperReviewing ? '🔍 Final Quality Check' :
+                     isGardening ? '📚 Documentation Update Phase' :
+                     (isExecuting ? '⚡ Execution Phase' : '📋 Planning Phase');
+  const phaseColor = isSuperReviewing ? 'green' :
+                     isGardening ? 'cyan' :
+                     (isExecuting ? 'yellow' : 'blue');
+
+  // Calculate maxHeight for MarkdownText instances (side-by-side panels = full height per pane)
+  const paneHeight = availableContentHeight;
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={phaseColor} padding={1} flexGrow={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={phaseColor} padding={1} flexGrow={0}>
       {/* Top row: Refined Task and Plan Content panels */}
       <Box
         flexDirection={isWideTerminal ? "row" : "column"}
         marginBottom={1}
+        flexGrow={0}
+        flexShrink={1}
       >
         {/* Left Panel: Dynamic content - Refined Task, Plan (during curmudgeon), or Old Feedback (during replanning) */}
         <Box
@@ -324,6 +388,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           width={isWideTerminal ? panelWidth : undefined}
           marginRight={isWideTerminal ? 1 : 0}
           marginBottom={isWideTerminal ? 0 : 1}
+          flexShrink={1}
         >
           {/* Dynamic header and content based on current state */}
           {currentState === TaskState.TASK_EXECUTING ? (
@@ -335,137 +400,38 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               </Box>
               <Box marginTop={1}>
                 {beanCounterOutput ? (
-                  <MarkdownText maxLines={paneContentHeight}>{beanCounterOutput}</MarkdownText>
+                  <MarkdownText maxHeight={paneHeight}>{beanCounterOutput}</MarkdownText>
                 ) : (
                   <Text dimColor>Determining work chunk...</Text>
                 )}
               </Box>
             </>
-          ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
-            // SuperReviewer: Show original plan on left
-            <>
-              <Box justifyContent="space-between">
-                <Text color="cyan" bold>📋 Original Plan</Text>
-                <Text dimColor>[Q]</Text>
-              </Box>
-              <Box marginTop={1}>
-                {planMd ? (
-                  <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
-                    {planPath && (
-                      <Text dimColor color="gray">Saved to: {planPath}</Text>
-                    )}
-                  </Box>
-                ) : (
-                  <Text dimColor>No plan available</Text>
-                )}
-              </Box>
-            </>
-          ) : currentState === TaskState.TASK_CURMUDGEONING ? (
-            <>
-              <Box justifyContent="space-between">
-                <Text color="green" bold>📋 Current Plan</Text>
-                <Text dimColor>[Q]</Text>
-              </Box>
-              <Box marginTop={1}>
-                {planMd ? (
-                  <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
-                    {planPath && (
-                      <Text dimColor color="gray">Saved to: {planPath}</Text>
-                    )}
-                  </Box>
-                ) : (
-                  <Text dimColor>No plan available</Text>
-                )}
-              </Box>
-            </>
-          ) : currentState === TaskState.TASK_PLANNING && previousCurmudgeonFeedback ? (
-            <>
-              <Box justifyContent="space-between">
-                <Text color="yellow" bold>🧐 Previous Feedback</Text>
-                <Text dimColor>[Q]</Text>
-              </Box>
-              <Box marginTop={1}>
-                <MarkdownText maxLines={paneContentHeight}>{previousCurmudgeonFeedback}</MarkdownText>
-              </Box>
-            </>
-          ) : (
-            <>
-              <Box justifyContent="space-between">
-                <Text color="cyan" bold>📝 Refined Task</Text>
-                <Text dimColor>[Q]</Text>
-              </Box>
-              <Box marginTop={1}>
-                {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
-                  <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight - 2}>
-                      {pendingRefinement.raw || pendingRefinement.goal}
-                    </MarkdownText>
-                    <Box marginTop={1}>
-                      <Text color="yellow" bold>⏳ Awaiting Approval</Text>
-                    </Box>
-                  </Box>
-                ) : currentState === TaskState.TASK_REFINING ? (
-                  <Text dimColor>Refining task description...</Text>
-                ) : taskToUse ? (
-                  <MarkdownText maxLines={paneContentHeight}>{taskToUse}</MarkdownText>
-                ) : (
-                  <Text dimColor>No task description available</Text>
-                )}
-              </Box>
-            </>
-          )}
-        </Box>
-
-        {/* Middle Panel (Right Pane): Dynamic content based on state */}
-        <Box
-          flexDirection="column"
-          borderStyle="single"
-          borderColor={currentState === TaskState.TASK_CURMUDGEONING ? "yellow" : "gray"}
-          paddingX={1}
-          width={isWideTerminal ? panelWidth : undefined}
-          marginBottom={isWideTerminal ? 0 : 1}
-        >
-          {/* Dynamic header and content based on current state */}
-          {currentState === TaskState.TASK_EXECUTING ? (
-            // Execution: Show latest agent output (Reviewer or Coder) on right
-            <>
-              <Box justifyContent="space-between">
-                <Text color="green" bold>
-                  {reviewerOutput ? '👀 Reviewer Feedback' : '🤖 Coder Proposal'}
-                </Text>
-                <Text dimColor>[W]</Text>
-              </Box>
-              <Box marginTop={1}>
-                {reviewerOutput || coderOutput ? (
-                  <MarkdownText maxLines={paneContentHeight}>
-                    {reviewerOutput || coderOutput || ''}
-                  </MarkdownText>
-                ) : (
-                  <Text dimColor>Processing...</Text>
-                )}
-              </Box>
-            </>
-          ) : currentState === TaskState.TASK_SUPER_REVIEWING ? (
-            // SuperReviewer: Show results on right
+          ) : (currentState === TaskState.TASK_SUPER_REVIEWING || currentState === TaskState.TASK_GARDENING) ? (
+            // SuperReviewer/Gardening: Show quality check results on left
             <>
               <Box justifyContent="space-between">
                 <Text color="green" bold>🔍 Quality Check Results</Text>
-                <Text dimColor>[W]</Text>
+                <Text dimColor>[Q]</Text>
               </Box>
               <Box marginTop={1}>
                 {(() => {
                   const superReviewResult = taskStateMachine.getSuperReviewResult();
                   if (superReviewResult) {
+                    // Calculate proportional height for issues list (reserve space for summary + verdict)
+                    const issueHeight = superReviewResult.issues && superReviewResult.issues.length > 0
+                      ? Math.floor(paneHeight / (superReviewResult.issues.length + 2))
+                      : paneHeight;
                     return (
                       <Box flexDirection="column">
-                        <MarkdownText maxLines={paneContentHeight - 5}>{superReviewResult.summary}</MarkdownText>
+                        <MarkdownText maxHeight={issueHeight}>{superReviewResult.summary}</MarkdownText>
                         {superReviewResult.issues && superReviewResult.issues.length > 0 && (
                           <Box marginTop={1} flexDirection="column">
                             <Text color="yellow" bold>Issues Found:</Text>
                             {superReviewResult.issues.map((issue, idx) => (
-                              <Text key={idx} color="yellow">• {issue}</Text>
+                              <Box key={idx}>
+                                <Text color="yellow">• </Text>
+                                <MarkdownText maxHeight={issueHeight}>{issue}</MarkdownText>
+                              </Box>
                             ))}
                           </Box>
                         )}
@@ -482,15 +448,135 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           ) : currentState === TaskState.TASK_CURMUDGEONING ? (
             <>
               <Box justifyContent="space-between">
+                <Text color="green" bold>📋 Current Plan</Text>
+                <Text dimColor>[Q]</Text>
+              </Box>
+              <Box marginTop={1}>
+                {planMd ? (
+                  <Box flexDirection="column">
+                    <MarkdownText maxHeight={paneHeight}>{planMd}</MarkdownText>
+                    {planPath && (
+                      <Text dimColor color="gray">Saved to: {planPath}</Text>
+                    )}
+                  </Box>
+                ) : (
+                  <Text dimColor>No plan available</Text>
+                )}
+              </Box>
+            </>
+          ) : currentState === TaskState.TASK_PLANNING && previousCurmudgeonFeedback ? (
+            <>
+              <Box justifyContent="space-between">
+                <Text color="yellow" bold>🧐 Previous Feedback</Text>
+                <Text dimColor>[Q]</Text>
+              </Box>
+              <Box marginTop={1}>
+                <MarkdownText maxHeight={paneHeight}>{previousCurmudgeonFeedback}</MarkdownText>
+              </Box>
+            </>
+          ) : (
+            <>
+              <Box justifyContent="space-between">
+                <Text color="cyan" bold>📝 Refined Task</Text>
+                <Text dimColor>[Q]</Text>
+              </Box>
+              <Box marginTop={1}>
+                {currentState === TaskState.TASK_REFINING && pendingRefinement ? (
+                  <MarkdownText maxHeight={paneHeight}>
+                    {pendingRefinement}
+                  </MarkdownText>
+                ) : currentState === TaskState.TASK_REFINING ? (
+                  <Text dimColor>Refining task description...</Text>
+                ) : taskToUse ? (
+                  <MarkdownText maxHeight={paneHeight}>{taskToUse}</MarkdownText>
+                ) : (
+                  <Text dimColor>No task description available</Text>
+                )}
+              </Box>
+            </>
+          )}
+        </Box>
+
+        {/* Middle Panel (Right Pane): Dynamic content based on state */}
+        <Box
+          flexDirection="column"
+          borderStyle="single"
+          borderColor={currentState === TaskState.TASK_CURMUDGEONING ? "yellow" : "gray"}
+          paddingX={1}
+          width={isWideTerminal ? panelWidth : undefined}
+          marginBottom={isWideTerminal ? 0 : 1}
+          flexShrink={1}
+        >
+          {/* Dynamic header and content based on current state */}
+          {currentState === TaskState.TASK_EXECUTING ? (
+            // Execution: Show latest agent output (Reviewer or Coder) on right
+            <>
+              <Box justifyContent="space-between">
+                <Text color="green" bold>
+                  {reviewerOutput ? '👀 Reviewer Feedback' : '🤖 Coder Proposal'}
+                </Text>
+                <Text dimColor>[W]</Text>
+              </Box>
+              <Box marginTop={1}>
+                {reviewerOutput || coderOutput ? (
+                  <MarkdownText maxHeight={paneHeight}>
+                    {reviewerOutput || coderOutput || ''}
+                  </MarkdownText>
+                ) : (
+                  <Text dimColor>Processing...</Text>
+                )}
+              </Box>
+            </>
+          ) : (currentState === TaskState.TASK_SUPER_REVIEWING || currentState === TaskState.TASK_GARDENING) ? (
+            // SuperReviewer/Gardening: Show Gardener documentation update status on right
+            <>
+              <Box justifyContent="space-between">
+                <Text color="cyan" bold>📝 Documentation Update Status</Text>
+                <Text dimColor>[W]</Text>
+              </Box>
+              <Box marginTop={1}>
+                {!gardenerResult ? (
+                  <Box flexDirection="column">
+                    <Text color="yellow">
+                      <Spinner isActive={true} /> {currentState === TaskState.TASK_GARDENING ? 'Updating documentation...' : 'Awaiting documentation update...'}
+                    </Text>
+                  </Box>
+                ) : gardenerResult.success ? (
+                  <Box flexDirection="column">
+                    <Text color="green" bold>✅ {gardenerResult.message}</Text>
+                    {gardenerResult.sectionsUpdated.length > 0 && (
+                      <Box marginTop={1} flexDirection="column">
+                        <Text color="cyan" bold>Sections Updated:</Text>
+                        {gardenerResult.sectionsUpdated.map((section, idx) => (
+                          <Text key={idx} color="green">• {section}</Text>
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
+                ) : (
+                  <Box flexDirection="column">
+                    <Text color="red" bold>❌ Documentation update failed</Text>
+                    {gardenerResult.error && (
+                      <Box marginTop={1}>
+                        <Text color="red">{gardenerResult.error}</Text>
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </Box>
+            </>
+          ) : currentState === TaskState.TASK_CURMUDGEONING ? (
+            <>
+              <Box justifyContent="space-between">
                 <Text color="yellow" bold>🧐 Curmudgeon Feedback</Text>
                 <Text dimColor>[W]</Text>
               </Box>
               <Box marginTop={1}>
                 {curmudgeonFeedback ? (
                   <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight - 2}>{curmudgeonFeedback}</MarkdownText>
+                    <MarkdownText maxHeight={paneHeight}>{curmudgeonFeedback}</MarkdownText>
                     <Box marginTop={1}>
-                      <Text dimColor>Simplification attempt {simplificationCount + 1}/2</Text>
+                      <Text dimColor>Simplification attempt {simplificationCount + 1}/4</Text>
                     </Box>
                   </Box>
                 ) : (
@@ -507,7 +593,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
               <Box marginTop={1}>
                 {planMd ? (
                   <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
+                    <MarkdownText maxHeight={paneHeight}>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -530,7 +616,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                   <Text dimColor>Creating strategic plan...</Text>
                 ) : planMd ? (
                   <Box flexDirection="column">
-                    <MarkdownText maxLines={paneContentHeight}>{planMd}</MarkdownText>
+                    <MarkdownText maxHeight={paneHeight}>{planMd}</MarkdownText>
                     {planPath && (
                       <Text dimColor color="gray">Saved to: {planPath}</Text>
                     )}
@@ -548,64 +634,71 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       <Box
         flexDirection="column"
         borderStyle="single"
-        borderColor="yellow"
+        borderColor={
+          showRefinementApproval ||
+          showPlanApproval ||
+          showSuperReviewApproval ||
+          (taskStateMachine.getCurrentQuestion() && !isAnsweringQuestion)
+            ? "yellow"
+            : "blue"
+        }
         paddingX={1}
+        flexShrink={0}
       >
         <Box flexDirection="column">
-          {/* Display live activity message from task state machine */}
-          {liveActivity && (() => {
-            // Filter out multiline content (likely full plan output) from live activity
-            // Only show brief status updates (single line or short messages)
-            const isLongContent = liveActivity.message.includes('\n') || liveActivity.message.length > 150;
+          {/* Injection pending indicator */}
+          {taskStateMachine.hasPendingInjection() && (
+            <Box marginBottom={1}>
+              <Text dimColor>🎯 Injection Pending (Next Agent)</Text>
+            </Box>
+          )}
 
-            if (!isLongContent) {
-              return (
-                <Box marginBottom={1}>
-                  <Text color="cyan">
-                    {liveActivity.agent}: {liveActivity.message}
-                  </Text>
-                </Box>
-              );
-            }
-            return null;
-          })()}
-
-          {/* Display tool status from state machine */}
+          {/* Combined status message with tool status */}
           {(() => {
             // Check execution state machine first (if in execution phase)
             const executionStateMachine = taskStateMachine.getExecutionStateMachine();
-            const toolStatus = executionStateMachine?.getToolStatus() || taskStateMachine.getToolStatus();
+            const toolStatus = executionStateMachine?.getToolStatus() || taskToolStatus;
 
-            if (toolStatus) {
-              return (
-                <Box marginBottom={1}>
-                  <Text color="cyan">
-                    ⚙️ [{toolStatus.agent}] → {toolStatus.tool}: {toolStatus.summary}
-                  </Text>
-                </Box>
-              );
+            // Base status message without redundant agent names
+            let baseStatus = '';
+            if (currentState === TaskState.TASK_REFINING) {
+              baseStatus = 'Refining task description...';
+            } else if (currentState === TaskState.TASK_PLANNING) {
+              baseStatus = 'Creating strategic plan...';
+            } else if (currentState === TaskState.TASK_CURMUDGEONING) {
+              baseStatus = 'Reviewing plan complexity...';
+            } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+              baseStatus = 'Performing final quality check...';
+            } else if (currentState === TaskState.TASK_GARDENING) {
+              baseStatus = 'Updating documentation...';
+            } else if (currentState === TaskState.TASK_EXECUTING) {
+              baseStatus = executionState === State.BEAN_COUNTING ? 'Determining work chunk...' :
+                          executionState === State.PLANNING ? 'Proposing implementation...' :
+                          executionState === State.PLAN_REVIEW ? 'Evaluating approach...' :
+                          executionState === State.IMPLEMENTING ? 'Applying changes to codebase...' :
+                          executionState === State.CODE_REVIEW ? 'Validating implementation...' :
+                          'Executing task...';
             }
-            return null;
+
+            // Merge tool status into message when active
+            const statusMessage = toolStatus ?
+              `${baseStatus} → ${toolStatus.tool}: ${toolStatus.summary}` :
+              baseStatus;
+
+            // Only show spinner when there's actual activity
+            const showSpinner = !!(toolStatus || isQueryInProgress);
+
+            return (
+              <Text color={toolStatus ? "cyan" : undefined} dimColor={!toolStatus}>
+                {showSpinner && <Spinner isActive={true} />}
+                {showSpinner && " "}
+                {statusMessage}
+              </Text>
+            );
           })()}
 
-          <Text dimColor>
-            <Spinner isActive={isQueryInProgress} /> Current Stage: {' '}
-            {currentState === TaskState.TASK_REFINING && 'Refining task description...'}
-            {currentState === TaskState.TASK_PLANNING && 'Creating strategic plan...'}
-            {currentState === TaskState.TASK_CURMUDGEONING && 'Reviewing plan complexity...'}
-            {currentState === TaskState.TASK_SUPER_REVIEWING && 'SuperReviewer performing final quality check...'}
-            {currentState === TaskState.TASK_EXECUTING && (
-              executionState === State.BEAN_COUNTING ? 'Bean Counter determining work chunk...' :
-              executionState === State.PLANNING ? 'Coder proposing implementation...' :
-              executionState === State.PLAN_REVIEW ? 'Reviewer evaluating approach...' :
-              executionState === State.IMPLEMENTING ? 'Applying changes to codebase...' :
-              executionState === State.CODE_REVIEW ? 'Reviewer validating implementation...' :
-              'Executing task...'
-            )}
-          </Text>
-
           {/* Interactive Instructions - Show for refinement or planning states */}
-          {currentState === TaskState.TASK_REFINING && pendingRefinement && refinementResolver && (
+          {showRefinementApproval && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Refined Task Ready for Review</Text>
               <Box marginTop={1}>
@@ -633,8 +726,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {(currentState === TaskState.TASK_CURMUDGEONING && onPlanFeedback) &&
-           planMd && !isProcessingFeedback && (
+          {showPlanApproval && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🎯 Plan Ready for Review</Text>
               <Box marginTop={1}>
@@ -662,7 +754,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
             </Box>
           )}
 
-          {currentState === TaskState.TASK_SUPER_REVIEWING && taskStateMachine.getSuperReviewResult() && superReviewerResolver && (
+          {showSuperReviewApproval && (
             <Box marginTop={1} flexDirection="column">
               <Text color="green" bold>🔍 Quality Check Complete</Text>
               <Box marginTop={1}>
@@ -672,26 +764,16 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                     { label: 'Retry and Fix Issues', value: 'retry' },
                     { label: 'Abandon Task', value: 'abandon' }
                   ]}
-                  onSelect={(item) => {
+                  onSelect={async (item) => {
+                    setShowSuperReviewApproval(false); // Hide menu immediately
                     if (item.value === 'approve') {
-                      superReviewerResolver({ action: 'approve' });
-                      setSuperReviewerResolver(null);
+                      await commandBus.sendCommand({ type: 'superreview:approve' });
                     } else if (item.value === 'retry') {
-                      openTextInputModal(
-                        'superreviewer',
-                        'Provide Retry Feedback',
-                        'Describe what needs to be fixed or improved...',
-                        (feedbackText: string) => {
-                          if (superReviewerResolver) {
-                            superReviewerResolver({ action: 'retry', feedback: feedbackText });
-                            setSuperReviewerResolver(null);
-                            setLastAction('Retry requested with feedback');
-                          }
-                        }
-                      );
+                      // Note: retry feedback currently not implemented via modal - would need 'plan' context type
+                      await commandBus.sendCommand({ type: 'superreview:retry', feedback: '' });
+                      setLastAction('Retry requested');
                     } else if (item.value === 'abandon') {
-                      superReviewerResolver({ action: 'abandon' });
-                      setSuperReviewerResolver(null);
+                      await commandBus.sendCommand({ type: 'superreview:abandon' });
                     }
                   }}
                 />
@@ -709,21 +791,18 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       </Box>
 
       {/* Question Modal - for clarifying questions during refinement */}
-      {currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion() && answerResolver && (
+      {currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion() && !isAnsweringQuestion && (
         <TextInputModal
-          title={`Clarifying Question: ${taskStateMachine.getCurrentQuestion()}`}
-          placeholder="Enter your answer (Ctrl+Enter to submit)"
-          onSubmit={(answer) => {
-            if (answerResolver) {
-              answerResolver(answer);
-              setAnswerResolver(null);
-            }
+          title="Clarifying Question"
+          content={taskStateMachine.getCurrentQuestion() || undefined}  // Show the question in the modal body
+          placeholder="Type your answer and press Enter to submit"
+          width={terminalWidth - 4}  // Full width minus margin
+          height={Math.min(terminalHeight - 4, 30)}  // Full height minus margin, max 30
+          onSubmit={async (answer) => {
+            await commandBus.sendCommand({ type: 'question:answer', answer });
           }}
-          onCancel={() => {
-            if (answerResolver) {
-              answerResolver('');
-              setAnswerResolver(null);
-            }
+          onCancel={async () => {
+            await commandBus.sendCommand({ type: 'question:answer', answer: '' });
           }}
         />
       )}
@@ -737,6 +816,23 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           onCancel={handleModalCancel}
         />
       )}
+
+      {/* Injection Modal - for dynamic prompt injection */}
+      {showInjectionModal && (() => {
+        const agentType = currentState === TaskState.TASK_PLANNING ? 'Planner' : 'Curmudgeon';
+        const modalTitle = `Dynamic Prompt Injection → ${agentType}`;
+        const taskDesc = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
+        const contextInfo = `Task: ${taskDesc.substring(0, 60)}${taskDesc.length > 60 ? '...' : ''}`;
+
+        return (
+          <TextInputModal
+            title={modalTitle}
+            placeholder={contextInfo}
+            onSubmit={handleInjectionSubmit}
+            onCancel={handleInjectionCancel}
+          />
+        );
+      })()}
     </Box>
   );
 };

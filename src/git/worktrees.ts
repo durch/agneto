@@ -57,6 +57,11 @@ export function ensureWorktree(taskId: string, base?: string) {
     const branch = branchFor(taskId);
     const baseRef = base || detectOriginDefault();
 
+    // Validate that the base branch exists if explicitly provided
+    if (base && !branchExists(base)) {
+        throw new Error(`Base branch '${base}' does not exist. Please specify a valid branch.`);
+    }
+
     // If the worktree directory already exists, just reuse it.
     if (existsSync(dir)) {
         return { dir: resolve(dir), branch };

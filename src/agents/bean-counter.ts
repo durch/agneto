@@ -17,6 +17,11 @@ export interface BeanCounterChunk {
   context: string;
 }
 
+export interface BeanCounterResult {
+  rawResponse: string;
+  chunk: BeanCounterChunk;
+}
+
 // Unified chunking: Get next chunk (first or subsequent)
 export async function getNextChunk(
   provider: LLMProvider,
@@ -25,9 +30,10 @@ export async function getNextChunk(
   sessionId: string,
   isInitialized: boolean,
   previousApproval?: string,
-  stateMachine?: CoderReviewerStateMachine
-): Promise<BeanCounterChunk | null> {
-  const template = readFileSync(
+  stateMachine?: CoderReviewerStateMachine,
+  taskStateMachine?: any
+): Promise<BeanCounterResult | null> {
+  let sys = readFileSync(
     new URL("../prompts/bean-counter.md", import.meta.url),
     "utf8"
   );
@@ -36,8 +42,14 @@ export async function getNextChunk(
 
   if (!isInitialized) {
     // First call: establish context with system prompt and plan
+    const customPrompt = taskStateMachine?.getAgentPromptConfig?.('bean-counter');
+    if (customPrompt) {
+      sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
+      log.beanCounter("🧮 Bean Counter: Using custom prompt from .agneto.json");
+    }
+
     messages.push(
-      { role: "system", content: template },
+      { role: "system", content: sys },
       {
         role: "user",
         content: `High-Level Plan:\n\n${planMd}\n\nWhat's the next chunk to work on?`,
@@ -81,12 +93,17 @@ export async function getNextChunk(
         onComplete: (cost, duration) =>
           log.complete("Bean Counter", cost, duration),
       },
+      taskStateMachine,
     });
 
-    // Display the Bean Counter response
-    if (rawResponse && rawResponse.trim()) {
-      log.beanCounter(rawResponse);
+    // Validate response
+    if (!rawResponse || !rawResponse.trim()) {
+      console.error("Bean Counter returned empty response");
+      return null;
     }
+
+    // Display the Bean Counter response
+    log.beanCounter(rawResponse);
 
     // Use interpreter to extract structured decision
     const interpretation = await interpretBeanCounterResponse(provider, rawResponse, cwd);
@@ -95,7 +112,10 @@ export async function getNextChunk(
       return null;
     }
 
-    return interpretation;
+    return {
+      rawResponse,
+      chunk: interpretation
+    };
   } catch (error) {
     console.error("Failed to get chunk from Bean Counter:", error);
     return null;

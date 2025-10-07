@@ -1,0 +1,198 @@
+
+> agneto@0.4.0 start
+> tsx src/cli.ts
+
+
+=== DEBUG: flattenMessages ===
+Total messages: 1
+System messages: 0
+User messages: 1
+Message 0 [user]: Generate a short, descriptive task name from this description: "fix a typo in README.md"
+
+Requiremen...
+Final prompt length: 348
+First 200 chars: Generate a short, descriptive task name from this description: "fix a typo in README.md"
+
+Requirements:
+- Use 2-3 words maximum
+- Use kebab-case format (lowercase, dash-separated)
+- Focus on the main 
+Last 200 chars: mat (lowercase, dash-separated)
+- Focus on the main action or feature
+- Must be valid for git branch names
+- Examples: "fix-auth", "add-login", "update-tests"
+
+Output ONLY the task name, nothing else.
+==============================
+
+
+=== DEBUG: runClaudeCLI (streaming) ===
+CWD: /Users/drazen/playground/agneto/.worktrees/fix-curmudgeon-loop
+Mode: plan
+Allowed tools: undefined
+Command: claude -p --permission-mode plan --output-format stream-json --verbose --model sonnet
+Prompt via stdin, length: 348
+======================================
+
+=== Stream ended, result collected: true
+=== Final result: "fix-readme-typo..."
+branch 'sandbox/fix-readme-typo' set up to track 'origin/master'.
+Preparing worktree (checking out 'sandbox/fix-readme-typo')
+HEAD is now at 6448b98 Reorganize SuperReviewer and Gardener Display in UI Layout
+[K
+[ORCHESTRATION] 🙋 Orchestrator: 🖥️ Ink UI enabled - UI callback mechanism will be available for plan feedback
+[K
+[ORCHESTRATION] 🙋 Orchestrator: Task state machine initialized: TASK_INIT
+╭──────────────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│ 🧲 Agneto | Task ID: fix-readme-typo | Phase: Initializing                   │
+│                                                                              │
+│ Phase-specific content will be displayed here...                             │
+│                                                                              │
+│  [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+Q/W/E] Fullscreen  [Esc] Close          │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Encountered two children with the same key, `    at recursivelyTraversePassiveMountEffects (/Users/drazen/playground/agneto/node_modules/ink/node_modules/react-reconciler/cjs/react-reconciler.development.js:11338:11)`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[G
+  ERROR Raw mode is not supported on the current process.stdin, which Ink uses
+       as input stream by default.
+       Read about how to prevent this error on
+       https://github.com/vadimdemedes/ink/#israwmodesupported
+
+ - Read about how to prevent this error on
+   https://github.com/vadimdemedes/ink/#israwmodesupported\t
+ -handleSetRawM (/Users/drazen/playground/agneto/node_modules/ink/src/component
+  ode          s/App.tsx:151:11)
+ -<anonymous (/Users/drazen/playground/agneto/node_modules/ink/src/hooks/use-in
+            put.ts:123:3)
+ -react-stack-bottom (/Users/drazen/playground/agneto/node_modules/ink/node_mod
+  -frame            ules/react-reconciler/cjs/react-reconciler.development.js:1
+                    5945:20)
+ -runWithFiberIn (/Users/drazen/playground/agneto/node_modules/ink/node_modules
+  EV            /react-reconciler/cjs/react-reconciler.development.js:1735:30)
+
+ -commitHookEffectLis (/Users/drazen/playground/agneto/node_modules/ink/node_mo
+  Mount              dules/react-reconciler/cjs/react-reconciler.development.js
+                     :9516:29)
+ -commitHookPassiveMoun (/Users/drazen/playground/agneto/node_modules/ink/node_
+  Effects              modules/react-reconciler/cjs/react-reconciler.developmen
+                       t.js:9639:11)
+ -commitPassiveMountO (/Users/drazen/playground/agneto/node_modules/ink/node_mo
+  Fiber              dules/react-reconciler/cjs/react-reconciler.development.js
+                     :11364:13)
+ -recursivelyTraversePassiv (/Users/drazen/playground/agneto/node_modules/ink/n
+  MountEffects             ode_modules/react-reconciler/cjs/react-reconciler.de
+                           velopment.js:11338:11)
+ -commitPassiveMountO (/Users/drazen/playground/agneto/node_modules/ink/node_mo
+  Fiber              dules/react-reconciler/cjs/react-reconciler.development.js
+                     :11479:11)
+ -recursivelyTraversePassiv (/Users/drazen/playground/agneto/node_modules/ink/n
+  MountEffects             ode_modules/react-reconciler/cjs/react-reconciler.de
+                           velopment.js:11338:11)
+
+Encountered two children with the same key, `    at recursivelyTraversePassiveMountEffects (/Users/drazen/playground/agneto/node_modules/ink/node_modules/react-reconciler/cjs/react-reconciler.development.js:11338:11)`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+=== DEBUG: flattenMessages ===
+Total messages: 2
+System messages: 1
+User messages: 1
+Message 0 [system]: # Task Refiner
+
+You are the Task Refiner, responsible for analyzing raw user task descriptions and s...
+Message 1 [user]: Task: fix a typo in README.md
+
+Analyze and refine this task description....
+Final prompt length: 8282
+First 200 chars: # Task Refiner
+
+You are the Task Refiner, responsible for analyzing raw user task descriptions and structuring them into clear, actionable specifications.
+
+## Your Role
+- Analyze the given task descri
+Last 200 chars: he Context section
+- Preserve the user's intent while adding clarity
+- Don't add requirements the user didn't express or imply
+
+Task: fix a typo in README.md
+
+Analyze and refine this task description.
+==============================
+
+
+=== DEBUG: runClaudeCLI (streaming) ===
+CWD: /Users/drazen/playground/agneto/.worktrees/fix-curmudgeon-loop/.worktrees/fix-readme-typo
+Mode: default
+Allowed tools: [ 'ReadFile', 'Grep', 'Bash' ]
+Command: claude -p --permission-mode default --output-format stream-json --verbose --allowedTools ReadFile Grep Bash --session-id 0e01b9f7-74c8-43a6-9d6d-f2e8079fc713
+Prompt via stdin, length: 8282
+======================================
+
+=== Stream ended, result collected: true
+=== Final result: "
+
+Let me manually review the README for obvious typos. Looking at the content, I can see one clear t..."
+
+=== DEBUG: flattenMessages ===
+Total messages: 2
+System messages: 1
+User messages: 1
+Message 0 [system]: You are a response interpreter. Given a raw LLM response from a Refiner agent, determine whether the...
+Message 1 [user]: Extract the decision from this Refiner response:
+
+Let me manually review the README for obvious typo...
+Final prompt length: 3015
+First 200 chars: You are a response interpreter. Given a raw LLM response from a Refiner agent, determine whether they are asking a clarifying question or providing a final refinement.
+
+## Your Task
+Analyze the Refine
+Last 200 chars: stion
+
+**Which specific typo in README.md needs to be corrected, or what text should be fixed?**
+
+(For example: a misspelled word on a specific line, incorrect technical term, or wrong file reference)
+==============================
+
+
+=== DEBUG: runClaudeCLI (streaming) ===
+CWD: /Users/drazen/playground/agneto/.worktrees/fix-curmudgeon-loop/.worktrees/fix-readme-typo
+Mode: default
+Allowed tools: []
+Command: claude -p --permission-mode default --output-format stream-json --verbose --model sonnet
+Prompt via stdin, length: 3015
+======================================
+
+=== Stream ended, result collected: true
+=== Final result: "QUESTION..."
+Encountered two children with the same key, `    at recursivelyTraversePassiveMountEffects (/Users/drazen/playground/agneto/node_modules/ink/node_modules/react-reconciler/cjs/react-reconciler.development.js:11338:11)`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+Encountered two children with the same key, `    at recursivelyTraversePassiveMountEffects (/Users/drazen/playground/agneto/node_modules/ink/node_modules/react-reconciler/cjs/react-reconciler.development.js:11338:11)`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.

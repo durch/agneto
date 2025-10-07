@@ -121,6 +121,7 @@ program
     .argument("[task-description]", "task description if ID was provided")
     .option("--auto-merge", "automatically merge to master when complete")
     .option("--non-interactive", "skip interactive planning (for CI/automation)")
+    .option("--base-branch <branch>", "use specified branch as base for worktree (default: auto-detect main/master)")
     .addHelpText('after', `
 Examples:
   # Simple usage - auto-generated ID
@@ -133,7 +134,10 @@ Examples:
   $ npm start -- "update dependencies" --non-interactive
 
   # Auto-merge when complete
-  $ npm start -- "add logging" --auto-merge`)
+  $ npm start -- "add logging" --auto-merge
+
+  # Use specific branch as base
+  $ npm start -- "new feature" --base-branch feature-branch`)
     .action(async (taskOrId, task, options) => {
         try {
             // Determine if user provided ID + description or just description
@@ -175,7 +179,8 @@ Examples:
             const { cwd } = await runTask(taskId, taskDescription, {
                 autoMerge: options.autoMerge,
                 nonInteractive: options.nonInteractive,
-                recoveryDecision
+                recoveryDecision,
+                baseBranch: options.baseBranch
             });
 
             if (!options.autoMerge) {

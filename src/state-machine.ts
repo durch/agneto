@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import { log } from "./ui/log.js";
 import type { CoderPlanProposal } from "./types.js";
 import type { ExecutionStateCheckpoint } from "./audit/types.js";
@@ -101,13 +102,14 @@ export interface StateMachineContext {
   maxCodeAttempts: number;
 }
 
-export class CoderReviewerStateMachine {
+export class CoderReviewerStateMachine extends EventEmitter {
   private state: State = State.TASK_START;
   private context: StateMachineContext;
   private auditLogger?: AuditLogger;
   private toolStatus: ToolStatus | null = null;
 
   constructor(maxPlanAttempts = 7, maxCodeAttempts = 7, baselineCommit?: string, auditLogger?: AuditLogger) {
+    super();
     this.context = {
       planAttempts: 0,
       codeAttempts: 0,
@@ -166,6 +168,7 @@ export class CoderReviewerStateMachine {
     } else if (agent === 'reviewer') {
       this.context.lastReviewerOutput = output;
     }
+    this.emit('execution:output:updated', { agent, output });
   }
 
   getAgentOutput(agent: 'bean' | 'coder' | 'reviewer'): string | undefined {
@@ -186,6 +189,7 @@ export class CoderReviewerStateMachine {
     } else if (agent === 'reviewer') {
       this.context.reviewerSummary = summary;
     }
+    this.emit('execution:summary:updated', { agent, summary });
   }
 
   getSummary(agent: 'coder' | 'reviewer'): string | undefined {
@@ -204,10 +208,13 @@ export class CoderReviewerStateMachine {
 
   setToolStatus(agent: string, tool: string, summary: string): void {
     this.toolStatus = { agent, tool, summary };
+    this.emit('tool:status', { agent, tool, summary });  // UI auto-updates
   }
 
   clearToolStatus(): void {
     this.toolStatus = null;
+    // Emit event with null values to notify UI to clear tool status display
+    this.emit('tool:status', { agent: null, tool: null, summary: null });
   }
 
   // Setters for testing and external manipulation
@@ -235,6 +242,8 @@ export class CoderReviewerStateMachine {
   setNeedsHumanReview(needed: boolean, context?: string): void {
     this.context.needsHumanReview = needed;
     this.context.humanReviewContext = context;
+    // Emit event for UI to react to human review state change
+    this.emit('execution:humanreview', { needed, context });
   }
 
   getNeedsHumanReview(): boolean {
@@ -248,6 +257,8 @@ export class CoderReviewerStateMachine {
   clearHumanReview(): void {
     this.context.needsHumanReview = false;
     this.context.humanReviewContext = undefined;
+    // Emit event for UI to react to human review state cleared
+    this.emit('execution:humanreview', { needed: false });
   }
 
   // Increment attempts - should be called before each attempt
@@ -283,8 +294,17 @@ export class CoderReviewerStateMachine {
       return this.state;
     }
 
+    // Emit event for debug overlay
+    this.emit('execution:event', { event, oldState, newState: this.state });
+
     if (oldState !== this.state) {
       log.orchestrator(`State transition: ${oldState} → ${this.state} (event: ${event})`);
+
+      // Emit state change event for debug overlay
+      this.emit('execution:state:changed', { oldState, newState: this.state, event });
+
+      // Emit phase change event (mirrors TaskStateMachine pattern)
+      this.emit('execution:phase:changed', { from: oldState, to: this.state });
 
       // Emit audit event for state transition
       if (this.auditLogger) {

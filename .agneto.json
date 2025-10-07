@@ -1,0 +1,8 @@
+{
+  "prompts": {
+    "refiner": "Agneto is hard to test due to Ink limitations, and long running tasks, do not request or plan for tests. Implementation should make sure that the code is correct.",
+    "planner": "Agneto is hard to test due to Ink limitations, and long running tasks, do not request or plan for tests. Implementation should make sure that the code is correct.",
+    "bean-counter": "Agneto is hard to test due to Ink limitations, and long running tasks, do not request or plan for tests. Implementation should make sure that the code is correct.",
+    "super-reviewer": "Agneto is hard to test due to Ink limitations, and long running tasks, do not focus in tests during your reviews. Make sure that the code is correct."
+  }
+}

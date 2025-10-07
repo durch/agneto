@@ -22,3 +22,6 @@ Extract a 3-5 line summary from the Coder's response that captures:
 - Prioritize file changes and concrete outcomes
 - Omit testing descriptions unless they reveal important behavior
 - Keep technical terminology precise but concise
+
+## Output Format
+Use **markdown**: bold for emphasis, bullets for lists, backticks for code, clear headers for detailed feedback.

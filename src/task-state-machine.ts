@@ -1,6 +1,7 @@
+import { EventEmitter } from 'events';
 import { log } from "./ui/log.js";
 import { CoderReviewerStateMachine } from "./state-machine.js";
-import type { RefinedTask, SuperReviewerResult } from "./types.js";
+import type { SuperReviewerResult, GardenerResult } from "./types.js";
 import type { TaskStateCheckpoint } from "./audit/types.js";
 import type { AuditLogger } from "./audit/audit-logger.js";
 
@@ -19,7 +20,7 @@ export enum TaskState {
 
   // Post-execution phases
   TASK_SUPER_REVIEWING = "TASK_SUPER_REVIEWING",
-  TASK_FINALIZING = "TASK_FINALIZING",
+  TASK_GARDENING = "TASK_GARDENING",
 
   // Terminal states
   TASK_COMPLETE = "TASK_COMPLETE",
@@ -65,16 +66,12 @@ export enum TaskEvent {
   // Super review events
   SUPER_REVIEW_PASSED = "SUPER_REVIEW_PASSED",
   SUPER_REVIEW_NEEDS_HUMAN = "SUPER_REVIEW_NEEDS_HUMAN",
+  GARDENING_COMPLETE = "GARDENING_COMPLETE",
 
   // Human decision events
   HUMAN_APPROVED = "HUMAN_APPROVED",
   HUMAN_RETRY = "HUMAN_RETRY",
   HUMAN_ABANDON = "HUMAN_ABANDON",
-
-  // Finalization events
-  AUTO_MERGE = "AUTO_MERGE",
-  MANUAL_MERGE = "MANUAL_MERGE",
-  CLEANUP_COMPLETE = "CLEANUP_COMPLETE",
 
   // Error event
   ERROR_OCCURRED = "ERROR_OCCURRED",
@@ -88,9 +85,9 @@ export interface TaskContext {
   workingDirectory: string;
 
   // Refined task (if refinement occurred)
-  refinedTask?: RefinedTask;
+  refinedTask?: string;
   taskToUse?: string; // The actual task description to use (refined or original)
-  pendingRefinement?: RefinedTask; // Refinement awaiting approval
+  pendingRefinement?: string; // Refinement awaiting approval
 
   // Planning outputs
   planMd?: string;
@@ -130,13 +127,20 @@ export interface TaskContext {
   userHasReviewedPlan: boolean;
 }
 
-export class TaskStateMachine {
+export class TaskStateMachine extends EventEmitter {
   private state: TaskState = TaskState.TASK_INIT;
   private context: TaskContext;
   private auditLogger?: AuditLogger;
   private liveActivityMessage: LiveActivityMessage | null = null;
   private toolStatus: ToolStatus | null = null;
   private currentQuestion: string | null = null;
+  private answeringQuestion: boolean = false;
+  private gardenerResult: GardenerResult | null = null;
+  private injectionPauseRequested: boolean = false;
+  private pendingInjection: string | null = null;
+  private mergeInstructions: string | null = null;
+  private clipboardStatus: 'success' | 'failed' | null = null;
+  private agentPromptsConfig: Record<string, string> | undefined = undefined;
 
   constructor(
     taskId: string,
@@ -145,6 +149,7 @@ export class TaskStateMachine {
     options: TaskContext["options"] = {},
     auditLogger?: AuditLogger
   ) {
+    super(); // EventEmitter constructor
     this.context = {
       taskId,
       humanTask,
@@ -171,7 +176,7 @@ export class TaskStateMachine {
     return this.context.executionStateMachine;
   }
 
-  getRefinedTask(): RefinedTask | undefined {
+  getRefinedTask(): string | undefined {
     return this.context.refinedTask;
   }
 
@@ -191,6 +196,16 @@ export class TaskStateMachine {
     return this.context.lastError;
   }
 
+  getGardenerResult(): GardenerResult | null {
+    return this.gardenerResult;
+  }
+
+  setGardenerResult(result: GardenerResult): void {
+    this.gardenerResult = result;
+    // Emit event for UI to show gardener result
+    this.emit('gardener:complete', { result });
+  }
+
   // Live activity message management
   getLiveActivityMessage(): LiveActivityMessage | null {
     return this.liveActivityMessage;
@@ -198,10 +213,12 @@ export class TaskStateMachine {
 
   setLiveActivityMessage(agent: string, message: string): void {
     this.liveActivityMessage = { agent, message };
+    this.emit('activity:updated', { agent, message });
   }
 
   clearLiveActivityMessage(): void {
     this.liveActivityMessage = null;
+    this.emit('activity:updated', { message: null });
   }
 
   // Tool status management for UI display
@@ -211,18 +228,23 @@ export class TaskStateMachine {
 
   setToolStatus(agent: string, tool: string, summary: string): void {
     this.toolStatus = { agent, tool, summary };
+    this.emit('tool:status', { agent, tool, summary });  // UI auto-updates
   }
 
   clearToolStatus(): void {
     this.toolStatus = null;
+    // Emit event with null values to notify UI to clear tool status display
+    this.emit('tool:status', { agent: null, tool: null, summary: null });
   }
 
   // Setters for context updates
-  setPendingRefinement(refinement: RefinedTask) {
+  setPendingRefinement(refinement: string) {
     this.context.pendingRefinement = refinement;
+    // Emit event for UI to show pending refinement
+    this.emit('refinement:ready', { refinement });
   }
 
-  getPendingRefinement(): RefinedTask | undefined {
+  getPendingRefinement(): string | undefined {
     return this.context.pendingRefinement;
   }
 
@@ -232,22 +254,42 @@ export class TaskStateMachine {
 
   setCurrentQuestion(question: string | null): void {
     this.currentQuestion = question;
+    // Emit event for UI to show question
+    if (question) {
+      this.emit('question:asked', { question });
+    }
   }
 
   clearCurrentQuestion(): void {
     this.currentQuestion = null;
+    // Emit event for UI to clear question display
+    this.emit('question:cleared');
   }
 
-  setRefinedTask(refinedTask: RefinedTask, taskToUse: string) {
+  getAnsweringQuestion(): boolean {
+    return this.answeringQuestion;
+  }
+
+  setAnsweringQuestion(isAnswering: boolean): void {
+    this.answeringQuestion = isAnswering;
+    // Emit event for UI to react to answering state change
+    this.emit('question:answering', { isAnswering });
+  }
+
+  setRefinedTask(refinedTask: string, taskToUse: string) {
     this.context.refinedTask = refinedTask;
     this.context.taskToUse = taskToUse;
     // Clear pending once approved
     this.context.pendingRefinement = undefined;
+    // Emit event for UI to update task display
+    this.emit('task:refined', { refinedTask, taskToUse });
   }
 
   setPlan(planMd: string | undefined, planPath: string) {
     this.context.planMd = planMd;
     this.context.planPath = planPath;
+    // Emit event for UI to show plan
+    this.emit('plan:ready', { planMd, planPath });
   }
 
   setExecutionStateMachine(machine: CoderReviewerStateMachine) {
@@ -261,6 +303,8 @@ export class TaskStateMachine {
 
   setSuperReviewResult(result: SuperReviewerResult) {
     this.context.superReviewResult = result;
+    // Emit event for UI to show super review result
+    this.emit('superreview:complete', { result });
   }
 
   setRetryFeedback(feedback: string) {
@@ -285,6 +329,7 @@ export class TaskStateMachine {
 
   setCurmudgeonFeedback(feedback: string) {
     this.context.curmudgeonFeedback = feedback;
+    this.emit('curmudgeon:feedback', { feedback });
   }
 
   getCurmudgeonFeedback(): string | undefined {
@@ -293,6 +338,7 @@ export class TaskStateMachine {
 
   clearCurmudgeonFeedback() {
     this.context.curmudgeonFeedback = undefined;
+    this.emit('curmudgeon:feedback', { feedback: undefined });
   }
 
   setUserHasReviewedPlan(value: boolean) {
@@ -318,6 +364,73 @@ export class TaskStateMachine {
 
   getBaselineCommit(): string | undefined {
     return this.context.baselineCommit;
+  }
+
+  // Dynamic prompt injection state management
+  requestInjectionPause(): void {
+    this.injectionPauseRequested = true;
+  }
+
+  isInjectionPauseRequested(): boolean {
+    return this.injectionPauseRequested;
+  }
+
+  clearInjectionPause(): void {
+    this.injectionPauseRequested = false;
+  }
+
+  setPendingInjection(content: string): void {
+    this.pendingInjection = content;
+  }
+
+  getPendingInjection(): string | null {
+    return this.pendingInjection;
+  }
+
+  clearPendingInjection(): void {
+    this.pendingInjection = null;
+  }
+
+  hasPendingInjection(): boolean {
+    return this.pendingInjection !== null;
+  }
+
+  // Merge instructions management
+  setMergeInstructions(instructions: string, status: 'success' | 'failed'): void {
+    this.mergeInstructions = instructions;
+    this.clipboardStatus = status;
+  }
+
+  getMergeInstructions(): string | null {
+    return this.mergeInstructions;
+  }
+
+  getClipboardStatus(): 'success' | 'failed' | null {
+    return this.clipboardStatus;
+  }
+
+  // Agent prompts configuration management
+  setAgentPromptsConfig(config: Record<string, string> | undefined): void {
+    this.agentPromptsConfig = config;
+  }
+
+  getAgentPromptConfig(agentName: string): string | undefined {
+    return this.agentPromptsConfig?.[agentName];
+  }
+
+  // Signal that plan is ready for user approval (after Curmudgeon approval)
+  setPlanAwaitingApproval(): void {
+    this.emit('plan:awaiting_approval');
+  }
+
+  // Signal that refinement is ready for user approval
+  setRefinementAwaitingApproval(): void {
+    this.emit('refinement:awaiting_approval');
+  }
+
+  // Signal that SuperReviewer results are ready for user decision
+  setSuperReviewAwaitingApproval(): void {
+    this.emit('superreview:awaiting_approval');
   }
 
   // Check if we can continue processing
@@ -365,6 +478,10 @@ export class TaskStateMachine {
           }
         });
       }
+
+      // Emit event for UI to react to state change
+      this.emit('state:changed', { oldState, newState: this.state, event });
+      this.emit('phase:changed', { from: oldState, to: this.state });
     }
 
     return this.state;
@@ -453,13 +570,13 @@ export class TaskStateMachine {
 
       case TaskState.TASK_SUPER_REVIEWING:
         if (event === TaskEvent.SUPER_REVIEW_PASSED) {
-          this.state = TaskState.TASK_FINALIZING;
+          this.state = TaskState.TASK_GARDENING;
           return true;
         } else if (event === TaskEvent.SUPER_REVIEW_NEEDS_HUMAN) {
           // Stay in super review state, waiting for human decision
           return true;
         } else if (event === TaskEvent.HUMAN_APPROVED) {
-          this.state = TaskState.TASK_FINALIZING;
+          this.state = TaskState.TASK_GARDENING;
           return true;
         } else if (event === TaskEvent.HUMAN_RETRY) {
           // Go back to planning for a new cycle
@@ -475,14 +592,8 @@ export class TaskStateMachine {
         }
         break;
 
-      case TaskState.TASK_FINALIZING:
-        if (
-          event === TaskEvent.AUTO_MERGE ||
-          event === TaskEvent.MANUAL_MERGE
-        ) {
-          this.state = TaskState.TASK_COMPLETE;
-          return true;
-        } else if (event === TaskEvent.CLEANUP_COMPLETE) {
+      case TaskState.TASK_GARDENING:
+        if (event === TaskEvent.GARDENING_COMPLETE) {
           this.state = TaskState.TASK_COMPLETE;
           return true;
         } else if (event === TaskEvent.ERROR_OCCURRED) {
@@ -526,7 +637,6 @@ export class TaskStateMachine {
       case TaskState.TASK_CURMUDGEONING:
       case TaskState.TASK_EXECUTING:
       case TaskState.TASK_SUPER_REVIEWING:
-      case TaskState.TASK_FINALIZING:
         // Critical errors - abandon task
         this.state = TaskState.TASK_ABANDONED;
         log.orchestrator("Critical error - task abandoned");
@@ -563,12 +673,16 @@ export class TaskStateMachine {
 
       // Restore refined task data if available
       if (checkpoint.refinedTask && checkpoint.taskToUse) {
-        // Ensure raw property is set for RefinedTask compatibility
-        const refinedTask: RefinedTask = {
-          ...checkpoint.refinedTask,
-          raw: checkpoint.refinedTask.raw || undefined
-        };
-        this.context.refinedTask = refinedTask;
+        // Handle legacy checkpoint format (RefinedTask object)
+        if (typeof checkpoint.refinedTask === 'object' && checkpoint.refinedTask !== null) {
+          // Convert RefinedTask object to string
+          this.context.refinedTask = (checkpoint.refinedTask as any).raw ||
+                                     (checkpoint.refinedTask as any).goal ||
+                                     checkpoint.taskToUse;
+        } else {
+          // Already a string
+          this.context.refinedTask = checkpoint.refinedTask as string;
+        }
         this.context.taskToUse = checkpoint.taskToUse;
       } else if (checkpoint.taskToUse) {
         this.context.taskToUse = checkpoint.taskToUse;
@@ -611,6 +725,15 @@ export class TaskStateMachine {
 
       // Restore user review tracking
       this.context.userHasReviewedPlan = checkpoint.userHasReviewedPlan || false;
+
+      // Restore dynamic prompt injection state (Ctrl+I override mechanism)
+      // These fields ensure pending user input isn't lost during checkpoint recovery
+      this.injectionPauseRequested = checkpoint.injectionPauseRequested || false;
+      this.pendingInjection = checkpoint.pendingInjection || null;
+
+      // Restore merge instructions if available
+      this.mergeInstructions = checkpoint.mergeInstructions || null;
+      this.clipboardStatus = checkpoint.clipboardStatus || null;
 
       // Restore super review result if available
       if (checkpoint.superReviewResult) {

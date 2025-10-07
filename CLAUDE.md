@@ -34,6 +34,33 @@ make test      # Run all tests
 make provider  # Test Claude provider connection
 ```
 
+## ⚙️ Configuration (.agneto.json)
+
+Agneto supports optional project-specific configuration via `.agneto.json` in your repository root.
+
+### Custom Agent Prompts
+
+You can customize any agent's behavior by providing additional instructions in the `prompts` field:
+
+```json
+{
+  "prompts": {
+    "planner": "Focus on incremental changes. Prefer refactoring over rewriting.",
+    "coder": "Always write tests before implementation. Use functional programming style.",
+    "reviewer": "Prioritize security and performance concerns."
+  }
+}
+```
+
+**Available agents:** `planner`, `curmudgeon`, `beancounter`, `coder`, `reviewer`, `superreviewer`, `gardener`, `refiner`
+
+**How it works:**
+- Custom prompts are injected as `## Project-Specific Instructions` in agent system prompts
+- Instructions are loaded at task startup and persist throughout execution
+- For one-time modifications during execution, use **Ctrl+I** (dynamic injection)
+
+**Note:** Configuration is optional. Agneto works out-of-the-box without `.agneto.json`.
+
 ## 🎯 How Agneto Works (Essential Understanding)
 
 Agneto is a **human-in-the-loop AI development system** with seven main personas and one utility agent acting as an **Agile AI Development Team**:
@@ -57,14 +84,82 @@ Planner ↔ Curmudgeon cycles automatically (simplify if needed) →
 Curmudgeon approves → Single user approval prompt →
 Bean Counter: First chunk → Coder: Implements chunk → Reviewer: Approves →
 Bean Counter: Next chunk → Coder: Implements → Reviewer: Approves → [repeat] →
-Bean Counter: Task complete → SuperReviewer final check → Review in worktree → Merge
+Bean Counter: Task complete → SuperReviewer final check → Gardener updates docs →
+Task complete! UI exits → Terminal shows merge commands → Manual review and merge
 ```
 
 ### Default Behavior (Important!)
 - ✅ **Interactive planning ON** - You refine the plan before execution
-- ✅ **Runs ALL steps** - No need to continue manually
-- ✅ **Manual merge** - You review before merging to master
+- ✅ **Runs ALL steps** - Executes through Gardener automatically
+- ✅ **Non-interactive completion** - UI exits after Gardener, logs merge commands to terminal
+- ✅ **Manual merge** - Execute displayed commands after reviewing worktree
 - ✅ **Conservative** - Reviewer often asks for human input
+
+## 🤖 Core Principle: LLM-First Communication
+
+**CRITICAL: Agneto is LLM-first by design. This is a fundamental architectural principle.**
+
+### The Golden Rule of Agent Communication
+
+**⚠️ NEVER attempt to parse natural language responses programmatically. This ALWAYS fails.**
+
+Agneto uses **raw text/natural language as the ONLY reliable protocol** for all communication:
+- Agent ↔ Agent communication
+- Agent ↔ User communication
+- Agent ↔ Orchestrator communication
+
+### Why Parsing Always Fails
+
+Attempts to implement parsers for natural language agent responses **fail without exception** because:
+- LLMs produce varied response formats and styles
+- Response structure changes based on context and prompt variations
+- JSON extraction from natural language is inherently unreliable
+- Schema validation errors cascade into system failures
+- Regex and string pattern matching is brittle and breaks unexpectedly
+
+### The Interpreter Pattern (Correct Approach)
+
+Instead of parsing, Agneto uses a **stateless LLM interpreter**:
+
+```
+Agent Response (Natural Language) → Interpreter (LLM) → Structured Decision (JSON)
+```
+
+**Key Components:**
+1. **Agents write natural language** - No format requirements, no JSON constraints
+2. **Stateless interpreter extracts intent** - Fast Sonnet model understands and structures the response
+3. **Orchestrator receives structured data** - Reliable decisions without parsing failures
+
+### What This Means for Development
+
+**DO:**
+- ✅ Let agents communicate in natural, readable language
+- ✅ Use LLM interpreter to extract structured decisions
+- ✅ Trust the interpreter to handle format variations
+- ✅ Keep prompts focused on natural communication
+
+**DON'T:**
+- ❌ Implement regex parsers for agent responses
+- ❌ Require JSON output from agents
+- ❌ Validate response formats with schemas
+- ❌ Extract data with string manipulation
+- ❌ Assume consistent response structure
+
+### Example: Why This Works
+
+**Agent says (natural language):**
+> "I approve this implementation. The authentication logic is solid and follows best practices. Let's proceed to the next chunk."
+
+**Interpreter extracts (structured):**
+```json
+{
+  "verdict": "approve",
+  "feedback": "The authentication logic is solid and follows best practices",
+  "continueNext": true
+}
+```
+
+No parsing required. No failures. Just reliable LLM-to-LLM communication.
 
 ## 🔧 Common Tasks
 
@@ -84,6 +179,7 @@ Bean Counter: Task complete → SuperReviewer final check → Review in worktree
 # See all worktrees
 git worktree list
 
+# After task completion, Agneto displays these commands:
 # Review a worktree before merging
 cd .worktrees/<task-id>
 git log --oneline -5       # Recent commits
@@ -93,7 +189,7 @@ npm run build              # Verify it compiles
 # Merge and auto-cleanup (non-interactive!)
 npm run merge-task <task-id>
 
-# Manual cleanup if needed
+# Or cleanup without merging
 npm run cleanup-task <task-id>
 ```
 
@@ -103,77 +199,18 @@ Agneto includes a comprehensive audit system that logs all agent interactions, p
 
 ### Audit Features
 
-- **Comprehensive Logging**: All agent communications, tool usage, and phase transitions captured
-- **Persistent Storage**: Events stored in `.agneto/task-{id}/` directories
-- **Checkpoint System**: State snapshots for recovery and restoration
-- **Rich Metadata**: Cost tracking, duration metrics, and execution context
-- **Human-Readable Output**: Both JSON events and markdown summaries generated
-- **Non-Intrusive**: Zero changes to existing code - wraps LogUI transparently
+- **Comprehensive Logging**: Agent communications, tool usage, phase transitions
+- **Persistent Storage**: Events in `.agneto/task-{id}/` directories
+- **Checkpoint System**: State snapshots for recovery
+- **Rich Metadata**: Cost tracking, duration metrics
+- **Human-Readable Output**: JSON events and markdown summaries
 
-### Audit Directory Structure
+### Key Capabilities
 
-Every task creates an audit trail:
-```
-.agneto/task-{id}/
-├── events/               # Individual JSON event files
-│   ├── 1727462285785-uuid.json
-│   └── ...
-├── metadata.json         # Task metadata and summary
-└── summary.md           # Human-readable execution summary
-```
-
-### Checkpoint & Recovery System
-
-The audit system includes sophisticated checkpoint and recovery capabilities:
-
-**Checkpoint Service**
-- Captures comprehensive state snapshots during execution
-- Includes agent session state, progress ledger, file modifications
-- Configurable naming formats and compression
-- Automatic cleanup of old checkpoints
-
-**Recovery Service**
-- Restores task execution from any checkpoint
-- Filters and searches checkpoints efficiently
-- Provides detailed recovery status reporting
-
-**Restoration Service**
-- Startup-only restoration from previous executions
-- Preserves session continuity and progress state
-- Graceful handling of corrupted or missing data
-
-### Audit Event Types
-
-The system captures:
-
-- **Agent Messages**: All planner, coder, reviewer communications
-- **Tool Usage**: ReadFile, Write, Edit, Bash command executions
-- **Phase Transitions**: PLANNING → CODING → REVIEW cycles
-- **Completion Metrics**: Cost, duration, success/failure status
-- **Context Data**: Chunk numbers, sprint tracking, session IDs
-
-### Usage Examples
-
-**Review audit trail for a task:**
-```bash
-# View all events
-ls .agneto/task-abc123/events/
-
-# Read human-readable summary
-cat .agneto/task-abc123/summary.md
-
-# Check task metadata
-cat .agneto/task-abc123/metadata.json
-```
-
-**Debug using audit data:**
-```bash
-# Find all coder events
-grep -r "\"agent\": \"coder\"" .agneto/task-abc123/events/
-
-# Check for errors
-grep -r "error\|failed" .agneto/task-abc123/events/
-```
+- Captures agent messages, tool usage, phase transitions
+- Checkpoint/recovery service for execution restoration
+- Events stored as individual JSON files with metadata
+- Use `cat .agneto/task-{id}/summary.md` to review execution
 
 ## 📱 Web Dashboard Interface
 
@@ -181,64 +218,18 @@ Agneto includes a real-time web dashboard for monitoring task execution, providi
 
 ### Dashboard Features
 
-- **Real-time Event Streaming**: Live updates as agents communicate and execute tasks
-- **Task History**: Complete audit trail visualization with filtering and search
-- **Agent Activity Monitoring**: See planner, coder, and reviewer interactions in real-time
-- **Performance Metrics**: Cost tracking, duration analysis, and execution statistics
-- **WebSocket Integration**: Instant updates without page refreshes
-- **Event Storage**: In-memory storage for up to 1000 events per task
-- **Cross-Platform**: Works in any modern web browser
+- Real-time event streaming with WebSocket integration
+- Task history visualization with filtering and search
+- Performance metrics (cost tracking, duration analysis)
+- In-memory storage for up to 1000 events per task
 
-### Dashboard Architecture
-
-The dashboard integrates seamlessly with Agneto's audit system:
-
-```
-┌─────────────────┐    HTTP POST     ┌─────────────────┐    WebSocket    ┌─────────────────┐
-│   Agneto Task   │ ──────────────→ │ Dashboard Server│ ──────────────→ │  Web Interface  │
-│   (EventEmitter)│    /events       │   (Express)     │   Real-time     │   (Browser)     │
-└─────────────────┘                  └─────────────────┘                 └─────────────────┘
-```
-
-**Components:**
-- **EventEmitter** (`src/dashboard/event-emitter.ts`): Sends audit events to dashboard
-- **Express Server** (`dashboard/server.ts`): Receives events via HTTP, serves WebSocket
-- **Web Interface** (`dashboard/public/`): Real-time visualization and controls
-
-### Environment Configuration
-
+**Quick Start:**
 ```bash
-# Set custom dashboard endpoint (default: http://localhost:3000)
-AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start -- "your task"
-
-# Enable dashboard debug output
-DEBUG=true npm run dashboard
+PORT=8080 npm run dashboard  # Start server
+AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start -- "task"
 ```
 
-### Dashboard API
-
-The dashboard provides HTTP and WebSocket APIs:
-
-**HTTP Endpoints:**
-- `POST /events` - Receive audit events from EventEmitter
-- `GET /tasks/{taskId}` - Retrieve task history and metadata
-- `GET /` - Serve dashboard interface
-
-**WebSocket Events:**
-- `task_started` - New task execution began
-- `agent_message` - Agent communication event
-- `tool_usage` - Tool execution event
-- `phase_transition` - Execution phase change
-- `task_completed` - Task finished successfully
-
-### Dashboard Benefits
-
-1. **Real-time Monitoring**: See execution progress as it happens
-2. **Visual Debugging**: Understand agent decision-making and tool usage
-3. **Performance Analysis**: Track costs and execution times across tasks
-4. **Team Collaboration**: Share task progress with stakeholders via web interface
-5. **Historical Analysis**: Review past executions and identify patterns
-6. **Compliance Visibility**: Real-time audit trail for regulatory requirements
+**Architecture:** EventEmitter → Express Server → WebSocket → Browser UI
 
 ## 🔧 Environment Variables Reference
 
@@ -275,58 +266,21 @@ Agneto supports various environment variables to control execution, debugging, a
 | `NTFY_TOPIC` | (required) | The ntfy topic to send push notifications to when tasks complete or require human input | `NTFY_TOPIC=agneto-alerts npm start` |
 | `NTFY_SERVER` | `https://ntfy.sh` | Custom ntfy server URL for sending notifications | `NTFY_SERVER=https://my-ntfy.com npm start` |
 
-### Usage Examples
+### Common Configurations
 
-**Full debugging setup:**
 ```bash
-# Maximum verbosity with all debugging enabled
-DEBUG=true LOG_LEVEL=debug npm start -- "debug task" --non-interactive
+# Debug mode
+DEBUG=true LOG_LEVEL=debug npm start -- "task"
+
+# CI/CD mode
+DISABLE_AUDIT=true DISABLE_CHECKPOINTS=true npm start -- "task" --non-interactive
+
+# With dashboard
+AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 npm start -- "task"
+
+# With notifications
+NTFY_TOPIC=my-alerts npm start -- "task"
 ```
-
-**Minimal setup for CI/CD:**
-```bash
-# Disable all extra features for clean CI runs
-DISABLE_AUDIT=true DISABLE_CHECKPOINTS=true npm start -- "ci task" --non-interactive
-```
-
-**Development with dashboard:**
-```bash
-# Terminal 1: Start dashboard with custom port
-PORT=8080 npm run dashboard
-
-# Terminal 2: Run task with dashboard integration
-AGNETO_DASHBOARD_ENDPOINT=http://localhost:8080 DEBUG=true npm start -- "development task"
-```
-
-**Checkpoint management:**
-```bash
-# Keep only 3 checkpoints with compression enabled
-MAX_CHECKPOINTS=3 CHECKPOINT_COMPRESSION=true npm start -- "large task"
-```
-
-**Production deployment:**
-```bash
-# Production-ready configuration
-LOG_LEVEL=warn MAX_CHECKPOINTS=5 CHECKPOINT_COMPRESSION=true npm start -- "production task" --non-interactive
-```
-
-**Push notifications setup:**
-```bash
-# Enable ntfy notifications for task completion and human review prompts
-NTFY_TOPIC=my-agneto-alerts npm start -- "important task"
-
-# With custom ntfy server
-NTFY_TOPIC=agneto-team NTFY_SERVER=https://ntfy.company.com npm start -- "team task"
-```
-
-### Variable Precedence
-
-Environment variables can be set in multiple ways:
-
-1. **Command line** (highest precedence): `DEBUG=true npm start`
-2. **Shell export**: `export DEBUG=true && npm start`
-3. **`.envrc` file** (if using direnv): `echo "export DEBUG=true" > .envrc`
-4. **System defaults** (lowest precedence): Built-in defaults
 
 ## 🏗️ Architecture Reference
 
@@ -336,8 +290,9 @@ Agneto uses a two-level state machine architecture:
 
 1. **Task State Machine** (`task-state-machine.ts`):
    - Manages the overall task lifecycle
-   - States: INIT → REFINING → PLANNING → CURMUDGEONING → EXECUTING → SUPER_REVIEWING → COMPLETE
+   - States: INIT → REFINING → PLANNING → CURMUDGEONING → EXECUTING → SUPER_REVIEWING → GARDENING → COMPLETE
    - Handles high-level task flow and agent coordination
+   - COMPLETE state triggers UI exit and merge command display (no interactive merge approval)
 
 2. **Execution State Machine** (`state-machine.ts`):
    - Manages the Bean Counter/Coder/Reviewer loop
@@ -352,7 +307,7 @@ Agneto uses a two-level state machine architecture:
 | `src/orchestrator.ts` | Main control flow | Changing the task flow |
 | `src/orchestrator-helpers.ts` | Helper functions for orchestration | Utility functions |
 | `src/state-machine.ts` | Bean Counter execution state machine | Chunk execution flow |
-| `src/task-state-machine.ts` | Parent task state machine | Overall task lifecycle |
+| `src/task-state-machine.ts` | Parent task state machine | Overall task lifecycle; stores injection state for Ctrl+I prompt modifications |
 | **Agents** |
 | `src/agents/planner.ts` | High-level planning logic | Improving strategic plan generation |
 | `src/agents/bean-counter.ts` | Work chunking & progress tracking | Adjusting chunking strategy |
@@ -397,6 +352,8 @@ Agneto uses a two-level state machine architecture:
 
 **AIDEV-NOTE:** The system uses natural language communication between agents, with a stateless interpreter converting responses to structured decisions. This eliminates JSON parsing failures and makes agent responses more readable and debuggable.
 
+**⚠️ CRITICAL WARNING: DO NOT implement parsers for natural language responses!** Any attempt to parse agent responses with regex, string manipulation, or programmatic extraction WILL FAIL. This has been tried repeatedly and fails every single time without exception. The ONLY reliable approach is LLM-based interpretation (see interpreter pattern below). If you find yourself writing code to parse agent responses, STOP immediately - you are making a fundamental architectural mistake.
+
 **Agent Communication Flow:**
 ```
 Agent Response (Natural Language) → Interpreter (Stateless Sonnet) → Structured Decision (JSON)
@@ -420,6 +377,7 @@ Agent Response (Natural Language) → Interpreter (Stateless Sonnet) → Structu
 - Refiner: `{type: "question|refinement", question?: string, content?: string}`
 - Coder: `{action: "continue|complete|implemented", description, steps, files}`
 - Reviewer: `{verdict: "approve|revise|reject|needs_human", feedback, continueNext}`
+- Curmudgeon: `{verdict: "APPROVE|SIMPLIFY|REJECT|NEEDS_HUMAN", feedback: string}`
 
 **Key Features:**
 - Natural language responses from agents (no JSON requirements)
@@ -432,7 +390,7 @@ Agent Response (Natural Language) → Interpreter (Stateless Sonnet) → Structu
 
 The system uses Claude CLI in headless mode with natural language interpretation:
 - **JSON output**: All calls use `--output-format json` for structured metadata
-- **plan mode**: Read-only for Planner, Task Refiner, and Interpreter
+- **plan mode**: Read-only for Planner, Curmudgeon, Task Refiner, and Interpreter
 - **default mode**: With tools for Coder, Reviewer, and SuperReviewer
   - Coder tools: ReadFile, ListDir, Grep, Bash, Write, Edit, MultiEdit
   - Reviewer tools: ReadFile, Grep, Bash (to verify file state)
@@ -519,12 +477,15 @@ Set `DEBUG=true` to see:
 - Catches potential issues early
 - Maintains code quality
 
-**Natural Language → Interpreter Protocol**
+**Natural Language → Interpreter Protocol (LLM-First Architecture)**
 - Agents communicate naturally in readable language
 - Stateless LLM interpreter extracts structured decisions
+- **NEVER parse agent responses programmatically** - This fundamental rule has no exceptions
 - No JSON parsing failures or schema validation errors
 - Robust handling of any response format variations
 - Better debugging through readable agent responses
+- **Why this works**: LLMs understand LLMs better than regex ever will
+- **Why parsing fails**: Response formats vary, structure changes, brittle string matching breaks
 
 **Focused Changes**
 - Multi-file support available
@@ -537,7 +498,7 @@ Set `DEBUG=true` to see:
 ### What Works Well
 - ✅ Interactive planning with feedback loop
 - ✅ **Streamlined approval flow** - Automatic Planner ↔ Curmudgeon cycles, single user approval
-- ✅ **Task Refiner clarifying questions** - Interactive Q&A loop for vague task descriptions with promise-based resolver pattern
+- ✅ **Task Refiner clarifying questions** - Interactive Q&A loop for vague task descriptions using CommandBus event-driven pattern
 - ✅ Safe sandbox execution with git worktrees
 - ✅ Bean Counter coordinated work breakdown (prevents loops!)
 - ✅ Small chunk implementation with frequent review cycles
@@ -556,6 +517,12 @@ Set `DEBUG=true` to see:
 - ✅ **State machine architecture** - Clear task and execution lifecycle
 - ✅ **Natural language protocol** - Robust agent communication
 - ✅ **Menu-based UI navigation** - Arrow key + Enter selection for all approvals, no shortcut conflicts
+- ✅ **Separate SuperReviewer and Gardener states** - Independent `TASK_GARDENING` state ensures documentation update results are visible before task finalization; split-pane UI shows SuperReviewer (left) and Gardener (right) results
+- ✅ **Dynamic prompt injection** - Ctrl+I keyboard shortcut enables real-time agent behavior modification during execution
+- ✅ **Curmudgeon interpreter pattern** - Structured verdict extraction prevents approval loop bugs
+- ✅ **Unified event-driven architecture** - All approval flows and question answering use CommandBus pattern for consistency (plan approval, refinement approval, question answering)
+- ✅ **Non-interactive task completion** - UI exits cleanly after Gardener, terminal displays copy-pasteable merge commands for manual execution
+- ✅ **Execution phase-driven UI updates** - ExecutionLayout subscribes to `execution:phase:changed` events for automatic progress tracker and output pane updates independent of agent output
 
 
 ### Common Gotchas
@@ -570,6 +537,8 @@ Set `DEBUG=true` to see:
 - System prompt sent only once per session, subsequent calls use conversation continuity
 - Multi-file changes supported but Bean Counter prefers focused chunks
 - Interpreter uses additional Sonnet calls (minimal cost) for decision extraction
+- **Ctrl+I injections are single-use only** - Automatically cleared after next agent call
+- **Injection pause is graceful** - Current agent operation completes before modal appears
 
 ## 🖥️ Ink UI Integration (Terminal UI)
 
@@ -590,64 +559,101 @@ if (state === TASK_PLANNING) {
 }
 ```
 
-### Promise-Based Approval Pattern
+### Event-Driven Architecture
 
-Refinement, clarifying questions, and planning approvals all use the same promise-based pattern for user interaction:
+Agneto uses an **event-driven architecture** to completely decouple the UI from the orchestrator logic. This follows the same pattern as the web dashboard and eliminates the complexity of promise resolver callbacks.
+
+**Core Concepts:**
+1. **TaskStateMachine extends EventEmitter** - Emits events on all state and data changes
+2. **CommandBus** - Handles UI→Orchestrator commands via event queue
+3. **UI is purely reactive** - Listens to events for display, sends commands for interaction
+4. **Single source of truth** - State lives in TaskStateMachine, UI reads it dynamically
 
 ```typescript
-// 1. Orchestrator creates a promise and its resolver
-let resolverFunc: ((value: Feedback) => void) | null = null;
-const feedbackPromise = new Promise<Feedback>((resolve) => {
-  resolverFunc = resolve;
-});
-(feedbackPromise as any).resolve = resolverFunc; // Attach for UI access
+// TaskStateMachine emits events on data changes
+export class TaskStateMachine extends EventEmitter {
+  setPlan(planMd: string | undefined, planPath: string) {
+    this.context.planMd = planMd;
+    this.context.planPath = planPath;
+    this.emit('plan:ready', { planMd, planPath });  // UI auto-updates
+  }
 
-// 2. Pass callback to UI that will wire up the resolver
-const callback = (feedback: Promise<Feedback>) => {
-  (feedback as any).resolve = resolverFunc; // Critical: Use orchestrator's resolver!
+  setAnsweringQuestion(isAnswering: boolean) {
+    this.answeringQuestion = isAnswering;
+    this.emit('question:answering', { isAnswering });  // Modal visibility control
+  }
+}
+
+// UI subscribes to events for automatic re-rendering
+React.useEffect(() => {
+  const handleStateChange = () => forceUpdate({});
+  taskStateMachine.on('state:changed', handleStateChange);
+  taskStateMachine.on('plan:ready', handleDataUpdate);
+  taskStateMachine.on('question:asked', handleDataUpdate);
+  taskStateMachine.on('question:answering', handleDataUpdate);
+
+  return () => {
+    taskStateMachine.off('state:changed', handleStateChange);
+    // ... cleanup
+  };
+}, [taskStateMachine]);
+
+// UI sends commands to orchestrator via CommandBus
+const handleApprove = async () => {
+  await commandBus.sendCommand({ type: 'refinement:approve' });
 };
 
-// 3. UI extracts and uses the resolver
-React.useEffect(() => {
-  if (onFeedbackCallback && shouldShowApproval) {
-    const dummyPromise = new Promise((resolve) => {});
-    onFeedbackCallback(dummyPromise); // Callback attaches real resolver
-    const resolver = (dummyPromise as any).resolve; // Extract it
-    setLocalResolver(() => resolver); // Store for keyboard handler
-  }
-}, [dependencies]);
-
-// 4. Orchestrator waits for approval
-const feedback = await feedbackPromise;
+// Orchestrator waits for commands
+const feedback = await commandBus.waitForCommand<RefinementFeedback>('refinement:approve');
 ```
 
-**Critical Pattern:** The UI must use the resolver from the orchestrator's promise, not create its own promise. This was a major source of bugs.
+**Event Types Emitted:**
+- `state:changed` - TaskStateMachine state transitions
+- `plan:ready` - Plan markdown ready for display
+- `refinement:ready` - Refinement awaiting approval
+- `question:asked` - Clarifying question from Refiner
+- `question:answering` - Processing answer (modal visibility control)
+- `superreview:complete` - SuperReviewer results ready
+- `gardener:complete` - Documentation update results ready
+- `execution:phase:changed` - Execution state machine phase transitions (Bean Counter/Coder/Reviewer)
 
-### Re-rendering Requirements
+**Command Types:**
+- `refinement:approve` / `refinement:reject` - Refinement approval
+- `plan:approve` / `plan:reject` - Plan approval (standardized to CommandBus pattern)
+- `question:answer` - Answer to clarifying question
+- `superreview:approve` / `superreview:retry` / `superreview:abandon` - Final review decisions
+- `merge:approve` / `merge:skip` - Merge approval
 
-The UI must be explicitly re-rendered at key points:
+**Benefits of Event-Driven Architecture:**
+1. **No prop drilling** - CommandBus and events eliminate deep prop chains
+2. **Decoupled components** - UI doesn't know about orchestrator internals
+3. **Same pattern as dashboard** - Reuses proven architecture
+4. **Easier debugging** - Events are observable and traceable
+5. **Extendible** - Adding new features doesn't require rewiring callbacks
+6. **No resolver hell** - Eliminates promise resolver race conditions
 
-1. **After state transitions:**
+### Automatic Re-rendering via Events
+
+With the event-driven architecture, **manual re-renders are mostly eliminated**. The UI automatically updates when TaskStateMachine emits events:
+
 ```typescript
-taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
-inkInstance.rerender(<App taskStateMachine={taskStateMachine} />);
-```
-
-2. **After storing data but before approval:**
-```typescript
+// ✅ CORRECT: Event-driven - No manual rerender needed
 taskStateMachine.setPlan(planMd, planPath);
-inkInstance.rerender(<App {...}/>); // Show the plan
-// Then set up approval mechanism
+// Event 'plan:ready' is emitted → UI auto-updates
+
+taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
+// Event 'state:changed' is emitted → UI auto-updates
+
+taskStateMachine.setAnsweringQuestion(true);
+// Event 'question:answering' is emitted → Modal auto-hides
 ```
 
-3. **When entering new states:**
+**Rare Cases for Manual Rerender:**
+Only needed when state changes don't trigger events (legacy code during migration):
+
 ```typescript
-case TaskState.TASK_PLANNING: {
-  if (inkInstance) {
-    inkInstance.rerender(<App {...}/>); // Update UI before long operation
-  }
-  // Then do planning work
-}
+// ❌ AVOID: Manual rerender (only if events aren't wired yet)
+inkInstance.rerender(<App taskStateMachine={taskStateMachine} />);
 ```
 
 ### State and Data Management
@@ -664,7 +670,7 @@ case TaskState.TASK_PLANNING: {
 ```typescript
 // Check BOTH state AND data existence
 {currentState === TaskState.TASK_PLANNING && !planMd ? (
-  <Text>Creating strategic plan...</Text>  // Still generating
+  <Text>Creating plan...</Text>  // Still generating
 ) : planMd ? (
   <Text>{planMd}</Text>  // Show the plan
 ) : (
@@ -674,48 +680,103 @@ case TaskState.TASK_PLANNING: {
 
 ### Common Pitfalls and Solutions
 
-**Problem 1: UI Hangs After Approval**
-- **Cause:** Promise resolver not properly wired between orchestrator and UI
-- **Solution:** Ensure UI extracts resolver from orchestrator's promise, not creating its own
+**Problem 1: UI Not Updating After State Change**
+- **Cause:** Event subscription not properly set up in useEffect
+- **Solution:** Ensure all relevant events are subscribed with proper cleanup in return function
 
-**Problem 2: Plan Not Showing Before Approval**
-- **Cause:** No re-render after storing plan
-- **Solution:** Add explicit re-render after `setPlan()` before setting up approval
+**Problem 2: CommandBus Commands Not Working**
+- **Cause:** Orchestrator not listening for the command type
+- **Solution:** Add `commandBus.waitForCommand<Type>('command:type')` in orchestrator
 
-**Problem 3: "Awaiting Approval" Stuck After Approval**
-- **Cause:** `pendingRefinement` not cleared
-- **Solution:** `setRefinedTask()` clears it automatically, or manually clear
+**Problem 3: Modal Doesn't Close After Submit**
+- **Cause:** State not managed via events (e.g., `answeringQuestion` state)
+- **Solution:** TaskStateMachine should own the state and emit events; UI reads state dynamically
 
 **Problem 4: UI Shows Wrong Phase**
 - **Cause:** Component reading stale props instead of live state
-- **Solution:** Always read from `taskStateMachine.getCurrentState()` dynamically
+- **Solution:** Always read from `taskStateMachine.getCurrentState()` dynamically, not from props
 
-**Problem 5: Menu Selection Not Working**
-- **Cause:** SelectInput `onSelect` callback not properly wired to resolver functions
-- **Solution:** Ensure menu item values map correctly to handleApprove/handleReject/handleFeedback calls
+**Problem 5: Event Listeners Not Cleaned Up**
+- **Cause:** Missing cleanup in useEffect return function
+- **Solution:** Always use `taskStateMachine.off()` to remove listeners on unmount
 
 ### Implementation Checklist
 
-When adding UI interaction for a new phase:
+When adding UI interaction for a new phase using event-driven architecture:
 
-- [ ] Store any pending data in state machine
-- [ ] Re-render UI after storing data
-- [ ] Create promise with resolver in orchestrator
-- [ ] Pass callback to UI that attaches resolver
-- [ ] UI extracts resolver in useEffect
-- [ ] Keyboard handler calls resolver with feedback
-- [ ] Orchestrator waits on promise
-- [ ] Clear pending data after approval
-- [ ] Re-render UI after state transition
+**In TaskStateMachine:**
+- [ ] Add getter/setter methods for any new state (e.g., `getAnsweringQuestion()`, `setAnsweringQuestion()`)
+- [ ] Emit appropriate events in setter methods (e.g., `this.emit('question:answering', { isAnswering })`)
+- [ ] Ensure state is serialized in checkpoint if needed
+
+**In Orchestrator:**
+- [ ] Set state via TaskStateMachine methods (not directly on context)
+- [ ] Use `commandBus.waitForCommand<Type>('command:type')` to wait for user input
+- [ ] Update state after command received (e.g., clear flags, transition states)
+
+**In UI Components:**
+- [ ] Subscribe to relevant events in useEffect with cleanup
+- [ ] Read state dynamically from `taskStateMachine.getXxx()`, not props
+- [ ] Send commands via `commandBus.sendCommand({ type: 'command:type', ... })`
+- [ ] Conditionally render based on state (e.g., `!isAnswering && <Modal />`)
+
+**Testing:**
+- [ ] Verify events are emitted when state changes
+- [ ] Confirm UI updates automatically without manual rerenders
+- [ ] Test cleanup: unmount component, verify no memory leaks
+
+### Dynamic Prompt Injection (Ctrl+I)
+
+Agneto supports real-time agent behavior modification via the Ctrl+I keyboard shortcut. This allows users to inject custom instructions during execution without interrupting current operations.
+
+**How It Works:**
+1. User presses Ctrl+I during any execution phase
+2. System registers pause request in TaskStateMachine
+3. Current agent operation completes gracefully
+4. TextInputModal appears with execution context (agent, phase, chunk info)
+5. User enters custom instructions via multi-line text input
+6. Injection is stored and displayed in UI status indicator ("🎯 Injection Pending")
+7. When next agent runs, provider appends injection to system prompt
+8. Injection automatically clears after single use (no persistence)
+
+**Override Pattern:**
+- Pressing Ctrl+I while injection is pending immediately shows modal
+- New content replaces previous pending injection
+
+**Integration Points:**
+- `App.tsx`: Global `useInput` hook captures Ctrl+I keypresses
+- `TaskStateMachine`: Stores injection state with methods `setPendingInjection()`, `getPendingInjection()`, `clearPendingInjection()`
+- `PlanningLayout` and `ExecutionLayout`: Display injection modal and status indicators
+- `providers/anthropic.ts`: Appends injection to system prompt before agent calls
+- Checkpoint system: Injection state is serialized for recovery
+
+**Visual Feedback:**
+- Status indicator shows "🎯 Injection Pending (Next Agent)" when active
+- Context display shows current agent type, phase, and chunk information
+- Modal uses existing TextInputModal component for consistent UX
 
 ### File Organization
 
-- `src/ui/ink/App.tsx` - Main Ink app component
-- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval
-- `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review
-- Approval callbacks passed as props through component hierarchy
-- State read dynamically from `taskStateMachine`, not props
+- `src/ui/ink/App.tsx` - Main Ink app component; subscribes to TaskStateMachine events
+- `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval via CommandBus; displays SuperReviewer results (left pane) during `TASK_SUPER_REVIEWING`, then shows both SuperReviewer + Gardener results (split view) during `TASK_GARDENING` state
+- `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review; injection modal integration
+- `src/ui/command-bus.ts` - CommandBus class for UI→Orchestrator communication
+- `src/task-state-machine.ts` - Extends EventEmitter, emits events on all state changes
+- State read dynamically from `taskStateMachine.getXxx()`, not props
+- Commands sent via `commandBus.sendCommand()`, not callback props
 - Uses `ink-select-input` for menu navigation (arrow keys + Enter)
+
+**Deprecated Patterns:**
+- ❌ Promise resolver callbacks passed as props - Replaced by CommandBus (completed: refinement approval, plan approval, question answering)
+- ❌ Manual `inkInstance.rerender()` calls - Replaced by automatic event-driven updates
+- ❌ Local state for orchestrator interaction - Replaced by TaskStateMachine-owned state
+
+**Migration Pattern (Reference):**
+When migrating approval flows to CommandBus:
+1. Replace callback resolver with `commandBus.waitForCommand<Type>('command:type')` in orchestrator
+2. Remove callback props from UI component interfaces
+3. Replace callback invocations with `commandBus.sendCommand({ type: 'command:type', ... })`
+4. Remove callback prop passing from parent components
 
 
 ## 📦 NPX Usage

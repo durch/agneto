@@ -6,13 +6,15 @@
 import React from 'react';
 import { render } from 'ink';
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import clipboardy from 'clipboardy';
 import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
 import { RefinerAgent } from "./agents/refiner.js";
-import { interactiveRefinement, type RefinementFeedback } from "./ui/refinement-interface.js";
+import { interactiveRefinement, type RefinementFeedback, type RefinementAction, type RefinementResult } from "./ui/refinement-interface.js";
 import { App } from './ui/ink/App.js';
 import { getPlanFeedback, type PlanFeedback } from './ui/planning-interface.js';
-import { interpretRefinerResponse, type RefinerInterpretation } from "./protocol/interpreter.js";
+import { interpretRefinerResponse, interpretCurmudgeonResponse, type RefinerInterpretation } from "./protocol/interpreter.js";
 import { proposePlan, implementPlan } from "./agents/coder.js";
 import { reviewPlan, reviewCode } from "./agents/reviewer.js";
 import { getNextChunk } from "./agents/bean-counter.js";
@@ -27,27 +29,116 @@ import { enableAuditLogging } from "./audit/integration-example.js";
 import { CheckpointService } from "./audit/checkpoint-service.js";
 import { RestorationService } from "./audit/restoration-service.js";
 import { generateUUID } from "./utils/id-generator.js";
+import { TaskOptions } from "./types.js";
 import { bell } from "./utils/terminal-bell.js";
 import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
 import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
-import type { SuperReviewerDecision, HumanInteractionResult } from './types.js';
+import { CommandBus } from "./ui/command-bus.js";
+import type { SuperReviewerDecision, HumanInteractionResult, RefinedTask } from './types.js';
+import { isValidPromptsConfig } from './types.js';
 import {
   revertLastCommit,
   commitChanges,
-  documentTaskCompletion
+  documentTaskCompletion,
+  logMergeInstructions
 } from "./orchestrator-helpers.js";
 import type { CoderPlanProposal } from "./types.js";
-import type { RecoveryDecision } from "./cli.js";
 
-export async function runTask(taskId: string, humanTask: string, options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }) {
+/**
+ * Load agent prompts configuration from .agneto.json
+ * @returns Record of agent names to custom prompt paths, or undefined if not configured/invalid
+ */
+function loadAgentPromptsConfig(): Record<string, string> | undefined {
+  const configPath = '.agneto.json';
+
+  try {
+    // Check if configuration file exists
+    if (!fs.existsSync(configPath)) {
+      return undefined;
+    }
+
+    // Read and parse configuration
+    const configContent = fs.readFileSync(configPath, 'utf8');
+    let config;
+
+    try {
+      config = JSON.parse(configContent);
+    } catch (parseError) {
+      console.warn(`⚠️ Failed to parse .agneto.json: ${parseError}`);
+      return undefined;
+    }
+
+    // Validate configuration structure
+    if (!isValidPromptsConfig(config)) {
+      console.warn('⚠️ Invalid .agneto.json structure: prompts field must be an object');
+      return undefined;
+    }
+
+    // Return prompts field (may be undefined if not configured)
+    return config.prompts;
+  } catch (error) {
+    console.warn(`⚠️ Failed to load agent prompts configuration: ${error}`);
+    return undefined;
+  }
+}
+
+// Helper function to wait for pause flag to be cleared
+async function waitForResume(taskStateMachine: TaskStateMachine): Promise<void> {
+  return new Promise<void>((resolve) => {
+    // Poll for pause flag to be cleared
+    const checkInterval = setInterval(() => {
+      if (!taskStateMachine.isInjectionPauseRequested()) {
+        clearInterval(checkInterval);
+        if (process.env.DEBUG === 'true') {
+          console.log('[Orchestrator] Resuming execution after pause cleared');
+        }
+        resolve();
+      }
+    }, 100); // Check every 100ms
+  });
+}
+
+// Helper function to check and wait for injection pause
+async function checkAndWaitForInjectionPause(
+  agentName: string,
+  taskStateMachine: TaskStateMachine
+): Promise<void> {
+  const isPauseRequested = taskStateMachine.isInjectionPauseRequested();
+  if (process.env.DEBUG === 'true') {
+    console.log(`[Orchestrator] Pause check before ${agentName}: ${isPauseRequested ? 'PAUSED' : 'CONTINUE'}`);
+  }
+
+  if (isPauseRequested) {
+    // Block here until UI clears pause flag
+    await waitForResume(taskStateMachine);
+  }
+}
+
+/**
+ * Wait for user approval or rejection of the plan.
+ * AIDEV-NOTE: This helper prevents deadlock by listening for both approve and reject commands.
+ * Historical bug: Using waitForCommand('plan:approve') alone caused deadlock on rejection.
+ */
+async function waitForPlanApproval(
+  commandBus: CommandBus,
+  taskStateMachine: TaskStateMachine
+): Promise<PlanFeedback> {
+  taskStateMachine.setPlanAwaitingApproval();
+  return await commandBus.waitForAnyCommand<PlanFeedback>(['plan:approve', 'plan:reject']);
+}
+
+export async function runTask(taskId: string, humanTask: string, options?: TaskOptions) {
     const provider = await selectProvider();
-    const { dir: cwd } = ensureWorktree(taskId);
+    const { dir: cwd } = ensureWorktree(taskId, options?.baseBranch);
 
     // Initialize audit logging - wrap the log instance for comprehensive audit capture
     const { log, auditLogger } = enableAuditLogging(taskId, humanTask);
 
     // Initialize checkpoint service for audit-driven recovery
     const checkpointService = new CheckpointService(taskId, cwd);
+
+    // Initialize CommandBus for UI → Orchestrator communication
+    const commandBus = new CommandBus();
 
     // Initialize session variables (may be overridden by restoration)
     let beanCounterSessionId = generateUUID();
@@ -61,13 +152,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     let uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined = undefined;
     let inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null = null;
 
-    // Plan feedback resolver and callback (scoped to entire function for reuse)
-    let planFeedbackResolver: ((feedback: PlanFeedback) => void) | null = null;
-    let handlePlanFeedback: ((feedback: PlanFeedback) => void) | undefined = undefined;
-
-    log.orchestrator("🖥️ Ink UI enabled - UI callback mechanism will be available for plan feedback");
-    // The actual callback will be set up when the Ink UI is rendered
-    // to properly wire up the promise resolver mechanism
+    log.orchestrator("🖥️ Ink UI enabled - CommandBus will handle plan feedback");
+    // Plan feedback now handled via CommandBus event-driven pattern
 
     // Check for checkpoint restoration request
     if (options?.recoveryDecision?.action === "resume") {
@@ -194,6 +280,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 reviewerInitialized,
                                 uiCallback,
                                 inkInstance,
+                                commandBus,
                                 options
                             );
                         }
@@ -213,32 +300,25 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     // Set session IDs for task state machine
     taskStateMachine.setSessionIds(coderSessionId, reviewerSessionId);
 
+    // Load agent prompts configuration
+    const agentPromptsConfig = loadAgentPromptsConfig();
+    taskStateMachine.setAgentPromptsConfig(agentPromptsConfig);
+    if (agentPromptsConfig) {
+        log.orchestrator(`✅ Loaded custom prompts for agents: ${Object.keys(agentPromptsConfig).join(', ')}`);
+    }
+
     // Set TaskStateMachine reference in AuditLogger for phase tracking
     auditLogger.setTaskStateMachine(taskStateMachine);
 
     // Setup Ink UI - UI is the app!
     try {
-        // Initialize the plan feedback callback (assigned to function-scoped variable)
-        handlePlanFeedback = (feedback: PlanFeedback) => {
-            if (planFeedbackResolver) {
-                planFeedbackResolver(feedback);
-                planFeedbackResolver = null; // Clean up resolver
-            }
-        };
+        // Plan feedback now handled via CommandBus - no callback setup needed
 
-        // Update uiCallback to wire up the resolver from the planner's promise and provide rerender
+        // Legacy uiCallback - no longer used but kept for compatibility during migration
         uiCallback = (feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => {
-            // Extract and store the resolver from the planner's promise
-            // The planner attaches the resolver to the promise object
-            planFeedbackResolver = (feedbackPromise as any).resolve;
-
-            // If rerender is requested, update the Ink UI
-            if (rerenderCallback && inkInstance) {
-                // Re-render the Ink UI (App will read current state dynamically)
-                inkInstance.rerender(React.createElement(App, {
-                    taskStateMachine,
-                    onPlanFeedback: handlePlanFeedback
-                }));
+            // Legacy pattern - not used anymore
+            // Event-driven architecture handles UI updates automatically via state:changed events
+            if (rerenderCallback) {
                 rerenderCallback();
             }
         };
@@ -248,7 +328,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
         const { unmount, waitUntilExit, rerender } = render(
             React.createElement(App, {
                 taskStateMachine,
-                onPlanFeedback: handlePlanFeedback
+                commandBus
             }),
             {
                 patchConsole: false,  // Disable console interception to prevent flickering
@@ -277,13 +357,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
     // Start the task
     taskStateMachine.transition(TaskEvent.START_TASK);
 
-    // Update Ink UI to reflect initial state change
-    if (inkInstance) {
-        inkInstance.rerender(React.createElement(App, {
-            taskStateMachine,
-            onPlanFeedback: undefined  // Will be set when needed
-        }));
-    }
+    // No manual rerender needed - App.tsx auto-re-renders on state:changed event
 
     // Main task state machine loop with audit lifecycle management
     const maxIterations = 200; // Safety limit for parent + child iterations
@@ -292,6 +366,14 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
     try {
         while (taskStateMachine.canContinue() && iterations < maxIterations) {
+        // Check for injection pause at top of main loop
+        if (taskStateMachine.isInjectionPauseRequested()) {
+            if (process.env.DEBUG === 'true') {
+                console.log('[Orchestrator] Main loop paused, waiting for resume...');
+            }
+            await waitForResume(taskStateMachine);
+        }
+
         iterations++;
 
         try {
@@ -301,147 +383,96 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 case TaskState.TASK_REFINING: {
                     // Task refinement through UI
                     if (inkInstance) {
-                        // Use UI-based refinement
+                        // Use UI-based refinement with CommandBus flow
                         log.info("🔍 Refining task description...");
-                        const refinerAgent = new RefinerAgent(provider);
+                        const refinerAgent = new RefinerAgent(provider, taskStateMachine);
+
+                        // Track Q&A state locally
+                        let currentResponse = "";
+                        let finalRefinedTask = "";
+                        let questionsAsked = 0;
+                        const MAX_QUESTIONS = 3;
 
                         // Generate initial refinement
                         const initialRefinedTask = await refinerAgent.refine(cwd, humanTask, taskId, taskStateMachine);
+                        currentResponse = initialRefinedTask;
 
-                        // Q&A Loop: Handle clarifying questions
-                        let currentResponse = initialRefinedTask.raw;
-                        let interpretation: RefinerInterpretation | null = null;
-                        const MAX_QUESTIONS = 3;
-                        let questionCount = 0;
+                        // Interpret initial response
+                        const initialInterpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
 
-                        for (questionCount = 0; questionCount <= MAX_QUESTIONS; questionCount++) {
-                            // Interpret the refiner's response
-                            interpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
+                        if (initialInterpretation?.type === "question" && questionsAsked < MAX_QUESTIONS) {
+                            // Start with a question
+                            taskStateMachine.setCurrentQuestion(initialInterpretation.question);
+                        } else {
+                            // Start with a refinement
+                            finalRefinedTask = initialInterpretation?.type === 'refinement' ? (initialInterpretation.content || currentResponse) : currentResponse;
+                            taskStateMachine.setPendingRefinement(finalRefinedTask);
+                        }
 
-                            if (interpretation?.type === "question" && questionCount < MAX_QUESTIONS) {
-                                // Store question in state machine
+                        // Question/Answer loop using CommandBus
+                        while (taskStateMachine.getCurrentQuestion() && questionsAsked < MAX_QUESTIONS) {
+                            // Wait for answer via CommandBus
+                            const answer = await commandBus.waitForCommand<string>('question:answer');
+
+                            // Handle answer internally, continue flow
+                            questionsAsked++;
+
+                            // Clear question from state
+                            taskStateMachine.clearCurrentQuestion();
+
+                            // Get next response from refiner
+                            currentResponse = await refinerAgent.askFollowup(answer, cwd);
+
+                            // Interpret the response
+                            const interpretation = await interpretRefinerResponse(provider, currentResponse, cwd);
+
+                            if (interpretation?.type === "question" && questionsAsked < MAX_QUESTIONS) {
+                                // Another question - update state (UI auto-updates on question:asked event)
                                 taskStateMachine.setCurrentQuestion(interpretation.question);
-
-                                // Re-render UI to show question modal
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    onPlanFeedback: undefined,
-                                    onRefinementFeedback: undefined
-                                }));
-
-                                // Create promise for user answer
-                                let answerResolver: ((value: string) => void) | null = null;
-                                const answerPromise = new Promise<string>((resolve) => {
-                                    answerResolver = resolve;
-                                });
-                                // Attach the resolver to the promise object for the UI to access
-                                (answerPromise as any).resolve = answerResolver;
-
-                                // Create callback for UI to wire up the resolver
-                                const answerCallback = (promise: Promise<string>) => {
-                                    (promise as any).resolve = answerResolver;
-                                };
-
-                                // Re-render UI with answer callback
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    onAnswerCallback: answerCallback,
-                                    onPlanFeedback: undefined,
-                                    onRefinementFeedback: undefined
-                                }));
-
-                                // Wait for user to provide answer
-                                const answer = await answerPromise;
-
-                                // Clear question from state
-                                taskStateMachine.clearCurrentQuestion();
-
-                                // Get next response from refiner based on answer
-                                currentResponse = await refinerAgent.askFollowup(answer);
                             } else {
-                                // Got refinement OR hit question limit - exit loop
-                                break;
+                                // Got refinement or hit limit
+                                if (interpretation?.type === "refinement") {
+                                    finalRefinedTask = interpretation.content || currentResponse;
+                                } else {
+                                    // Request final refinement if needed
+                                    finalRefinedTask = await refinerAgent.askFollowup(
+                                        "Based on all the information provided, please now provide the complete refined task specification with Goal, Context, Constraints, and Success Criteria sections.",
+                                        cwd
+                                    );
+                                }
+
+                                // Clear question and set pending refinement for approval (UI auto-updates on refinement:ready event)
+                                taskStateMachine.clearCurrentQuestion();
+                                taskStateMachine.setPendingRefinement(finalRefinedTask);
                             }
                         }
 
-                        // Safety failsafe: ensure we didn't exceed question limit
-                        if (questionCount > MAX_QUESTIONS) {
-                            throw new Error("Safety limit exceeded: Too many clarifying questions");
-                        }
+                        // Signal UI that refinement is ready for approval
+                        taskStateMachine.setRefinementAwaitingApproval();
 
-                        // Extract final refinement content
-                        const finalContent = interpretation?.type === "refinement"
-                            ? interpretation.content
-                            : currentResponse;
+                        // Wait for approval/rejection via CommandBus
+                        const approvalFeedback = await commandBus.waitForAnyCommand<RefinementFeedback>(['refinement:approve', 'refinement:reject']);
 
-                        // Create final refined task with updated content
-                        const refinedTask = {
-                            ...initialRefinedTask,
-                            raw: finalContent
-                        };
-
-                        // Clear any remaining question state and store as pending for UI approval
-                        taskStateMachine.clearCurrentQuestion();
-                        taskStateMachine.setPendingRefinement(refinedTask);
-
-                        // Create promise for UI feedback
-                        let resolverFunc: ((value: RefinementFeedback) => void) | null = null;
-                        const feedbackPromise = new Promise<RefinementFeedback>((resolve) => {
-                            resolverFunc = resolve;
-                        });
-                        // Attach the resolver to the promise object for the UI to access
-                        (feedbackPromise as any).resolve = resolverFunc;
-
-                        // Create callback for UI to wire up
-                        const refinementCallback = (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => {
-                            // Wire up the promise resolver to the UI handler
-                            (feedback as any).resolve = resolverFunc;
-                        };
-
-                        // Update UI to show pending refinement with approval callback
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: refinementCallback
-                        }));
-
-                        // Invoke callback with promise
-                        refinementCallback(feedbackPromise);
-
-                        // Wait for UI feedback
-                        const feedback = await feedbackPromise;
-
-                        if (feedback.type === "approve") {
-                            const taskToUse = formatRefinedTaskForPlanner(refinedTask);
-                            taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                        if (approvalFeedback.type === 'approve') {
+                            taskStateMachine.setRefinedTask(finalRefinedTask, finalRefinedTask);
                             log.orchestrator("Using refined task specification for planning.");
                             taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
-
-                            // Update UI after approval
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined
-                            }));
                         } else {
                             log.warn("Task refinement rejected. Using original description.");
                             taskStateMachine.transition(TaskEvent.REFINEMENT_CANCELLED);
-
-                            // Update UI after rejection
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined
-                            }));
                         }
+
+                        // UI updates automatically via state:changed event from transition
+
                     } else {
                         // Fallback to interactive refinement if no UI
-                        const refinerAgent = new RefinerAgent(provider);
+                        const refinerAgent = new RefinerAgent(provider, taskStateMachine);
                         const refinedTask = await interactiveRefinement(refinerAgent, cwd, humanTask, taskId);
 
                         if (refinedTask) {
-                            const taskToUse = formatRefinedTaskForPlanner(refinedTask);
-                            taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                            // Use raw text from RefinedTask
+                            const taskToUse = refinedTask.raw || refinedTask.goal || humanTask;
+                            taskStateMachine.setRefinedTask(taskToUse, taskToUse);
                             log.orchestrator("Using refined task specification for planning.");
                             taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
                         } else {
@@ -456,16 +487,9 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     // Planning phase
 
                     // Set live activity message for planner
-                    taskStateMachine.setLiveActivityMessage('Planner', 'Creating strategic plan...');
+                    taskStateMachine.setLiveActivityMessage('Planner', 'Coming up with an implementation plan...');
 
-                    // Re-render UI to show planning state before generating plan
-                    if (inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
+                    // No manual rerender needed - UI auto-updates on state:changed event
 
                     let taskToUse = taskStateMachine.getContext().taskToUse || humanTask;
                     let curmudgeonFeedback: string | undefined = undefined;
@@ -482,14 +506,20 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         log.orchestrator(`Re-planning with feedback: ${taskToUse}`);
 
                         // Update context with new task and clear retry feedback
-                        taskStateMachine.setRefinedTask(
-                            { goal: taskToUse, context: "", constraints: [], successCriteria: [], raw: "" },
-                            taskToUse
-                        );
+                        taskStateMachine.setRefinedTask(taskToUse, taskToUse);
                         taskStateMachine.clearRetryFeedback();
 
                         // Reset the execution state machine for a fresh cycle
                         taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger));
+
+                        // AIDEV-FIX: Reset agent session state to prevent stale data from previous cycle
+                        log.orchestrator("🔄 Resetting agent sessions for new cycle...");
+                        beanCounterSessionId = generateUUID();
+                        coderSessionId = generateUUID();
+                        reviewerSessionId = generateUUID();
+                        beanCounterInitialized = false;
+                        coderInitialized = false;
+                        reviewerInitialized = false;
                     }
 
                     const interactive = !options?.nonInteractive;
@@ -504,17 +534,11 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // For Ink UI mode, handle plan approval like refiner
                         if (inkInstance && interactive) {
                             // Generate the plan without UI callback
+                            await checkAndWaitForInjectionPause('Planner', taskStateMachine);
                             const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback, undefined, taskStateMachine, inkInstance);
 
-                            // Store the plan in state machine
+                            // Store the plan in state machine (UI auto-updates on plan:ready event)
                             taskStateMachine.setPlan(planMd, planPath);
-
-                            // Re-render UI to show the plan
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined
-                            }));
 
                             // Automatically transition to Curmudgeon review (no approval yet)
                             taskStateMachine.transition(TaskEvent.PLAN_CREATED);
@@ -524,6 +548,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                         } else {
                             // Non-interactive mode - original behavior
+                            await checkAndWaitForInjectionPause('Planner', taskStateMachine);
                             const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
                             if (!interactive) {
                                 // Display the full plan content in non-interactive mode
@@ -553,14 +578,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     const simplificationCount = taskStateMachine.getSimplificationCount();
                     const maxSimplifications = 4;
 
-                    // Update UI to show we're entering curmudgeon phase
-                    if (inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
+                    // UI updates automatically via state:changed event from transition to this state
 
                     // Check if user has already reviewed a plan - skip Curmudgeon and show directly to user
                     if (taskStateMachine.getUserHasReviewedPlan()) {
@@ -568,20 +586,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                         // Interactive mode: show plan to user for approval
                         if (inkInstance && !options?.nonInteractive) {
-                            // Create NEW promise and set the global resolver for UI to use
-                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                planFeedbackResolver = resolve;
-                            });
-
-                            // Rerender UI - it will use the existing handlePlanFeedback callback
-                            // which will call planFeedbackResolver when user interacts
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: handlePlanFeedback,
-                                onRefinementFeedback: undefined
-                            }));
-
-                            const feedback = await feedbackPromise;
+                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                             if (feedback.type === "approve") {
                                 log.orchestrator("Plan approved by user.");
@@ -605,19 +611,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                         // Interactive mode: show plan to user for approval
                         if (inkInstance && !options?.nonInteractive) {
-                            // Create NEW promise and set the global resolver for UI to use
-                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                planFeedbackResolver = resolve;
-                            });
-
-                            // Rerender UI - it will use the existing handlePlanFeedback callback
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: handlePlanFeedback,
-                                onRefinementFeedback: undefined
-                            }));
-
-                            const feedback = await feedbackPromise;
+                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                             if (feedback.type === "approve") {
                                 log.orchestrator("Plan approved by user after max simplification attempts.");
@@ -644,6 +639,7 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         // This could be the refined task or the original task
                         const taskDescription = taskStateMachine.getContext().taskToUse || humanTask;
 
+                        await checkAndWaitForInjectionPause('Curmudgeon', taskStateMachine);
                         const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription, taskStateMachine);
 
                         // Clear live activity message after curmudgeon completes
@@ -655,19 +651,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
 
                             // Interactive mode: show plan to user for approval
                             if (inkInstance && !options?.nonInteractive) {
-                                // Create NEW promise and set the global resolver for UI to use
-                                const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                    planFeedbackResolver = resolve;
-                                });
-
-                                // Rerender UI - it will use the existing handlePlanFeedback callback
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    onPlanFeedback: handlePlanFeedback,
-                                    onRefinementFeedback: undefined
-                                }));
-
-                                const feedback = await feedbackPromise;
+                                // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                                 if (feedback.type === "approve") {
                                     log.orchestrator("Plan approved by user (Curmudgeon had no concerns).");
@@ -683,104 +668,128 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                             }
                         } else {
-                            // Curmudgeon provided feedback - check if we should replan
-                            // Simple heuristic: if feedback contains approval language, proceed
-                            const feedbackLower = result.feedback.toLowerCase();
-                            const hasApproval = feedbackLower.includes('looks good') ||
-                                              feedbackLower.includes('this is good') ||
-                                              feedbackLower.includes('proceed') ||
-                                              feedbackLower.includes('appropriate');
-                            const hasConcerns = feedbackLower.includes('too complex') ||
-                                              feedbackLower.includes('simplif') ||
-                                              feedbackLower.includes('over-engineered') ||
-                                              feedbackLower.includes('missing') ||
-                                              feedbackLower.includes('incomplete');
+                            // Curmudgeon provided feedback - use interpreter for structured decision
+                            log.orchestrator("🔍 Interpreting Curmudgeon response...");
+                            const interpretation = await interpretCurmudgeonResponse(provider, result.feedback, cwd);
 
-                            if (hasApproval && !hasConcerns) {
-                                log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
-
-                                // Store curmudgeon approval feedback for UI display
-                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
-
-                                // Interactive mode: show plan to user for final approval
-                                if (inkInstance && !options?.nonInteractive) {
-                                    // Create NEW promise and set the global resolver for UI to use
-                                    const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                        planFeedbackResolver = resolve;
-                                    });
-
-                                    // Rerender UI - it will use the existing handlePlanFeedback callback
-                                    // which will call planFeedbackResolver when user interacts
-                                    inkInstance.rerender(React.createElement(App, {
-                                        taskStateMachine,
-                                        onPlanFeedback: handlePlanFeedback,
-                                        onRefinementFeedback: undefined
-                                    }));
-
-                                    const feedback = await feedbackPromise;
-
-                                    if (feedback.type === "approve") {
-                                        log.orchestrator("Plan approved by user.");
-                                        taskStateMachine.setUserHasReviewedPlan(true);
-                                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                    } else {
-                                        // User rejected - treat as Curmudgeon simplify request
-                                        const rejectionFeedback = feedback.details || "User requested plan revision";
-                                        taskStateMachine.setUserHasReviewedPlan(true);
-                                        taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
-                                        taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
-                                    }
-                                } else {
-                                    // Non-interactive: proceed automatically
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                }
-                            } else if (simplificationCount >= maxSimplifications) {
-                                // Hit the limit - proceed anyway
-                                log.orchestrator(`⚠️ Curmudgeon has feedback but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
-
-                                // Interactive mode: show plan to user for approval
-                                if (inkInstance && !options?.nonInteractive) {
-                                    // Create NEW promise and set the global resolver for UI to use
-                                    const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                        planFeedbackResolver = resolve;
-                                    });
-
-                                    // Rerender UI - it will use the existing handlePlanFeedback callback
-                                    inkInstance.rerender(React.createElement(App, {
-                                        taskStateMachine,
-                                        onPlanFeedback: handlePlanFeedback,
-                                        onRefinementFeedback: undefined
-                                    }));
-
-                                    const feedback = await feedbackPromise;
-
-                                    if (feedback.type === "approve") {
-                                        log.orchestrator("Plan approved by user after max simplification attempts with Curmudgeon feedback.");
-                                        taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                    } else {
-                                        // User rejected - but we've hit max attempts, so abandon
-                                        log.orchestrator("User rejected plan after max simplification attempts with Curmudgeon feedback. Abandoning task.");
-                                        taskStateMachine.transition(TaskEvent.HUMAN_ABANDON);
-                                    }
-                                } else {
-                                    // Non-interactive: proceed automatically
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                }
+                            if (!interpretation) {
+                                log.warn("Failed to interpret Curmudgeon response - proceeding with plan");
+                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                             } else {
-                                // Store feedback and replan
-                                log.orchestrator(`🔄 Curmudgeon feedback (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
-                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
+                                log.orchestrator(`📊 Curmudgeon verdict: ${interpretation.verdict}`);
 
-                                // Update UI to show feedback before transitioning
-                                if (inkInstance) {
-                                    inkInstance.rerender(React.createElement(App, {
-                                        taskStateMachine,
-                                        onPlanFeedback: undefined,
-                                        onRefinementFeedback: undefined
-                                    }));
+                                switch (interpretation.verdict) {
+                                    case "APPROVE":
+                                        log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
+
+                                        // Store curmudgeon approval feedback for UI display
+                                        taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
+                                        // Interactive mode: show plan to user for final approval
+                                        if (inkInstance && !options?.nonInteractive) {
+                                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
+
+                                            if (feedback.type === "approve") {
+                                                log.orchestrator("Plan approved by user.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                // User rejected - treat as simplify request
+                                                const rejectionFeedback = feedback.details || "User requested plan revision";
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                        } else {
+                                            // Non-interactive: proceed automatically
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                        }
+                                        break;
+
+                                    case "SIMPLIFY":
+                                        if (simplificationCount >= maxSimplifications) {
+                                            // Hit the limit - proceed anyway
+                                            log.orchestrator(`⚠️ Curmudgeon requested simplification but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
+
+                                            // Interactive mode: show plan to user for approval
+                                            if (inkInstance && !options?.nonInteractive) {
+                                                // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                                const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
+
+                                                if (feedback.type === "approve") {
+                                                    log.orchestrator("Plan approved by user after max simplification attempts.");
+                                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                                } else {
+                                                    // User rejected - but we've hit max attempts, so abandon
+                                                    log.orchestrator("User rejected plan after max simplification attempts. Abandoning task.");
+                                                    taskStateMachine.transition(TaskEvent.HUMAN_ABANDON);
+                                                }
+                                            } else {
+                                                // Non-interactive: proceed automatically
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            }
+                                        } else {
+                                            // Store feedback and replan
+                                            log.orchestrator(`🔄 Curmudgeon requests simplification (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
+                                            taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
+                                            // UI will update with feedback via state:changed event from transition
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                        }
+                                        break;
+
+                                    case "REJECT":
+                                        log.orchestrator(`❌ Curmudgeon rejected plan: ${result.feedback.substring(0, 100)}...`);
+                                        taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
+                                        // Interactive mode: show to user for decision
+                                        if (inkInstance && !options?.nonInteractive) {
+                                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
+
+                                            if (feedback.type === "approve") {
+                                                log.orchestrator("User overrode Curmudgeon rejection.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                log.orchestrator("User confirmed rejection - replanning.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.setCurmudgeonFeedback(feedback.details || result.feedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                        } else {
+                                            // Non-interactive: treat reject as simplify
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                        }
+                                        break;
+
+                                    case "NEEDS_HUMAN":
+                                        log.orchestrator(`🙋 Curmudgeon needs human review: ${result.feedback.substring(0, 100)}...`);
+                                        taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
+                                        // Always show to user when human review needed
+                                        if (inkInstance && !options?.nonInteractive) {
+                                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
+
+                                            if (feedback.type === "approve") {
+                                                log.orchestrator("Human approved plan.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                log.orchestrator("Human requested revision.");
+                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.setCurmudgeonFeedback(feedback.details || result.feedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                        } else {
+                                            // Non-interactive: default to approval
+                                            log.orchestrator("Non-interactive mode - proceeding despite NEEDS_HUMAN verdict");
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                        }
+                                        break;
                                 }
-
-                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                             }
                         }
                     } catch (error) {
@@ -792,19 +801,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         if (inkInstance && !options?.nonInteractive) {
                             log.orchestrator("Curmudgeon review failed. Requesting user approval for plan.");
 
-                            // Create NEW promise and set the global resolver for UI to use
-                            const feedbackPromise = new Promise<PlanFeedback>((resolve) => {
-                                planFeedbackResolver = resolve;
-                            });
-
-                            // Rerender UI - it will use the existing handlePlanFeedback callback
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: handlePlanFeedback,
-                                onRefinementFeedback: undefined
-                            }));
-
-                            const feedback = await feedbackPromise;
+                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
 
                             if (feedback.type === "approve") {
                                 log.orchestrator("Plan approved by user (Curmudgeon review failed).");
@@ -827,16 +825,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                     // Reset user review flag when entering execution (planning phase complete)
                     taskStateMachine.setUserHasReviewedPlan(false);
 
-                    // Keep Ink UI alive during execution phase for real-time updates
-                    if (inkInstance) {
-                        log.orchestrator("🖥️ Ink UI will continue displaying execution phase...");
-                        // Re-render to show execution phase
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
+                    // UI updates automatically via state:changed event from transition to this state
+                    log.orchestrator("🖥️ Entering execution phase...");
 
                     // Execution phase - delegate to CoderReviewerStateMachine
                     let executionStateMachine = taskStateMachine.getExecutionStateMachine();
@@ -885,7 +875,8 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         log,
                         checkpointService,
                         taskStateMachine,
-                        inkInstance
+                        inkInstance,
+                        commandBus
                     );
 
                     beanCounterInitialized = executionResult.beanCounterInitialized;
@@ -913,7 +904,10 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         throw new Error("No plan available for super review");
                     }
 
+                    // UI updates automatically via state:changed event from transition to this state
+
                     log.orchestrator("🔍 Running SuperReviewer for final quality check...");
+                    await checkAndWaitForInjectionPause('SuperReviewer', taskStateMachine);
                     const superReviewResult = await runSuperReviewer(
                         provider,
                         cwd,
@@ -932,61 +926,20 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         });
                     }
 
+                    // UI already updated via superreview:complete event from setSuperReviewResult()
+
                     if (superReviewResult.verdict === "needs-human") {
                         log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
 
-                        // Create promise for UI-based decision (following refinement pattern)
-                        let superReviewerResolverFunc: ((value: SuperReviewerDecision) => void) | null = null;
-                        const superReviewerDecisionPromise = new Promise<SuperReviewerDecision>((resolve) => {
-                            superReviewerResolverFunc = resolve;
-                        });
-                        // Attach the resolver to the promise object for the UI to access
-                        (superReviewerDecisionPromise as any).resolve = superReviewerResolverFunc;
+                        // Signal UI that SuperReviewer results are ready for approval
+                        taskStateMachine.setSuperReviewAwaitingApproval();
 
-                        // Create callback for UI to wire up
-                        const superReviewerCallback = (decision: Promise<SuperReviewerDecision>) => {
-                            // Wire up the promise resolver to the UI handler
-                            (decision as any).resolve = superReviewerResolverFunc;
-                        };
-
-                        // Update UI to show SuperReviewer results with decision callback
-                        if (inkInstance) {
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined,
-                                onSuperReviewerDecision: superReviewerCallback
-                            }));
-
-                            // Invoke callback with promise
-                            superReviewerCallback(superReviewerDecisionPromise);
-                        }
-
-                        // Wait for UI decision
-                        const humanDecision = await superReviewerDecisionPromise;
+                        // Wait for UI decision via CommandBus
+                        const humanDecision = await commandBus.waitForAnyCommand<SuperReviewerDecision>(['superreview:approve', 'superreview:retry', 'superreview:abandon']);
 
                         if (humanDecision.action === "approve") {
                             log.orchestrator("Human accepted work despite identified issues.");
-
-                            // Update CLAUDE.md documentation with task completion (even for incomplete acceptance)
-                            log.orchestrator("📝 Updating CLAUDE.md with task documentation (incomplete acceptance)...");
-                            const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
-                            const gardenerResult = await documentTaskCompletion(
-                                provider,
-                                cwd,
-                                taskStateMachine.getContext().taskId,
-                                taskDescription,
-                                planMd
-                            );
-
-                            if (gardenerResult?.success) {
-                                await commitChanges(
-                                    cwd,
-                                    "docs: Update CLAUDE.md documentation"
-                                );
-                            }
-
                             taskStateMachine.transition(TaskEvent.HUMAN_APPROVED);
                         } else if (humanDecision.action === "retry") {
                             log.orchestrator("Human requested a new development cycle to address issues.");
@@ -999,51 +952,49 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                         }
                     } else {
                         log.orchestrator("✅ SuperReviewer approved - implementation ready for merge!");
-
-                        // Update CLAUDE.md documentation with task completion
-                        log.orchestrator("📝 Updating CLAUDE.md with task documentation...");
-                        const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
-                        const gardenerResult = await documentTaskCompletion(
-                            provider,
-                            cwd,
-                            taskStateMachine.getContext().taskId,
-                            taskDescription,
-                            planMd
-                        );
-
-                        if (gardenerResult?.success) {
-                            await commitChanges(
-                                taskStateMachine.getContext().taskId,
-                                "docs: Update CLAUDE.md documentation"
-                            );
-                        }
-
                         taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
                     }
                     break;
                 }
 
-                case TaskState.TASK_FINALIZING: {
-                    // Finalization phase - merge or manual review
-                    if (options?.autoMerge) {
-                        log.orchestrator("📦 Auto-merging to master...");
-                        mergeToMaster(taskId, cwd);
-                        cleanupWorktree(taskId, cwd);
-                        taskStateMachine.transition(TaskEvent.AUTO_MERGE);
-                    } else {
-                        // Provide direct git commands for npx users
-                        log.orchestrator(`\nNext steps:
-1. Review changes in worktree: ${cwd}
-2. Run tests to verify
-3. Merge to master:
-   git checkout master
-   git merge sandbox/${taskId} --squash
-   git commit -m "Task ${taskId} completed"
-4. Clean up:
-   git worktree remove .worktrees/${taskId}
-   git branch -D sandbox/${taskId}`);
-                        taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
+                case TaskState.TASK_GARDENING: {
+                    log.orchestrator("📝 Updating documentation...");
+
+                    // UI updates automatically via state:changed event from transition to this state
+
+                    try {
+                        // Execute Gardener to update CLAUDE.md
+                        const description = taskStateMachine.getContext().taskToUse || humanTask;
+                        const planContent = taskStateMachine.getPlanMd() || "";
+
+                        const gardenerResult = await documentTaskCompletion(
+                            provider,
+                            cwd,
+                            taskId,
+                            description,
+                            planContent,
+                            taskStateMachine
+                        );
+
+                        // Store result for UI display (even if null)
+                        if (gardenerResult) {
+                            taskStateMachine.setGardenerResult(gardenerResult);
+                            log.orchestrator("✅ Documentation updated successfully");
+                        } else {
+                            log.orchestrator("⚠️ Documentation update skipped or failed (non-blocking)");
+                        }
+
+                        // UI already updated via gardener:complete event from setGardenerResult()
+                        // and will update again on transition
+
+                        // Transition to TASK_COMPLETE
+                        taskStateMachine.transition(TaskEvent.GARDENING_COMPLETE);
+                    } catch (error) {
+                        // Log error but continue - documentation updates never block completion
+                        log.warn(`Gardening phase error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                        taskStateMachine.transition(TaskEvent.GARDENING_COMPLETE);
                     }
+
                     break;
                 }
 
@@ -1092,6 +1043,12 @@ export async function runTask(taskId: string, humanTask: string, options?: { aut
                 inkInstance.unmount();
                 await inkInstance.waitUntilExit();
                 inkInstance = null;
+
+                // After UI exits, log merge instructions if task completed successfully
+                const finalState = taskStateMachine.getCurrentState();
+                if (finalState === TaskState.TASK_COMPLETE) {
+                    logMergeInstructions(taskId);
+                }
             } catch (cleanupError) {
                 log.warn(`⚠️ Ink UI cleanup error: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`);
             }
@@ -1117,7 +1074,8 @@ async function runRestoredTask(
     reviewerInitialized: boolean,
     uiCallback: ((feedbackPromise: Promise<PlanFeedback>, rerenderCallback?: () => void) => void) | undefined,
     inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null,
-    options?: { autoMerge?: boolean; nonInteractive?: boolean; recoveryDecision?: RecoveryDecision }
+    commandBus: CommandBus,
+    options?: TaskOptions
 ): Promise<{ cwd: string }> {
     // Main task state machine loop with audit lifecycle management
     const maxIterations = 200; // Safety limit for parent + child iterations
@@ -1126,6 +1084,14 @@ async function runRestoredTask(
 
     try {
         while (taskStateMachine.canContinue() && iterations < maxIterations) {
+            // Check for injection pause at top of main loop
+            if (taskStateMachine.isInjectionPauseRequested()) {
+                if (process.env.DEBUG === 'true') {
+                    console.log('[Orchestrator] Main loop paused, waiting for resume...');
+                }
+                await waitForResume(taskStateMachine);
+            }
+
             iterations++;
 
             try {
@@ -1135,12 +1101,13 @@ async function runRestoredTask(
                     case TaskState.TASK_REFINING: {
                         // Task refinement (interactive only)
                         log.info("🔍 Refining task description...");
-                        const refinerAgent = new RefinerAgent(provider);
+                        const refinerAgent = new RefinerAgent(provider, taskStateMachine);
                         const refinedTask = await interactiveRefinement(refinerAgent, cwd, taskStateMachine.getContext().humanTask, taskStateMachine.getContext().taskId);
 
                         if (refinedTask) {
-                            const taskToUse = formatRefinedTaskForPlanner(refinedTask);
-                            taskStateMachine.setRefinedTask(refinedTask, taskToUse);
+                            // Use raw text from RefinedTask
+                            const taskToUse = refinedTask.raw || refinedTask.goal || taskStateMachine.getContext().humanTask;
+                            taskStateMachine.setRefinedTask(taskToUse, taskToUse);
                             log.orchestrator("Using refined task specification for planning.");
                             taskStateMachine.transition(TaskEvent.REFINEMENT_COMPLETE);
                         } else {
@@ -1167,10 +1134,7 @@ async function runRestoredTask(
                             log.orchestrator(`Re-planning with feedback: ${taskToUse}`);
 
                             // Update context with new task and clear retry feedback
-                            taskStateMachine.setRefinedTask(
-                                { goal: taskToUse, context: "", constraints: [], successCriteria: [], raw: "" },
-                                taskToUse
-                            );
+                            taskStateMachine.setRefinedTask(taskToUse, taskToUse);
                             taskStateMachine.clearRetryFeedback();
 
                             // Reset the execution state machine for a fresh cycle
@@ -1186,6 +1150,7 @@ async function runRestoredTask(
                             // Get SuperReviewer feedback if this is a retry cycle
                             const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
 
+                            await checkAndWaitForInjectionPause('Planner', taskStateMachine);
                             const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
                             if (!interactive) {
                                 log.planner(`Saved plan → ${planPath}`);
@@ -1229,6 +1194,7 @@ async function runRestoredTask(
                             // This could be the refined task or the original task
                             const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
 
+                            await checkAndWaitForInjectionPause('Curmudgeon', taskStateMachine);
                             const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription, taskStateMachine);
 
                             // Clear live activity message after curmudgeon completes
@@ -1239,31 +1205,51 @@ async function runRestoredTask(
                                 log.orchestrator("✅ Curmudgeon has no concerns - proceeding with plan");
                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                             } else {
-                                // Curmudgeon provided feedback - check if we should replan
-                                // Simple heuristic: if feedback contains approval language, proceed
-                                const feedbackLower = result.feedback.toLowerCase();
-                                const hasApproval = feedbackLower.includes('looks good') ||
-                                                  feedbackLower.includes('this is good') ||
-                                                  feedbackLower.includes('proceed') ||
-                                                  feedbackLower.includes('appropriate');
-                                const hasConcerns = feedbackLower.includes('too complex') ||
-                                                  feedbackLower.includes('simplif') ||
-                                                  feedbackLower.includes('over-engineered') ||
-                                                  feedbackLower.includes('missing') ||
-                                                  feedbackLower.includes('incomplete');
+                                // Curmudgeon provided feedback - use interpreter for structured decision
+                                log.orchestrator("🔍 Interpreting Curmudgeon response...");
+                                const interpretation = await interpretCurmudgeonResponse(provider, result.feedback, cwd);
 
-                                if (hasApproval && !hasConcerns) {
-                                    log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                } else if (simplificationCount >= maxSimplifications) {
-                                    // Hit the limit - proceed anyway
-                                    log.orchestrator(`⚠️ Curmudgeon has feedback but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
+                                if (!interpretation) {
+                                    log.warn("Failed to interpret Curmudgeon response - proceeding with plan");
                                     taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                                 } else {
-                                    // Store feedback and replan
-                                    log.orchestrator(`🔄 Curmudgeon feedback (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
-                                    taskStateMachine.setCurmudgeonFeedback(result.feedback);
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                    log.orchestrator(`📊 Curmudgeon verdict: ${interpretation.verdict}`);
+
+                                    switch (interpretation.verdict) {
+                                        case "APPROVE":
+                                            log.orchestrator(`✅ Curmudgeon approved: ${result.feedback.substring(0, 100)}...`);
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            break;
+
+                                        case "SIMPLIFY":
+                                            if (simplificationCount >= maxSimplifications) {
+                                                log.orchestrator(`⚠️ Curmudgeon requested simplification but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                log.orchestrator(`🔄 Curmudgeon requests simplification (attempt ${simplificationCount + 1}/${maxSimplifications}): ${result.feedback.substring(0, 100)}...`);
+                                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                            break;
+
+                                        case "REJECT":
+                                            log.orchestrator(`❌ Curmudgeon rejected plan: ${result.feedback.substring(0, 100)}...`);
+                                            if (simplificationCount >= maxSimplifications) {
+                                                log.orchestrator(`⚠️ Max simplification attempts reached - proceeding with current plan despite rejection.`);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            } else {
+                                                taskStateMachine.setCurmudgeonFeedback(result.feedback);
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                            }
+                                            break;
+
+                                        case "NEEDS_HUMAN":
+                                            log.orchestrator(`🙋 Curmudgeon needs human review: ${result.feedback.substring(0, 100)}...`);
+                                            // In non-interactive/restored task path, default to approval
+                                            log.orchestrator("Non-interactive/restored task mode - proceeding despite NEEDS_HUMAN verdict");
+                                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            break;
+                                    }
                                 }
                             }
                         } catch (error) {
@@ -1338,7 +1324,8 @@ async function runRestoredTask(
                             log,
                             checkpointService,
                             taskStateMachine,
-                            null  // No UI for restored tasks
+                            null,  // No UI for restored tasks
+                            commandBus
                         );
 
                         // Check execution result
@@ -1362,7 +1349,16 @@ async function runRestoredTask(
                             throw new Error("No plan available for super review");
                         }
 
+                        // Update UI to show we're entering super review phase
+                        if (inkInstance) {
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                commandBus
+                            }));
+                        }
+
                         log.orchestrator("🔍 Running SuperReviewer for final quality check...");
+                        await checkAndWaitForInjectionPause('SuperReviewer', taskStateMachine);
                         const superReviewResult = await runSuperReviewer(
                             provider,
                             cwd,
@@ -1381,39 +1377,23 @@ async function runRestoredTask(
                             });
                         }
 
+                        // Update UI to show SuperReviewer results regardless of verdict
+                        if (inkInstance) {
+                            inkInstance.rerender(React.createElement(App, {
+                                taskStateMachine,
+                                commandBus
+                            }));
+                        }
+
                         if (superReviewResult.verdict === "needs-human") {
                             log.orchestrator("⚠️ SuperReviewer identified issues requiring human review.");
                             taskStateMachine.transition(TaskEvent.SUPER_REVIEW_NEEDS_HUMAN);
 
-                            // Create promise for UI-based decision (following refinement pattern)
-                            let superReviewerResolverFunc: ((value: SuperReviewerDecision) => void) | null = null;
-                            const superReviewerDecisionPromise = new Promise<SuperReviewerDecision>((resolve) => {
-                                superReviewerResolverFunc = resolve;
-                            });
-                            // Attach the resolver to the promise object for the UI to access
-                            (superReviewerDecisionPromise as any).resolve = superReviewerResolverFunc;
+                            // Signal UI that SuperReviewer results are ready for approval
+                            taskStateMachine.setSuperReviewAwaitingApproval();
 
-                            // Create callback for UI to wire up
-                            const superReviewerCallback = (decision: Promise<SuperReviewerDecision>) => {
-                                // Wire up the promise resolver to the UI handler
-                                (decision as any).resolve = superReviewerResolverFunc;
-                            };
-
-                            // Update UI to show SuperReviewer results with decision callback
-                            if (inkInstance) {
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    onPlanFeedback: undefined,
-                                    onRefinementFeedback: undefined,
-                                    onSuperReviewerDecision: superReviewerCallback
-                                }));
-
-                                // Invoke callback with promise
-                                superReviewerCallback(superReviewerDecisionPromise);
-                            }
-
-                            // Wait for UI decision
-                            const humanDecision = await superReviewerDecisionPromise;
+                            // Wait for UI decision via CommandBus (event-driven pattern)
+                            const humanDecision = await commandBus.waitForAnyCommand<SuperReviewerDecision>(['superreview:approve', 'superreview:retry', 'superreview:abandon']);
 
                             if (humanDecision.action === "approve") {
                                 log.orchestrator("Human accepted work despite identified issues.");
@@ -1426,12 +1406,13 @@ async function runRestoredTask(
                                     cwd,
                                     taskStateMachine.getContext().taskId,
                                     taskDescription,
-                                    planMd
+                                    planMd,
+                                    taskStateMachine
                                 );
 
                                 if (gardenerResult?.success) {
                                     await commitChanges(
-                                        taskStateMachine.getContext().taskId,
+                                        cwd,
                                         "docs: Update CLAUDE.md documentation"
                                     );
                                 }
@@ -1457,7 +1438,8 @@ async function runRestoredTask(
                                 cwd,
                                 taskStateMachine.getContext().taskId,
                                 taskDescription,
-                                planMd
+                                planMd,
+                                taskStateMachine
                             );
 
                             if (gardenerResult?.success) {
@@ -1468,30 +1450,6 @@ async function runRestoredTask(
                             }
 
                             taskStateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
-                        }
-                        break;
-                    }
-
-                    case TaskState.TASK_FINALIZING: {
-                        // Finalization phase - merge or manual review
-                        if (options?.autoMerge) {
-                            log.orchestrator("📦 Auto-merging to master...");
-                            mergeToMaster(taskStateMachine.getContext().taskId, cwd);
-                            cleanupWorktree(taskStateMachine.getContext().taskId, cwd);
-                            taskStateMachine.transition(TaskEvent.AUTO_MERGE);
-                        } else {
-                            // Provide direct git commands for npx users
-                            log.orchestrator(`\nNext steps:
-1. Review changes in worktree: ${cwd}
-2. Run tests to verify
-3. Merge to master:
-   git checkout master
-   git merge sandbox/${taskStateMachine.getContext().taskId} --squash
-   git commit -m "Task ${taskStateMachine.getContext().taskId} completed"
-4. Clean up:
-   git worktree remove .worktrees/${taskStateMachine.getContext().taskId}
-   git branch -D sandbox/${taskStateMachine.getContext().taskId}`);
-                            taskStateMachine.transition(TaskEvent.MANUAL_MERGE);
                         }
                         break;
                     }
@@ -1531,6 +1489,25 @@ async function runRestoredTask(
         auditLogger.failTask(errorMessage);
         log.warn(`Task execution failed: ${errorMessage}`);
         throw error; // Re-throw to maintain existing error handling behavior
+    } finally {
+        // Ensure Ink UI is cleaned up if it's still running
+        if (inkInstance) {
+            try {
+                log.orchestrator("🧹 Cleaning up Ink UI...");
+                inkInstance.unmount();
+                await inkInstance.waitUntilExit();
+                inkInstance = null;
+
+                // After UI exits, log merge instructions if task completed successfully
+                const finalState = taskStateMachine.getCurrentState();
+                if (finalState === TaskState.TASK_COMPLETE) {
+                    const taskId = taskStateMachine.getContext().taskId;
+                    logMergeInstructions(taskId);
+                }
+            } catch (cleanupError) {
+                log.warn(`⚠️ Ink UI cleanup error: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`);
+            }
+        }
     }
 
     return { cwd };
@@ -1551,11 +1528,20 @@ async function runExecutionStateMachine(
     log: any,
     checkpointService: CheckpointService,
     taskStateMachine: TaskStateMachine,
-    inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null
+    inkInstance: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null,
+    commandBus: CommandBus
 ): Promise<{ beanCounterInitialized: boolean, coderInitialized: boolean, reviewerInitialized: boolean }> {
 
     // Run the execution state machine loop
     while (stateMachine.canContinue()) {
+        // Check for injection pause at top of execution loop
+        if (taskStateMachine.isInjectionPauseRequested()) {
+            if (process.env.DEBUG === 'true') {
+                console.log('[Orchestrator] Execution loop paused, waiting for resume...');
+            }
+            await waitForResume(taskStateMachine);
+        }
+
         try {
             const currentState = stateMachine.getCurrentState();
 
@@ -1569,7 +1555,8 @@ async function runExecutionStateMachine(
                         ? context.codeFeedback
                         : undefined;
 
-                    const chunk = await getNextChunk(
+                    await checkAndWaitForInjectionPause('Bean Counter', taskStateMachine);
+                    const result = await getNextChunk(
                         provider,
                         cwd,
                         planMd,
@@ -1584,11 +1571,13 @@ async function runExecutionStateMachine(
                         beanCounterInitialized = true;
                     }
 
-                    if (!chunk) {
+                    if (!result) {
                         log.orchestrator("Failed to get chunk from Bean Counter");
                         stateMachine.transition(Event.ERROR_OCCURRED, new Error("Bean Counter failed"));
                         break;
                     }
+
+                    const { rawResponse, chunk } = result;
 
                     if (chunk.type === "TASK_COMPLETE") {
                         log.orchestrator("🎉 Bean Counter: Task completed!");
@@ -1596,18 +1585,8 @@ async function runExecutionStateMachine(
                     } else {
                         log.orchestrator(`📋 Bean Counter: Next chunk - ${chunk.description}`);
 
-                        // Capture Bean Counter output for UI
-                        const chunkOutput = `${chunk.description}\n\nRequirements:\n${chunk.requirements.map((r: string) => `- ${r}`).join('\n')}\n\nContext: ${chunk.context}`;
-                        stateMachine.setAgentOutput('bean', chunkOutput);
-
-                        // Trigger UI update if Ink is active
-                        if (taskStateMachine && inkInstance) {
-                            inkInstance.rerender(React.createElement(App, {
-                                taskStateMachine,
-                                onPlanFeedback: undefined,
-                                onRefinementFeedback: undefined
-                            }));
-                        }
+                        // Capture Bean Counter output for UI (use raw formatted markdown)
+                        stateMachine.setAgentOutput('bean', rawResponse);
 
                         // Session strategy: Both agents get fresh sessions per chunk
                         // This prevents context accumulation and ensures clean state for each work unit
@@ -1655,6 +1634,7 @@ async function runExecutionStateMachine(
 
                     const chunkDescription = `${currentChunk.description}\n\nRequirements:\n${currentChunk.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${currentChunk.context}`;
 
+                    await checkAndWaitForInjectionPause('Coder', taskStateMachine);
                     let proposal = await proposePlan(
                         provider,
                         cwd,
@@ -1689,15 +1669,6 @@ async function runExecutionStateMachine(
                     const coderPlanSummary = await summarizeCoderOutput(provider, coderOutput, cwd);
                     stateMachine.setSummary('coder', coderPlanSummary);
 
-                    // Trigger UI update if Ink is active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
-
                     stateMachine.transition(Event.PLAN_PROPOSED, proposal);
                     break;
                 }
@@ -1719,6 +1690,7 @@ async function runExecutionStateMachine(
                     }
 
                     // Reviewer reviews plan against chunk requirements
+                    await checkAndWaitForInjectionPause('Reviewer', taskStateMachine);
                     const verdict = await reviewPlan(
                         provider,
                         cwd,
@@ -1743,15 +1715,6 @@ async function runExecutionStateMachine(
                         cwd
                     );
                     stateMachine.setSummary('reviewer', planReviewSummary);
-
-                    // Trigger UI update if Ink is active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
 
                     // Handle verdict
                     switch (verdict.verdict) {
@@ -1789,31 +1752,11 @@ async function runExecutionStateMachine(
                             break;
 
                         case 'needs-human':
-                            // Create promise with resolver for human decision
-                            let humanReviewResolverFunc: ((value: HumanInteractionResult) => void) | null = null;
-                            const humanReviewDecisionPromise = new Promise<HumanInteractionResult>((resolve) => {
-                                humanReviewResolverFunc = resolve;
-                            });
-                            (humanReviewDecisionPromise as any).resolve = humanReviewResolverFunc;
-
-                            // Create callback for UI to wire up
-                            const humanReviewCallback = (decision: Promise<HumanInteractionResult>) => {
-                                (decision as any).resolve = humanReviewResolverFunc;
-                            };
-
                             // Set human review state in execution state machine
                             stateMachine.setNeedsHumanReview(true, verdict.feedback || "Reviewer requires human input");
 
-                            // Update UI to show human review prompt with callback
-                            if (inkInstance) {
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    onHumanReviewDecision: humanReviewCallback
-                                }));
-                            }
-
-                            // Wait for UI decision
-                            const planDecision = await humanReviewDecisionPromise;
+                            // Wait for human decision via CommandBus (event-driven)
+                            const planDecision = await commandBus.waitForAnyCommand<HumanInteractionResult>(['humanreview:approve', 'humanreview:retry', 'humanreview:reject']);
 
                             // Clear human review state
                             stateMachine.clearHumanReview();
@@ -1869,6 +1812,7 @@ async function runExecutionStateMachine(
                     }
 
                     // Coder implements the approved plan
+                    await checkAndWaitForInjectionPause('Coder', taskStateMachine);
                     const response = await implementPlan(
                         provider,
                         cwd,
@@ -1882,15 +1826,6 @@ async function runExecutionStateMachine(
                     // Generate concise summary of Coder implementation response
                     const coderSummary = await summarizeCoderOutput(provider, response, cwd);
                     stateMachine.setSummary('coder', coderSummary);
-
-                    // Trigger UI update if Ink is active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
 
                     // Check if Coder applied changes (don't log here since Coder already displayed its response)
                     if (!response.includes("CODE_APPLIED:")) {
@@ -1910,6 +1845,7 @@ async function runExecutionStateMachine(
                     const reviewChunk = stateMachine.getCurrentChunk() || null;
 
                     // Reviewer reviews code
+                    await checkAndWaitForInjectionPause('Reviewer', taskStateMachine);
                     const verdict = await reviewCode(
                         provider,
                         cwd,
@@ -1933,15 +1869,6 @@ async function runExecutionStateMachine(
                         cwd
                     );
                     stateMachine.setSummary('reviewer', reviewerSummary);
-
-                    // Trigger UI update if Ink is active
-                    if (taskStateMachine && inkInstance) {
-                        inkInstance.rerender(React.createElement(App, {
-                            taskStateMachine,
-                            onPlanFeedback: undefined,
-                            onRefinementFeedback: undefined
-                        }));
-                    }
 
                     // Handle verdict
                     switch (verdict.verdict) {
@@ -2007,31 +1934,11 @@ async function runExecutionStateMachine(
                             break;
 
                         case 'needs-human':
-                            // Create promise with resolver for human decision
-                            let codeHumanReviewResolverFunc: ((value: HumanInteractionResult) => void) | null = null;
-                            const codeHumanReviewDecisionPromise = new Promise<HumanInteractionResult>((resolve) => {
-                                codeHumanReviewResolverFunc = resolve;
-                            });
-                            (codeHumanReviewDecisionPromise as any).resolve = codeHumanReviewResolverFunc;
-
-                            // Create callback for UI to wire up
-                            const codeHumanReviewCallback = (decision: Promise<HumanInteractionResult>) => {
-                                (decision as any).resolve = codeHumanReviewResolverFunc;
-                            };
-
                             // Set human review state in execution state machine
                             stateMachine.setNeedsHumanReview(true, verdict.feedback || "Reviewer requires human input on code implementation");
 
-                            // Update UI to show human review prompt with callback
-                            if (inkInstance) {
-                                inkInstance.rerender(React.createElement(App, {
-                                    taskStateMachine,
-                                    onHumanReviewDecision: codeHumanReviewCallback
-                                }));
-                            }
-
-                            // Wait for UI decision
-                            const codeDecision = await codeHumanReviewDecisionPromise;
+                            // Wait for human decision via CommandBus (event-driven)
+                            const codeDecision = await commandBus.waitForAnyCommand<HumanInteractionResult>(['humanreview:approve', 'humanreview:retry', 'humanreview:reject']);
 
                             // Clear human review state
                             stateMachine.clearHumanReview();

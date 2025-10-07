@@ -1,17 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Text, Box, useStdout, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
-import { TaskStateMachine } from '../../../task-state-machine.js';
+import { TaskStateMachine, ToolStatus } from '../../../task-state-machine.js';
+import { CommandBus } from '../../../ui/command-bus.js';
 import { State } from '../../../state-machine.js';
 import { StatusIndicator } from './StatusIndicator.js';
-import type { HumanInteractionResult } from '../../../types.js';
 import { TextInputModal } from './TextInputModal.js';
 import { Spinner } from './Spinner.js';
+import { MarkdownText } from './MarkdownText.js';
 
 // TypeScript interface for ExecutionLayout props
 interface ExecutionLayoutProps {
   taskStateMachine: TaskStateMachine;
-  onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
+  commandBus: CommandBus;  // Required - event-driven architecture
   onFullscreen?: (paneNum: number) => void;
 }
 
@@ -70,24 +71,41 @@ function getAgentStatusText(agent: 'coder' | 'reviewer', currentState: State): s
   }
 }
 
+// Helper function to determine current agent for injection modal
+function getCurrentAgentForInjection(currentState: State): string {
+  // Bean Counter is active during BEAN_COUNTING, or just finished if in PLANNING
+  if (currentState === State.BEAN_COUNTING || currentState === State.PLANNING) {
+    return 'Bean Counter';
+  }
+  // Coder is active during PLANNING/IMPLEMENTING, or just finished if in CODE_REVIEW
+  if (currentState === State.IMPLEMENTING || currentState === State.CODE_REVIEW) {
+    return 'Coder';
+  }
+  // Reviewer is active during PLAN_REVIEW/CODE_REVIEW
+  return 'Reviewer';
+}
+
 // Execution Layout Component - handles TASK_EXECUTING with dynamic two-pane view
-export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine, onHumanReviewDecision, onFullscreen }) => {
+export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachine, commandBus, onFullscreen }) => {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns || 120;
   const terminalHeight = stdout?.rows || 40;
 
-  // Local state for human review decision resolver
-  const [humanReviewResolver, setHumanReviewResolver] = React.useState<((value: HumanInteractionResult) => void) | null>(null);
-
-  // Retry modal state
-  const [showRetryModal, setShowRetryModal] = React.useState(false);
-  const [retryFeedback, setRetryFeedback] = React.useState("");
-
   // Get execution state machine
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
 
-  // Get tool status to determine if spinner should animate
-  const toolStatus = executionStateMachine?.getToolStatus();
+  // Reactive view-model state
+  const [currentPhase, setCurrentPhase] = useState<State>(executionStateMachine?.getCurrentState() || State.BEAN_COUNTING);
+  const [beanCounterOutput, setBeanCounterOutput] = useState<string | undefined>(executionStateMachine?.getAgentOutput('bean'));
+  const [coderSummary, setCoderSummary] = useState<string | undefined>(executionStateMachine?.getSummary('coder'));
+  const [reviewerSummary, setReviewerSummary] = useState<string | undefined>(executionStateMachine?.getSummary('reviewer'));
+  const [needsHumanReview, setNeedsHumanReview] = useState<boolean>(executionStateMachine?.getNeedsHumanReview() || false);
+  const [humanReviewContext, setHumanReviewContext] = useState<string | undefined>(executionStateMachine?.getHumanReviewContext());
+  const [toolStatus, setToolStatus] = useState<ToolStatus | null>((executionStateMachine?.getToolStatus() || taskStateMachine.getToolStatus() || null));
+
+  // Modal state
+  const [showRetryModal, setShowRetryModal] = useState(false);
+  const [showInjectionModal, setShowInjectionModal] = useState(false);
 
   // Intercept Ctrl+Q/W/E for fullscreen panes
   useInput((input, key) => {
@@ -98,24 +116,72 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
     }
   });
 
-  // Wire up human review decision when callback is provided
+  // Monitor execution phase changes for injection pauses
   React.useEffect(() => {
-    if (onHumanReviewDecision && executionStateMachine?.getNeedsHumanReview()) {
-      // Create a dummy promise to get the resolver attached by orchestrator
-      const dummyPromise = new Promise<HumanInteractionResult>((resolve) => {
-        // This resolve will be replaced by the orchestrator
-      });
-
-      // Call the callback which will attach the real resolver
-      onHumanReviewDecision(dummyPromise);
-
-      // Extract the resolver that was attached by orchestrator
-      const resolver = (dummyPromise as any).resolve;
-      if (resolver) {
-        setHumanReviewResolver(() => resolver);
-      }
+    if (!executionStateMachine) {
+      return;
     }
-  }, [onHumanReviewDecision, executionStateMachine?.getNeedsHumanReview()]);
+
+    const handlePhaseChange = ({ to }: { from: State; to: State }) => {
+      if (!taskStateMachine.isInjectionPauseRequested()) {
+        return;
+      }
+
+      if (to === State.TASK_COMPLETE || to === State.TASK_FAILED || to === State.TASK_ABORTED) {
+        taskStateMachine.clearInjectionPause();
+        return;
+      }
+
+      if (needsHumanReview || showRetryModal) {
+        return;
+      }
+
+      setShowInjectionModal(true);
+      taskStateMachine.clearInjectionPause();
+    };
+
+    executionStateMachine.on('execution:phase:changed', handlePhaseChange);
+
+    return () => {
+      executionStateMachine.off('execution:phase:changed', handlePhaseChange);
+    };
+  }, [executionStateMachine, taskStateMachine, needsHumanReview, showRetryModal]);
+
+  // Subscribe to execution events and sync local state
+  React.useEffect(() => {
+    if (!executionStateMachine) {
+      return;
+    }
+
+    const syncState = () => {
+      setCurrentPhase(executionStateMachine.getCurrentState());
+      setBeanCounterOutput(executionStateMachine.getAgentOutput('bean'));
+      setCoderSummary(executionStateMachine.getSummary('coder'));
+      setReviewerSummary(executionStateMachine.getSummary('reviewer'));
+      setNeedsHumanReview(executionStateMachine.getNeedsHumanReview());
+      setHumanReviewContext(executionStateMachine.getHumanReviewContext());
+      setToolStatus(executionStateMachine.getToolStatus() || taskStateMachine.getToolStatus());
+    };
+
+    syncState();
+
+    executionStateMachine.on('execution:output:updated', syncState);
+    executionStateMachine.on('execution:summary:updated', syncState);
+    executionStateMachine.on('execution:phase:changed', syncState);
+    executionStateMachine.on('execution:humanreview', syncState);
+
+    taskStateMachine.on('activity:updated', syncState);
+    taskStateMachine.on('tool:status', syncState);
+
+    return () => {
+      executionStateMachine.off('execution:output:updated', syncState);
+      executionStateMachine.off('execution:summary:updated', syncState);
+      executionStateMachine.off('execution:phase:changed', syncState);
+      executionStateMachine.off('execution:humanreview', syncState);
+      taskStateMachine.off('activity:updated', syncState);
+      taskStateMachine.off('tool:status', syncState);
+    };
+  }, [executionStateMachine, taskStateMachine]);
 
   if (!executionStateMachine) {
     return (
@@ -125,10 +191,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
     );
   }
 
-  const currentState = executionStateMachine.getCurrentState();
-  const beanCounterOutput = executionStateMachine.getAgentOutput('bean');
-  const coderOutput = executionStateMachine.getAgentOutput('coder');
-  const reviewerOutput = executionStateMachine.getAgentOutput('reviewer');
+  const currentState = currentPhase;
 
   // Calculate pane dimensions
   const isWideTerminal = terminalWidth > 120;
@@ -136,52 +199,61 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
   const rightPanelWidth = Math.floor(terminalWidth * 0.49);
   // Bean Counter pane gets most of available vertical space (minus header, status panel, margins)
   const beanCounterHeight = Math.max(15, Math.floor(terminalHeight * 0.5));
-  const agentPaneHeight = Math.floor(terminalHeight * 0.2);
+
+  // Calculate heights for Coder and Reviewer panes
+  const HEADER_FOOTER_HEIGHT = 10; // Overhead for borders, padding, status panel
+  const agentPaneHeight = Math.max(10, Math.floor((terminalHeight - HEADER_FOOTER_HEIGHT) * 0.5));
+  const coderHeight = Math.floor(agentPaneHeight / 2);
+  const reviewerHeight = Math.floor(agentPaneHeight / 2);
 
   // Determine left and right pane content based on current state
-  let leftTitle = '';
-  let leftContent = '';
-  let leftColor = 'gray';
-  let rightTitle = '';
-  let rightContent = '';
-  let rightColor = 'gray';
-  let statusMessage = '';
+  const leftTitle = '🧮 Bean Counter Chunk';
+  const leftContent = currentState === State.BEAN_COUNTING ? 'Bean Counting!' : (beanCounterOutput || 'Determining work chunk...');
+  const leftColor = 'cyan';
 
-  // Left pane: Always show latest Bean Counter chunk
-  leftTitle = '🧮 Bean Counter Chunk';
-  leftContent = currentState === State.BEAN_COUNTING ? 'Bean Counting!' : (beanCounterOutput || 'Determining work chunk...');
-  leftColor = 'cyan';
+  // Status message based on execution state - includes tool status when active
+  const baseStatusMessage = (() => {
+    switch (currentState) {
+      case State.BEAN_COUNTING:
+        return 'Bean Counter is breaking down work into implementable chunks';
+      case State.PLANNING:
+        return 'Coder is proposing implementation approach';
+      case State.PLAN_REVIEW:
+        return 'Reviewer is evaluating the proposed approach';
+      case State.IMPLEMENTING:
+        return 'Coder is implementing the approved plan';
+      case State.CODE_REVIEW:
+        return 'Reviewer is validating the implementation';
+      case State.TASK_COMPLETE:
+        return 'All chunks implemented and approved';
+      default:
+        return 'Processing...';
+    }
+  })();
 
-  // Status message based on execution state
-  switch (currentState) {
-    case State.BEAN_COUNTING:
-      statusMessage = 'Bean Counter is breaking down work into implementable chunks';
-      break;
-    case State.PLANNING:
-      statusMessage = 'Coder is proposing implementation approach';
-      break;
-    case State.PLAN_REVIEW:
-      statusMessage = 'Reviewer is evaluating the proposed approach';
-      break;
-    case State.IMPLEMENTING:
-      statusMessage = 'Coder is implementing the approved plan';
-      break;
-    case State.CODE_REVIEW:
-      statusMessage = 'Reviewer is validating the implementation';
-      break;
-    case State.TASK_COMPLETE:
-      statusMessage = 'All chunks implemented and approved';
-      break;
-    default:
-      statusMessage = 'Processing...';
-  }
+  // Merge tool status into status message when active
+  const statusMessage = toolStatus
+    ? `${baseStatusMessage} → ${toolStatus.tool}: ${toolStatus.summary}`
+    : baseStatusMessage;
+
+  // Handle injection modal submit
+  const handleInjectionSubmit = (content: string) => {
+    taskStateMachine.setPendingInjection(content);
+    setShowInjectionModal(false);
+  };
+
+  // Handle injection modal cancel
+  const handleInjectionCancel = () => {
+    setShowInjectionModal(false);
+  };
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor="yellow" padding={1} flexGrow={0}>
       {/* Two-pane layout */}
       <Box
         flexDirection={isWideTerminal ? "row" : "column"}
         marginBottom={1}
+        flexShrink={1}
       >
         {/* Left Panel - Bean Counter */}
         <Box
@@ -201,7 +273,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
             <Text dimColor>[Q]</Text>
           </Box>
           <Box marginTop={1}>
-            <Text wrap="wrap">{truncateContent(leftContent, beanCounterHeight).display}</Text>
+            <MarkdownText maxHeight={beanCounterHeight}>{leftContent}</MarkdownText>
           </Box>
         </Box>
 
@@ -230,11 +302,13 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               </Box>
               <Text dimColor>[W]</Text>
             </Box>
-            <Box marginTop={1}>
-              <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
-            </Box>
-            {getActiveAgent(currentState) !== 'coder' && (
-              <Text wrap="wrap">{executionStateMachine.getSummary('coder') || 'Generating summary...'}</Text>
+            {getActiveAgent(currentState) === 'coder' && (
+              <Box marginTop={1}>
+                <Text dimColor>{getAgentStatusText('coder', currentState)}</Text>
+              </Box>
+            )}
+            {getActiveAgent(currentState) !== 'coder' && coderSummary && (
+              <MarkdownText maxHeight={coderHeight}>{coderSummary}</MarkdownText>
             )}
           </Box>
 
@@ -254,11 +328,13 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
               </Box>
               <Text dimColor>[E]</Text>
             </Box>
-            <Box marginTop={1}>
-              <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
-            </Box>
-            {getActiveAgent(currentState) !== 'reviewer' && (
-              <Text wrap="wrap">{executionStateMachine.getSummary('reviewer') || 'Generating summary...'}</Text>
+            {getActiveAgent(currentState) === 'reviewer' && (
+              <Box marginTop={1}>
+                <Text dimColor>{getAgentStatusText('reviewer', currentState)}</Text>
+              </Box>
+            )}
+            {getActiveAgent(currentState) !== 'reviewer' && reviewerSummary && (
+              <MarkdownText maxHeight={reviewerHeight}>{reviewerSummary}</MarkdownText>
             )}
           </Box>
         </Box>
@@ -268,8 +344,9 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       <Box
         flexDirection="column"
         borderStyle="single"
-        borderColor="blue"
+        borderColor={needsHumanReview ? "yellow" : "blue"}
         paddingX={1}
+        flexShrink={0}
       >
         {/* Tool status display */}
         {toolStatus && (
@@ -281,13 +358,18 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
         )}
 
         <Text>{statusMessage}</Text>
-        <Text dimColor>State: {currentState}</Text>
+        <Box>
+          <Text dimColor>State: {currentState}</Text>
+          {taskStateMachine.hasPendingInjection() && (
+            <Text dimColor> | 🎯 Injection Pending (Next Agent)</Text>
+          )}
+        </Box>
 
         {/* Human Review Menu */}
-        {executionStateMachine.getNeedsHumanReview() && humanReviewResolver && (
+        {needsHumanReview && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="yellow" bold>⚠ Human Review Required</Text>
-            <Text>{executionStateMachine.getHumanReviewContext()}</Text>
+            <MarkdownText>{humanReviewContext || ''}</MarkdownText>
             <Box marginTop={1}>
               <SelectInput
                 items={[
@@ -295,17 +377,19 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
                   { label: 'Retry - Provide feedback for revision', value: 'retry' },
                   { label: 'Reject - Skip this chunk', value: 'reject' }
                 ]}
-                onSelect={(item) => {
+                onSelect={async (item) => {
                   if (item.value === 'approve') {
-                    humanReviewResolver({ decision: 'approve' });
+                    await commandBus.sendCommand({ type: 'humanreview:approve', feedback: '' });
                     executionStateMachine.clearHumanReview();
-                    setHumanReviewResolver(null);
+                    setNeedsHumanReview(false);
+                    setHumanReviewContext(undefined);
                   } else if (item.value === 'retry') {
                     setShowRetryModal(true);
                   } else if (item.value === 'reject') {
-                    humanReviewResolver({ decision: 'reject' });
+                    await commandBus.sendCommand({ type: 'humanreview:reject', feedback: 'User chose to skip this chunk' });
                     executionStateMachine.clearHumanReview();
-                    setHumanReviewResolver(null);
+                    setNeedsHumanReview(false);
+                    setHumanReviewContext(undefined);
                   }
                 }}
               />
@@ -316,24 +400,39 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
       {/* Retry Feedback Modal */}
       {showRetryModal && (
-        <TextInputModal
-          title="Provide Retry Feedback"
-          placeholder="Describe what needs to be fixed..."
-          onSubmit={(feedbackText) => {
-            if (humanReviewResolver) {
-              humanReviewResolver({ decision: 'retry', feedback: feedbackText });
-              setHumanReviewResolver(null);
+          <TextInputModal
+            title="Provide Retry Feedback"
+            placeholder="Describe what needs to be fixed..."
+            onSubmit={async (feedbackText) => {
+              await commandBus.sendCommand({ type: 'humanreview:retry', feedback: feedbackText });
               executionStateMachine?.clearHumanReview();
-            }
-            setShowRetryModal(false);
-            setRetryFeedback("");
-          }}
-          onCancel={() => {
-            setShowRetryModal(false);
-            setRetryFeedback("");
-          }}
-        />
+              setShowRetryModal(false);
+              setNeedsHumanReview(false);
+              setHumanReviewContext(undefined);
+            }}
+            onCancel={() => {
+              setShowRetryModal(false);
+            }}
+          />
       )}
+
+      {/* Injection Modal - for dynamic prompt injection */}
+      {showInjectionModal && (() => {
+        const currentChunk = executionStateMachine.getCurrentChunk();
+        const agentType = getCurrentAgentForInjection(currentState);
+        const chunkDesc = currentChunk?.description || 'Coordinating work chunks';
+        const modalTitle = `Dynamic Prompt Injection → ${agentType}`;
+        const contextInfo = `Chunk: ${chunkDesc.substring(0, 60)}${chunkDesc.length > 60 ? '...' : ''}`;
+
+        return (
+          <TextInputModal
+            title={modalTitle}
+            placeholder={contextInfo}
+            onSubmit={handleInjectionSubmit}
+            onCancel={handleInjectionCancel}
+          />
+        );
+      })()}
     </Box>
   );
 };

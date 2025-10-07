@@ -488,12 +488,15 @@ export class RestorationService {
 
       // Restore refined task if available
       if (checkpoint.refinedTask && checkpoint.taskToUse) {
-        // Ensure raw property is set for RefinedTask compatibility
-        const refinedTask = {
-          ...checkpoint.refinedTask,
-          raw: checkpoint.refinedTask.raw || undefined
-        };
-        taskStateMachine.setRefinedTask(refinedTask, checkpoint.taskToUse);
+        // Handle both string and legacy object formats
+        let refinedTaskString: string;
+        if (typeof checkpoint.refinedTask === 'string') {
+          refinedTaskString = checkpoint.refinedTask;
+        } else {
+          // Legacy object format - extract raw or goal
+          refinedTaskString = checkpoint.refinedTask.raw || checkpoint.refinedTask.goal || checkpoint.taskToUse;
+        }
+        taskStateMachine.setRefinedTask(refinedTaskString, checkpoint.taskToUse);
       }
 
       // Restore plan data if available

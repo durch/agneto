@@ -24,3 +24,6 @@ Extract a 3-5 line summary from the Reviewer's response that captures:
 - Use imperative verbs for action items (Add, Fix, Update, etc.)
 - Include security or critical concerns explicitly
 - Omit philosophical discussions and keep focus on concrete changes needed
+
+## Output Format
+Use **markdown**: bold for emphasis, bullets for lists, backticks for code, clear headers for detailed feedback.

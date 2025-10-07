@@ -12,10 +12,17 @@ export async function runCurmudgeon(
   taskDescription?: string,
   taskStateMachine?: TaskStateMachine
 ): Promise<CurmudgeonResult | null> {
-  const sys = readFileSync(
+  let sys = readFileSync(
     new URL("../prompts/curmudgeon.md", import.meta.url),
     "utf8"
   );
+
+  // Append project-specific prompt additions if configured
+  const customPrompt = taskStateMachine?.getAgentPromptConfig('curmudgeon');
+  if (customPrompt) {
+    sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
+    log.curmudgeon("🤨 Curmudgeon: Using project-specific prompt additions", 'CURMUDGEONING');
+  }
 
   log.startStreaming("Curmudgeon");
 

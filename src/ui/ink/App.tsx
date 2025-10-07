@@ -1,22 +1,21 @@
-import React, { useState } from 'react';
-import { Text, Box, useStdout, useInput } from 'ink';
+import React, { useState, useEffect } from 'react';
+import { Text, Box, useStdout, useInput, useApp } from 'ink';
 import { TaskStateMachine, TaskState } from '../../task-state-machine.js';
+import { CommandBus } from '../../ui/command-bus.js';
 import { PlanningLayout } from './components/PlanningLayout.js';
 import { ExecutionLayout } from './components/ExecutionLayout.js';
 import { FullscreenModal } from './components/FullscreenModal.js';
 import { TaskView } from './components/TaskView.js';
+import { DebugOverlay } from './components/DebugOverlay.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
-import type { SuperReviewerDecision, HumanInteractionResult } from '../../types.js';
+import type { SuperReviewerDecision, HumanInteractionResult, SuperReviewerResult, GardenerResult } from '../../types.js';
 
 // TypeScript interface for component props
 interface AppProps {
   taskStateMachine: TaskStateMachine;
-  onPlanFeedback?: (feedback: PlanFeedback) => void;
-  onRefinementFeedback?: (feedback: Promise<RefinementFeedback>, rerenderCallback?: () => void) => void;
-  onAnswerCallback?: (promise: Promise<string>) => void;
-  onSuperReviewerDecision?: (decision: Promise<SuperReviewerDecision>) => void;
-  onHumanReviewDecision?: (decision: Promise<HumanInteractionResult>) => void;
+  commandBus: CommandBus;  // Required - event-driven architecture
+  onRefinementFeedback?: (feedback: RefinementFeedback) => void;
 }
 
 // Helper function to convert TaskState enum to human-readable format
@@ -34,8 +33,8 @@ const getPhaseDisplayName = (state: TaskState): string => {
       return 'Executing';
     case TaskState.TASK_SUPER_REVIEWING:
       return 'Final Review';
-    case TaskState.TASK_FINALIZING:
-      return 'Finalizing';
+    case TaskState.TASK_GARDENING:
+      return 'Updating Documentation';
     case TaskState.TASK_COMPLETE:
       return 'Complete';
     case TaskState.TASK_ABANDONED:
@@ -55,8 +54,9 @@ const getPhaseColor = (state: TaskState): string => {
       return 'blue';
     case TaskState.TASK_EXECUTING:
     case TaskState.TASK_SUPER_REVIEWING:
-    case TaskState.TASK_FINALIZING:
       return 'yellow';
+    case TaskState.TASK_GARDENING:
+      return 'cyan';
     case TaskState.TASK_COMPLETE:
       return 'green';
     case TaskState.TASK_ABANDONED:
@@ -67,11 +67,14 @@ const getPhaseColor = (state: TaskState): string => {
 };
 
 // Main App component
-export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRefinementFeedback, onAnswerCallback, onSuperReviewerDecision, onHumanReviewDecision }) => {
+export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefinementFeedback }) => {
   // Get terminal dimensions for responsive layout
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows || 40; // Default to 40 if unavailable
   const terminalWidth = stdout?.columns || 120; // Default to 120 if unavailable
+
+  // Get app instance for exit control
+  const { exit } = useApp();
 
   // Global modal state for plan viewer
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
@@ -82,6 +85,85 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
   // Modal state for execution phase agent outputs
   const [viewMode, setViewMode] = useState<'split' | 'fullscreen'>('split');
   const [fullscreenContent, setFullscreenContent] = useState<{title: string, text: string} | null>(null);
+
+  // Debug overlay state
+  const [isDebugOverlayVisible, setIsDebugOverlayVisible] = useState(
+    process.env.AGNETO_DEBUG_OVERLAY === 'true'
+  );
+
+  // React state mirroring TaskStateMachine data (event-driven updates)
+  const [currentTaskState, setCurrentTaskState] = useState<TaskState>(taskStateMachine.getCurrentState());
+  const [planMd, setPlanMd] = useState<string | undefined>(taskStateMachine.getPlanMd());
+  const [planPath, setPlanPath] = useState<string | undefined>(taskStateMachine.getPlanPath());
+  const [pendingRefinement, setPendingRefinement] = useState<string | undefined>(taskStateMachine.getPendingRefinement());
+  const [currentQuestion, setCurrentQuestion] = useState<string | null>(taskStateMachine.getCurrentQuestion());
+  const [superReviewResult, setSuperReviewResult] = useState<SuperReviewerResult | undefined>(taskStateMachine.getSuperReviewResult());
+  const [gardenerResult, setGardenerResult] = useState<GardenerResult | null>(taskStateMachine.getGardenerResult());
+  const [curmudgeonFeedback, setCurmudgeonFeedback] = useState<string | undefined>(taskStateMachine.getCurmudgeonFeedback());
+  const [pendingInjection, setPendingInjection] = useState<string | null>(taskStateMachine.getPendingInjection());
+  const [context, setContext] = useState(taskStateMachine.getContext());
+
+  // Subscribe to TaskStateMachine events for automatic re-rendering
+  React.useEffect(() => {
+    const handleStateChange = () => {
+      const newState = taskStateMachine.getCurrentState();
+      if (process.env.DEBUG) {
+        console.log('[App.tsx] handleStateChange: setState called with state:', newState);
+      }
+      setCurrentTaskState(newState);
+    };
+
+    const handleDataUpdate = () => {
+      if (process.env.DEBUG) {
+        console.log('[App.tsx] handleDataUpdate: updating all React state from TaskStateMachine');
+      }
+      // Update all relevant state from TaskStateMachine
+      setPlanMd(taskStateMachine.getPlanMd());
+      setPlanPath(taskStateMachine.getPlanPath());
+      setPendingRefinement(taskStateMachine.getPendingRefinement());
+      setCurrentQuestion(taskStateMachine.getCurrentQuestion());
+      setSuperReviewResult(taskStateMachine.getSuperReviewResult());
+      setGardenerResult(taskStateMachine.getGardenerResult());
+      setCurmudgeonFeedback(taskStateMachine.getCurmudgeonFeedback());
+      setPendingInjection(taskStateMachine.getPendingInjection());
+      setContext(taskStateMachine.getContext());
+    };
+
+    // Subscribe to all relevant events
+    taskStateMachine.on('state:changed', handleStateChange);
+    taskStateMachine.on('plan:ready', handleDataUpdate);
+    taskStateMachine.on('refinement:ready', handleDataUpdate);
+    taskStateMachine.on('question:asked', handleDataUpdate);
+    taskStateMachine.on('question:cleared', handleDataUpdate);
+    taskStateMachine.on('task:refined', handleDataUpdate);
+    taskStateMachine.on('superreview:complete', handleDataUpdate);
+    taskStateMachine.on('gardener:complete', handleDataUpdate);
+
+    // Cleanup on unmount
+    return () => {
+      if (process.env.DEBUG) {
+        console.log('[App.tsx] Cleanup: removing all event listeners from TaskStateMachine');
+      }
+      taskStateMachine.off('state:changed', handleStateChange);
+      taskStateMachine.off('plan:ready', handleDataUpdate);
+      taskStateMachine.off('refinement:ready', handleDataUpdate);
+      taskStateMachine.off('question:asked', handleDataUpdate);
+      taskStateMachine.off('question:cleared', handleDataUpdate);
+      taskStateMachine.off('task:refined', handleDataUpdate);
+      taskStateMachine.off('superreview:complete', handleDataUpdate);
+      taskStateMachine.off('gardener:complete', handleDataUpdate);
+    };
+  }, [taskStateMachine]);
+
+  // Exit UI when task completes
+  useEffect(() => {
+    if (currentTaskState === TaskState.TASK_COMPLETE || currentTaskState === TaskState.TASK_ABANDONED) {
+      // Small delay to ensure final state renders before exit
+      setTimeout(() => {
+        exit();
+      }, 100);
+    }
+  }, [currentTaskState, exit]);
 
   // Global keyboard handler for plan modal and execution phase modals
   useInput((input, key) => {
@@ -96,9 +178,35 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
 
     // Handle Ctrl+P to toggle plan modal
     if (key.ctrl && (input === 'p' || input === 'P')) {
-      const planMd = taskStateMachine.getPlanMd();
       if (planMd) {
         setIsPlanModalOpen(true);
+      }
+      return;
+    }
+
+    // Handle Ctrl+T to toggle task description modal
+    if (key.ctrl && (input === 't' || input === 'T')) {
+      if (context.taskToUse || context.humanTask) {
+        setIsTaskModalOpen(!isTaskModalOpen);
+      }
+      return;
+    }
+
+    // Handle Ctrl+I to trigger dynamic prompt injection pause
+    // This sets a pause flag that allows user to inject additional context mid-execution
+    if (key.ctrl && (input === 'i' || input === 'I')) {
+      // Check if there's already a pending injection
+      if (pendingInjection !== null) {
+        // Override pattern: user wants to replace the pending injection
+        if (process.env.DEBUG) {
+          console.log('Injection override: replacing pending injection');
+        }
+        // Clear and re-trigger the pause flag to immediately show modal in layouts
+        taskStateMachine.clearInjectionPause();
+        taskStateMachine.requestInjectionPause();
+      } else {
+        // Normal case: first injection request
+        taskStateMachine.requestInjectionPause();
       }
       return;
     }
@@ -109,15 +217,20 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
       handleFullscreen(paneMap[input]);
       return;
     }
+
+    // Handle Ctrl+D to toggle debug overlay
+    if (key.ctrl && (input === 'd' || input === 'D')) {
+      setIsDebugOverlayVisible(prev => !prev);
+      return;
+    }
   });
 
-  // Read current state dynamically from taskStateMachine
+  // Read current state from React state
   const getPhaseInfo = (): { state: TaskState; displayName: string; color: string } => {
-    const currentState = taskStateMachine.getCurrentState();
     return {
-      state: currentState,
-      displayName: getPhaseDisplayName(currentState),
-      color: getPhaseColor(currentState)
+      state: currentTaskState,
+      displayName: getPhaseDisplayName(currentTaskState),
+      color: getPhaseColor(currentTaskState)
     };
   };
 
@@ -132,7 +245,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
         };
       }
 
-      const context = taskStateMachine.getContext();
       const status = taskStateMachine.getStatus();
 
       return {
@@ -151,10 +263,9 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
 
   // Get pane content by number based on current state
   const getPaneContent = (paneNum: number): { title: string; content: string } | null => {
-    const currentState = taskStateMachine.getCurrentState();
 
     // Execution phase: 3 numbered panes
-    if (currentState === TaskState.TASK_EXECUTING) {
+    if (currentTaskState === TaskState.TASK_EXECUTING) {
       const executionStateMachine = taskStateMachine.getExecutionStateMachine();
       switch (paneNum) {
         case 1:
@@ -179,34 +290,29 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
 
     // Planning phases: 2 numbered panes
     if (
-      currentState === TaskState.TASK_REFINING ||
-      currentState === TaskState.TASK_PLANNING ||
-      currentState === TaskState.TASK_CURMUDGEONING ||
-      currentState === TaskState.TASK_SUPER_REVIEWING
+      currentTaskState === TaskState.TASK_REFINING ||
+      currentTaskState === TaskState.TASK_PLANNING ||
+      currentTaskState === TaskState.TASK_CURMUDGEONING ||
+      currentTaskState === TaskState.TASK_SUPER_REVIEWING
     ) {
-      const context = taskStateMachine.getContext();
-      const planMd = taskStateMachine.getPlanMd();
-      const pendingRefinement = taskStateMachine.getPendingRefinement();
-      const curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
-      const superReviewResult = taskStateMachine.getSuperReviewResult();
-      const previousCurmudgeonFeedback = currentState === TaskState.TASK_PLANNING && curmudgeonFeedback;
+      const previousCurmudgeonFeedback = currentTaskState === TaskState.TASK_PLANNING && curmudgeonFeedback;
 
       if (paneNum === 1) {
         // Left pane - dynamic based on state
-        if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+        if (currentTaskState === TaskState.TASK_SUPER_REVIEWING) {
           return { title: '📋 Original Plan', content: planMd || 'No plan available' };
-        } else if (currentState === TaskState.TASK_CURMUDGEONING) {
+        } else if (currentTaskState === TaskState.TASK_CURMUDGEONING) {
           return { title: '📋 Current Plan', content: planMd || 'No plan available' };
         } else if (previousCurmudgeonFeedback) {
           return { title: '🧐 Previous Feedback', content: curmudgeonFeedback || '' };
-        } else if (currentState === TaskState.TASK_REFINING && pendingRefinement) {
-          return { title: '📝 Refined Task', content: pendingRefinement.raw || pendingRefinement.goal || '' };
+        } else if (currentTaskState === TaskState.TASK_REFINING && pendingRefinement) {
+          return { title: '📝 Refined Task', content: pendingRefinement || '' };
         } else {
           return { title: '📝 Refined Task', content: context.taskToUse || context.humanTask || 'No task description' };
         }
       } else if (paneNum === 2) {
         // Right pane - dynamic based on state
-        if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+        if (currentTaskState === TaskState.TASK_SUPER_REVIEWING) {
           const summary = superReviewResult?.summary || 'Performing final quality check...';
           const issues = superReviewResult?.issues?.map((issue, idx) => `• ${issue}`).join('\n') || '';
           const verdict = superReviewResult?.verdict === 'approve' ? '✅ Approved' : '⚠️ Needs Human Review';
@@ -214,12 +320,12 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
             title: '🔍 Quality Check Results',
             content: `${summary}\n\n${issues ? `Issues Found:\n${issues}\n\n` : ''}Verdict: ${verdict}`
           };
-        } else if (currentState === TaskState.TASK_CURMUDGEONING) {
+        } else if (currentTaskState === TaskState.TASK_CURMUDGEONING) {
           return { title: '🧐 Curmudgeon Feedback', content: curmudgeonFeedback || 'Reviewing plan for over-engineering...' };
         } else if (previousCurmudgeonFeedback) {
           return { title: '📋 New Plan', content: planMd || 'Creating simplified plan...' };
         } else {
-          return { title: '📋 Plan Content', content: planMd || 'Creating strategic plan...' };
+          return { title: '📋 Plan Content', content: planMd || 'Creating plan...' };
         }
       }
     }
@@ -252,12 +358,9 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
 
   // Render plan modal if open
   if (isPlanModalOpen) {
-    const planMd = taskStateMachine.getPlanMd();
-    const planPath = taskStateMachine.getPlanPath();
-
     return (
       <FullscreenModal
-        title="📋 Strategic Plan"
+        title="📋 Plan"
         content={planMd || 'No plan available'}
         terminalHeight={terminalHeight}
         terminalWidth={terminalWidth}
@@ -297,51 +400,65 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, onPlanFeedback, onRe
   }
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1} height={terminalHeight}>
-      {/* Header Section */}
-      <Box marginBottom={1}>
-        <Text bold>🧲 Agneto</Text>
-        <Text dimColor> | Task ID: </Text>
-        <Text>{taskInfo.taskId}</Text>
-        <Text dimColor> | Phase: </Text>
-        <Text color={phase.color} bold>{phase.displayName}</Text>
+    <>
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1} height={terminalHeight}>
+        {/* Header Section */}
+        <Box marginBottom={1}>
+          <Text bold>🧲 Agneto</Text>
+          <Text dimColor> | Task ID: </Text>
+          <Text>{taskInfo.taskId}</Text>
+          <Text dimColor> | Phase: </Text>
+          <Text color={phase.color} bold>{phase.displayName}</Text>
+        </Box>
+
+        {/* Status Section - Ready for future phase-based content */}
+        {(phase.state === TaskState.TASK_REFINING ||
+          phase.state === TaskState.TASK_PLANNING ||
+          phase.state === TaskState.TASK_CURMUDGEONING ||
+          phase.state === TaskState.TASK_SUPER_REVIEWING ||
+          phase.state === TaskState.TASK_GARDENING) ? (
+          <PlanningLayout
+            currentState={phase.state}
+            taskStateMachine={taskStateMachine}
+            commandBus={commandBus}
+            onRefinementFeedback={onRefinementFeedback}
+            onFullscreen={handleFullscreen}
+            terminalHeight={terminalHeight}
+            terminalWidth={terminalWidth}
+            availableContentHeight={availableContentHeight}
+            gardenerResult={gardenerResult}
+          />
+        ) : phase.state === TaskState.TASK_EXECUTING ? (
+          <ExecutionLayout
+            taskStateMachine={taskStateMachine}
+            commandBus={commandBus}
+            onFullscreen={handleFullscreen}
+          />
+        ) : (
+          <Text dimColor italic>
+            Phase-specific content will be displayed here...
+          </Text>
+        )}
+
+        {/* Keyboard Shortcuts Footer */}
+        <Box marginTop={1} paddingX={1}>
+          <Text dimColor>
+            [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+D] Debug  [Ctrl+Q/W/E] Fullscreen  [Esc] Close
+          </Text>
+        </Box>
       </Box>
 
-      {/* Status Section - Ready for future phase-based content */}
-      {(phase.state === TaskState.TASK_REFINING ||
-        phase.state === TaskState.TASK_PLANNING ||
-        phase.state === TaskState.TASK_CURMUDGEONING ||
-        phase.state === TaskState.TASK_SUPER_REVIEWING) ? (
-        <PlanningLayout
-          currentState={phase.state}
+      {/* Debug Overlay - Rendered outside main box for proper absolute positioning */}
+      {isDebugOverlayVisible && (
+        <DebugOverlay
           taskStateMachine={taskStateMachine}
-          onPlanFeedback={onPlanFeedback}
-          onRefinementFeedback={onRefinementFeedback}
-          onSuperReviewerDecision={onSuperReviewerDecision}
-          onFullscreen={handleFullscreen}
+          commandBus={commandBus}
+          visible={isDebugOverlayVisible}
           terminalHeight={terminalHeight}
           terminalWidth={terminalWidth}
-          availableContentHeight={availableContentHeight}
         />
-      ) : phase.state === TaskState.TASK_EXECUTING ? (
-        <ExecutionLayout
-          taskStateMachine={taskStateMachine}
-          onHumanReviewDecision={onHumanReviewDecision}
-          onFullscreen={handleFullscreen}
-        />
-      ) : (
-        <Text dimColor italic>
-          Phase-specific content will be displayed here...
-        </Text>
       )}
-
-      {/* Keyboard Shortcuts Footer */}
-      <Box marginTop={1} paddingX={1}>
-        <Text dimColor>
-          [Ctrl+P] Plan  [Ctrl+T] Task  [Ctrl+Q/W/E] Fullscreen  [Esc] Close
-        </Text>
-      </Box>
-    </Box>
+    </>
   );
 };
 

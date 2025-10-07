@@ -3,6 +3,7 @@ import { execSync } from "child_process";
 import { runGardener, type GardenerParams } from "./agents/gardener.js";
 import type { LLMProvider } from "./providers/index.js";
 import type { GardenerResult } from "./types.js";
+import type { TaskStateMachine } from "./task-state-machine.js";
 
 /**
  * Commit current changes with a descriptive message
@@ -120,14 +121,16 @@ export async function documentTaskCompletion(
   workingDir: string,
   taskId: string,
   description: string,
-  planContent: string
+  planContent: string,
+  taskStateMachine?: TaskStateMachine
 ): Promise<GardenerResult | null> {
   try {
     const params: GardenerParams = {
       taskId,
       taskDescription: description,
       planSummary: planContent,
-      workingDirectory: workingDir
+      workingDirectory: workingDir,
+      taskStateMachine
     };
 
     const result = await runGardener(provider, params);
@@ -137,4 +140,18 @@ export async function documentTaskCompletion(
     log.warn(`Failed to update documentation: ${error}`);
     return null;
   }
+}
+
+/**
+ * Log merge instructions to terminal after task completion
+ * Called after UI exits to display copy-pasteable commands
+ */
+export function logMergeInstructions(taskId: string): void {
+  log.setSilent(false); // Ensure stdout is visible
+  log.info("\n📋 Task complete! Review the changes before merging:\n");
+  log.info(`cd .worktrees/${taskId}`);
+  log.info("git log --oneline -5");
+  log.info("git diff master --stat");
+  log.info("To merge:");
+  log.info(`git merge sandbox/${taskId}\n`);
 }

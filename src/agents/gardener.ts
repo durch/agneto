@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { LLMProvider } from "../providers/index.js";
 import type { GardenerResult } from "../types.js";
 import { log } from "../ui/log.js";
+import type { TaskStateMachine } from "../task-state-machine.js";
 
 /**
  * Parameters for Gardener agent invocation
@@ -12,6 +13,7 @@ export interface GardenerParams {
   taskDescription: string;
   planSummary: string;
   workingDirectory: string;  // CLAUDE.md location derived from this
+  taskStateMachine?: TaskStateMachine;
 }
 
 /**
@@ -61,10 +63,17 @@ export async function runGardener(
   log.info(`💩 Reading CLAUDE.md from: ${claudeMdPath}`);
 
   // Load system prompt from external file
-  const systemPrompt = readFileSync(
+  let systemPrompt = readFileSync(
     new URL("../prompts/gardener.md", import.meta.url),
     "utf8"
   );
+
+  // Append project-specific prompt additions if configured
+  const customPrompt = params.taskStateMachine?.getAgentPromptConfig('gardener');
+  if (customPrompt) {
+    systemPrompt += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
+    log.info("🌱 Gardener: Using project-specific prompt additions");
+  }
 
   // Construct user message with all task context
   const userMessage = `Task ID: ${params.taskId}
