@@ -172,6 +172,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
 
     taskStateMachine.on('activity:updated', syncState);
     taskStateMachine.on('tool:status', syncState);
+    taskStateMachine.on('modal:closed', syncState);
 
     return () => {
       executionStateMachine.off('execution:output:updated', syncState);
@@ -180,6 +181,7 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({ taskStateMachi
       executionStateMachine.off('execution:humanreview', syncState);
       taskStateMachine.off('activity:updated', syncState);
       taskStateMachine.off('tool:status', syncState);
+      taskStateMachine.off('modal:closed', syncState);
     };
   }, [executionStateMachine, taskStateMachine]);
 
