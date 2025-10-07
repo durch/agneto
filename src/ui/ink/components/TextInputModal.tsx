@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
+import { MarkdownText } from './MarkdownText.js';
 
 export interface TextInputModalProps {
   title: string;
@@ -74,7 +75,7 @@ export const TextInputModal: React.FC<TextInputModalProps> = ({
         {/* Show content/question if provided */}
         {content && (
           <Box marginBottom={1} flexShrink={0}>
-            <Text wrap="wrap">{content}</Text>
+            <MarkdownText maxHeight={0}>{content}</MarkdownText>
           </Box>
         )}
 
