@@ -6,6 +6,7 @@
 import React from 'react';
 import { render } from 'ink';
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
 import clipboardy from 'clipboardy';
 import { selectProvider } from "./providers/index.js";
 import { runPlanner } from "./agents/planner.js";
@@ -34,6 +35,7 @@ import { CoderReviewerStateMachine, State, Event } from "./state-machine.js";
 import { TaskStateMachine, TaskState, TaskEvent } from "./task-state-machine.js";
 import { CommandBus } from "./ui/command-bus.js";
 import type { SuperReviewerDecision, HumanInteractionResult, RefinedTask } from './types.js';
+import { isValidPromptsConfig } from './types.js';
 import {
   revertLastCommit,
   commitChanges,
@@ -41,6 +43,44 @@ import {
   logMergeInstructions
 } from "./orchestrator-helpers.js";
 import type { CoderPlanProposal } from "./types.js";
+
+/**
+ * Load agent prompts configuration from .agneto.json
+ * @returns Record of agent names to custom prompt paths, or undefined if not configured/invalid
+ */
+function loadAgentPromptsConfig(): Record<string, string> | undefined {
+  const configPath = '.agneto.json';
+
+  try {
+    // Check if configuration file exists
+    if (!fs.existsSync(configPath)) {
+      return undefined;
+    }
+
+    // Read and parse configuration
+    const configContent = fs.readFileSync(configPath, 'utf8');
+    let config;
+
+    try {
+      config = JSON.parse(configContent);
+    } catch (parseError) {
+      console.warn(`⚠️ Failed to parse .agneto.json: ${parseError}`);
+      return undefined;
+    }
+
+    // Validate configuration structure
+    if (!isValidPromptsConfig(config)) {
+      console.warn('⚠️ Invalid .agneto.json structure: prompts field must be an object');
+      return undefined;
+    }
+
+    // Return prompts field (may be undefined if not configured)
+    return config.prompts;
+  } catch (error) {
+    console.warn(`⚠️ Failed to load agent prompts configuration: ${error}`);
+    return undefined;
+  }
+}
 
 // Helper function to wait for pause flag to be cleared
 async function waitForResume(taskStateMachine: TaskStateMachine): Promise<void> {
@@ -260,6 +300,13 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
     // Set session IDs for task state machine
     taskStateMachine.setSessionIds(coderSessionId, reviewerSessionId);
 
+    // Load agent prompts configuration
+    const agentPromptsConfig = loadAgentPromptsConfig();
+    taskStateMachine.setAgentPromptsConfig(agentPromptsConfig);
+    if (agentPromptsConfig) {
+        log.orchestrator(`✅ Loaded custom prompts for agents: ${Object.keys(agentPromptsConfig).join(', ')}`);
+    }
+
     // Set TaskStateMachine reference in AuditLogger for phase tracking
     auditLogger.setTaskStateMachine(taskStateMachine);
 
@@ -338,7 +385,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (inkInstance) {
                         // Use UI-based refinement with CommandBus flow
                         log.info("🔍 Refining task description...");
-                        const refinerAgent = new RefinerAgent(provider);
+                        const refinerAgent = new RefinerAgent(provider, taskStateMachine);
 
                         // Track Q&A state locally
                         let currentResponse = "";
@@ -419,7 +466,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                     } else {
                         // Fallback to interactive refinement if no UI
-                        const refinerAgent = new RefinerAgent(provider);
+                        const refinerAgent = new RefinerAgent(provider, taskStateMachine);
                         const refinedTask = await interactiveRefinement(refinerAgent, cwd, humanTask, taskId);
 
                         if (refinedTask) {
@@ -925,7 +972,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                             cwd,
                             taskId,
                             description,
-                            planContent
+                            planContent,
+                            taskStateMachine
                         );
 
                         // Store result for UI display (even if null)
@@ -1053,7 +1101,7 @@ async function runRestoredTask(
                     case TaskState.TASK_REFINING: {
                         // Task refinement (interactive only)
                         log.info("🔍 Refining task description...");
-                        const refinerAgent = new RefinerAgent(provider);
+                        const refinerAgent = new RefinerAgent(provider, taskStateMachine);
                         const refinedTask = await interactiveRefinement(refinerAgent, cwd, taskStateMachine.getContext().humanTask, taskStateMachine.getContext().taskId);
 
                         if (refinedTask) {
@@ -1358,7 +1406,8 @@ async function runRestoredTask(
                                     cwd,
                                     taskStateMachine.getContext().taskId,
                                     taskDescription,
-                                    planMd
+                                    planMd,
+                                    taskStateMachine
                                 );
 
                                 if (gardenerResult?.success) {
@@ -1389,7 +1438,8 @@ async function runRestoredTask(
                                 cwd,
                                 taskStateMachine.getContext().taskId,
                                 taskDescription,
-                                planMd
+                                planMd,
+                                taskStateMachine
                             );
 
                             if (gardenerResult?.success) {

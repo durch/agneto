@@ -20,14 +20,20 @@ export async function reviewPlan(
     taskStateMachine?: any
 ): Promise<ReviewerPlanVerdict> {
     // Load the natural language prompt (no schema injection)
-    const template = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
+    let sys = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
 
     const messages: Msg[] = [];
 
     if (!isInitialized) {
         // First call: establish context with system prompt and chunk requirements
+        const customPrompt = taskStateMachine?.getAgentPromptConfig?.('reviewer');
+        if (customPrompt) {
+            sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
+            log.review("👀 Reviewer: Using custom prompt from .agneto.json");
+        }
+
         messages.push(
-            { role: "system", content: template },
+            { role: "system", content: sys },
             { role: "user", content: `Current Work Chunk:\n\nDescription: ${chunkContext.description}\n\nRequirements:\n${chunkContext.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${chunkContext.context}\n\n[PLAN REVIEW MODE]\n\nThe Coder proposes the following approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this approach against the chunk requirements above.` }
         );
     } else {
@@ -127,14 +133,20 @@ export async function reviewCode(
     taskStateMachine?: any
 ): Promise<ReviewerCodeVerdict> {
     // Load the natural language prompt (no schema injection)
-    const template = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
+    let sys = readFileSync(new URL("../prompts/reviewer.md", import.meta.url), "utf8");
 
     const messages: Msg[] = [];
 
     if (!isInitialized) {
         // Should not happen - we should have initialized during planning
+        const customPrompt = taskStateMachine?.getAgentPromptConfig?.('reviewer');
+        if (customPrompt) {
+            sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
+            log.review("👀 Reviewer: Using custom prompt from .agneto.json");
+        }
+
         messages.push(
-            { role: "system", content: template },
+            { role: "system", content: sys },
             { role: "user", content: chunkContext ? `Current Work Chunk:\n\nDescription: ${chunkContext.description}\n\nRequirements:\n${chunkContext.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${chunkContext.context}` : `No chunk context available` }
         );
     }

@@ -26,10 +26,17 @@ export async function runPlanner(
   taskStateMachine?: any,
   inkInstance?: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null
 ): Promise<{ planMd: string | undefined; planPath: string }> {
-  const sys = readFileSync(
+  let sys = readFileSync(
     new URL("../prompts/planner.md", import.meta.url),
     "utf8"
   );
+
+  // Append project-specific prompt additions if configured
+  const customPrompt = taskStateMachine?.getAgentPromptConfig('planner');
+  if (customPrompt) {
+    sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
+    log.planner("📝 Planner: Using project-specific prompt additions");
+  }
 
   if (!interactive) {
     // Non-interactive with streaming

@@ -33,7 +33,7 @@ export async function getNextChunk(
   stateMachine?: CoderReviewerStateMachine,
   taskStateMachine?: any
 ): Promise<BeanCounterResult | null> {
-  const template = readFileSync(
+  let sys = readFileSync(
     new URL("../prompts/bean-counter.md", import.meta.url),
     "utf8"
   );
@@ -42,8 +42,14 @@ export async function getNextChunk(
 
   if (!isInitialized) {
     // First call: establish context with system prompt and plan
+    const customPrompt = taskStateMachine?.getAgentPromptConfig?.('bean-counter');
+    if (customPrompt) {
+      sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
+      log.beanCounter("🧮 Bean Counter: Using custom prompt from .agneto.json");
+    }
+
     messages.push(
-      { role: "system", content: template },
+      { role: "system", content: sys },
       {
         role: "user",
         content: `High-Level Plan:\n\n${planMd}\n\nWhat's the next chunk to work on?`,

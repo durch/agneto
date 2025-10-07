@@ -6,5 +6,10 @@
     ".env.production",
     "missing-directory/",
     "non-existent-file.txt"
-  ]
+  ],
+  "prompts": {
+    "planner": "Focus on incremental changes. Prefer refactoring over rewriting.",
+    "coder": "Always write tests before implementation. Use functional programming style.",
+    "reviewer": "Prioritize security and performance concerns."
+  }
 }
