@@ -140,6 +140,7 @@ export class TaskStateMachine extends EventEmitter {
   private pendingInjection: string | null = null;
   private mergeInstructions: string | null = null;
   private clipboardStatus: 'success' | 'failed' | null = null;
+  private agentPromptsConfig: Record<string, string> | undefined = undefined;
 
   constructor(
     taskId: string,
@@ -406,6 +407,15 @@ export class TaskStateMachine extends EventEmitter {
 
   getClipboardStatus(): 'success' | 'failed' | null {
     return this.clipboardStatus;
+  }
+
+  // Agent prompts configuration management
+  setAgentPromptsConfig(config: Record<string, string> | undefined): void {
+    this.agentPromptsConfig = config;
+  }
+
+  getAgentPromptConfig(agentName: string): string | undefined {
+    return this.agentPromptsConfig?.[agentName];
   }
 
   // Signal that plan is ready for user approval (after Curmudgeon approval)
