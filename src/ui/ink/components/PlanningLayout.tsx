@@ -584,8 +584,19 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
                 )}
               </Box>
             </>
-          ) : (currentState === TaskState.TASK_SUPER_REVIEWING || currentState === TaskState.TASK_GARDENING) ? (
-            // SuperReviewer/Gardening: Show Gardener documentation update status on right
+          ) : currentState === TaskState.TASK_SUPER_REVIEWING && !superReviewComplete ? (
+            // SuperReviewer running but not complete: Show progress message
+            <>
+              <Box justifyContent="space-between">
+                <Text color="green" bold>⏳ SuperReviewer Analysis</Text>
+                <Text dimColor>[W]</Text>
+              </Box>
+              <Box marginTop={1}>
+                <Text dimColor>⏳ Performing final quality check...</Text>
+              </Box>
+            </>
+          ) : ((currentState === TaskState.TASK_SUPER_REVIEWING && superReviewComplete) || currentState === TaskState.TASK_GARDENING) ? (
+            // SuperReviewer complete or Gardening: Show Gardener documentation update status on right
             <>
               <Box justifyContent="space-between">
                 <Text color="cyan" bold>📝 Documentation Update Status</Text>
