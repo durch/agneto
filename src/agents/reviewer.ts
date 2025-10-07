@@ -28,7 +28,7 @@ export async function reviewPlan(
         // First call: establish context with system prompt and chunk requirements
         const customPrompt = taskStateMachine?.getAgentPromptConfig?.('reviewer');
         if (customPrompt) {
-            sys += `\n\n## Custom Instructions\n\n${customPrompt}`;
+            sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
             log.review("👀 Reviewer: Using custom prompt from .agneto.json");
         }
 
@@ -141,7 +141,7 @@ export async function reviewCode(
         // Should not happen - we should have initialized during planning
         const customPrompt = taskStateMachine?.getAgentPromptConfig?.('reviewer');
         if (customPrompt) {
-            sys += `\n\n## Custom Instructions\n\n${customPrompt}`;
+            sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
             log.review("👀 Reviewer: Using custom prompt from .agneto.json");
         }
 

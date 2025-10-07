@@ -27,7 +27,7 @@ export async function proposePlan(
         // First call: establish context with system prompt and chunk
         const customPrompt = taskStateMachine?.getAgentPromptConfig?.('coder');
         if (customPrompt) {
-            sys += `\n\n## Custom Instructions\n\n${customPrompt}`;
+            sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
             log.coder("🤖 Coder: Using custom prompt from .agneto.json");
         }
 
@@ -119,7 +119,7 @@ export async function implementPlan(
         // Should not happen - we should have initialized during planning
         const customPrompt = taskStateMachine?.getAgentPromptConfig?.('coder');
         if (customPrompt) {
-            sys += `\n\n## Custom Instructions\n\n${customPrompt}`;
+            sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
             log.coder("🤖 Coder: Using custom prompt from .agneto.json");
         }
 

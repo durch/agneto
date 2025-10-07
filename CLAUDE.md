@@ -34,6 +34,33 @@ make test      # Run all tests
 make provider  # Test Claude provider connection
 ```
 
+## ⚙️ Configuration (.agneto.json)
+
+Agneto supports optional project-specific configuration via `.agneto.json` in your repository root.
+
+### Custom Agent Prompts
+
+You can customize any agent's behavior by providing additional instructions in the `prompts` field:
+
+```json
+{
+  "prompts": {
+    "planner": "Focus on incremental changes. Prefer refactoring over rewriting.",
+    "coder": "Always write tests before implementation. Use functional programming style.",
+    "reviewer": "Prioritize security and performance concerns."
+  }
+}
+```
+
+**Available agents:** `planner`, `curmudgeon`, `beancounter`, `coder`, `reviewer`, `superreviewer`, `gardener`, `refiner`
+
+**How it works:**
+- Custom prompts are injected as `## Project-Specific Instructions` in agent system prompts
+- Instructions are loaded at task startup and persist throughout execution
+- For one-time modifications during execution, use **Ctrl+I** (dynamic injection)
+
+**Note:** Configuration is optional. Agneto works out-of-the-box without `.agneto.json`.
+
 ## 🎯 How Agneto Works (Essential Understanding)
 
 Agneto is a **human-in-the-loop AI development system** with seven main personas and one utility agent acting as an **Agile AI Development Team**:

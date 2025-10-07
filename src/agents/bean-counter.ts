@@ -44,7 +44,7 @@ export async function getNextChunk(
     // First call: establish context with system prompt and plan
     const customPrompt = taskStateMachine?.getAgentPromptConfig?.('bean-counter');
     if (customPrompt) {
-      sys += `\n\n## Custom Instructions\n\n${customPrompt}`;
+      sys += `\n\n## Project-Specific Instructions\n\n${customPrompt}`;
       log.beanCounter("🧮 Bean Counter: Using custom prompt from .agneto.json");
     }
 
