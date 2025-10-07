@@ -820,23 +820,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         </Box>
       </Box>
 
-      {/* Question Modal - for clarifying questions during refinement */}
-      {currentState === TaskState.TASK_REFINING && taskStateMachine.getCurrentQuestion() && !isAnsweringQuestion && (
-        <TextInputModal
-          title="Clarifying Question"
-          content={taskStateMachine.getCurrentQuestion() || undefined}  // Show the question in the modal body
-          placeholder="Type your answer and press Enter to submit"
-          width={terminalWidth - 4}  // Full width minus margin
-          height={Math.min(terminalHeight - 4, 30)}  // Full height minus margin, max 30
-          onSubmit={async (answer) => {
-            await commandBus.sendCommand({ type: 'question:answer', answer });
-          }}
-          onCancel={async () => {
-            await commandBus.sendCommand({ type: 'question:answer', answer: '' });
-          }}
-        />
-      )}
-
       {/* TextInputModal - unified for all rejection contexts */}
       {modalState.isOpen && (
         <TextInputModal

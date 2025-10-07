@@ -6,6 +6,7 @@ import { PlanningLayout } from './components/PlanningLayout.js';
 import { ExecutionLayout } from './components/ExecutionLayout.js';
 import { FullscreenModal } from './components/FullscreenModal.js';
 import { TaskView } from './components/TaskView.js';
+import { TextInputModal } from './components/TextInputModal.js';
 import { DebugOverlay } from './components/DebugOverlay.js';
 import type { PlanFeedback } from '../planning-interface.js';
 import type { RefinementFeedback } from '../refinement-interface.js';
@@ -356,6 +357,25 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
   const statusOverhead = 4;
   const margins = 2;
   const availableContentHeight = Math.max(10, terminalHeight - headerHeight - footerHeight - statusOverhead - margins);
+
+  // Render question modal if question is active (refinement phase)
+  if (currentTaskState === TaskState.TASK_REFINING && currentQuestion && !taskStateMachine.getAnsweringQuestion()) {
+    return (
+      <TextInputModal
+        title="Clarifying Question"
+        content={currentQuestion}
+        placeholder="Type your answer and press Enter to submit"
+        width={terminalWidth - 4}
+        height={Math.min(terminalHeight - 4, 30)}
+        onSubmit={async (answer) => {
+          await commandBus.sendCommand({ type: 'question:answer', answer });
+        }}
+        onCancel={async () => {
+          await commandBus.sendCommand({ type: 'question:answer', answer: '' });
+        }}
+      />
+    );
+  }
 
   // Render plan modal if open
   if (isPlanModalOpen) {
