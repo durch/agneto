@@ -10,7 +10,7 @@ import { AuditLogger } from './audit-logger.js';
 export { AuditLogger } from './audit-logger.js';
 export { SummaryGenerator } from './summary-generator.js';
 export { RecoveryService } from './recovery-service.js';
-export type { AuditEvent, TaskAuditMetadata, AuditConfig } from './types';
+export type { AuditEvent, TaskAuditMetadata, AuditConfig } from './types.js';
 
 /**
  * Helper function to initialize audit logging for a task

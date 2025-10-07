@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { AuditEvent, TaskAuditMetadata, AuditConfig } from './types';
+import { AuditEvent, TaskAuditMetadata, AuditConfig } from './types.js';
 import { SummaryGenerator } from './summary-generator.js';
 import { JSONExporter } from './json-exporter.js';
 import { DashboardEventEmitter } from '../dashboard/event-emitter.js';

@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { copyConfiguredFilesToWorktree } from "./sandbox";
+import { copyConfiguredFilesToWorktree } from "./sandbox.js";
 
 export function pathFor(taskId: string) { return `.worktrees/${taskId}`; }
 export function branchFor(taskId: string) { return `sandbox/${taskId}`; }

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { AuditEvent, TaskAuditMetadata } from './types';
+import { AuditEvent, TaskAuditMetadata } from './types.js';
 
 /**
  * Comprehensive audit data structure for machine-readable export

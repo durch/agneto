@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import * as https from 'https';
 import * as http from 'http';
 import { URL } from 'url';
-import { AuditEvent } from '../audit/types';
+import { AuditEvent } from '../audit/types.js';
 
 /**
  * Dashboard Event Emitter

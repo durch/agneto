@@ -3,7 +3,7 @@
  * Provides validation and detailed error feedback for schema mismatches
  */
 
-import Ajv, { ValidateFunction } from "ajv";
+import { Ajv, ValidateFunction } from "ajv";
 import { schemas, CoderResponse, ReviewerResponse } from "./schemas.js";
 
 // Initialize AJV with verbose errors for better feedback
