@@ -172,6 +172,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
       if (key.escape) {
         setViewMode('split');
         setFullscreenContent(null);
+        taskStateMachine.emit('modal:closed');
       }
       return;
     }
@@ -394,6 +395,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
         onClose={() => {
           setViewMode('split');
           setFullscreenContent(null);
+          taskStateMachine.emit('modal:closed');
         }}
       />
     );
