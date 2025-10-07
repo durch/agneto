@@ -197,6 +197,9 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     taskStateMachine.on('refinement:awaiting_approval', handleRefinementAwaitingApproval);
     taskStateMachine.on('superreview:awaiting_approval', handleSuperReviewAwaitingApproval);
 
+    // Initialize menu state on mount - restore menus if commands pending
+    handleDataUpdate();
+
     // Cleanup on unmount
     return () => {
       if (process.env.DEBUG) {
