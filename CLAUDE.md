@@ -757,7 +757,7 @@ Agneto supports real-time agent behavior modification via the Ctrl+I keyboard sh
 
 ### File Organization
 
-- `src/ui/ink/App.tsx` - Main Ink app component; subscribes to TaskStateMachine events
+- `src/ui/ink/App.tsx` - Main Ink app component; subscribes to TaskStateMachine events; **renders all modals at root level** (plan approval, task refinement, clarifying questions) for consistent fullscreen overlay behavior
 - `src/ui/ink/components/PlanningLayout.tsx` - Planning phase UI with menu-based approval via CommandBus; displays SuperReviewer results (left pane) during `TASK_SUPER_REVIEWING`, then shows both SuperReviewer + Gardener results (split view) during `TASK_GARDENING` state
 - `src/ui/ink/components/ExecutionLayout.tsx` - Execution phase UI with menu-based human review; injection modal integration
 - `src/ui/command-bus.ts` - CommandBus class for UI→Orchestrator communication
@@ -765,6 +765,7 @@ Agneto supports real-time agent behavior modification via the Ctrl+I keyboard sh
 - State read dynamically from `taskStateMachine.getXxx()`, not props
 - Commands sent via `commandBus.sendCommand()`, not callback props
 - Uses `ink-select-input` for menu navigation (arrow keys + Enter)
+- **Modal rendering pattern**: All user interaction modals render at App.tsx root level using event subscriptions (`question:asked`, `plan:ready`, `refinement:ready`) for visibility control
 
 **Deprecated Patterns:**
 - ❌ Promise resolver callbacks passed as props - Replaced by CommandBus (completed: refinement approval, plan approval, question answering)
