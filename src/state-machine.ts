@@ -462,8 +462,6 @@ export class CoderReviewerStateMachine extends EventEmitter {
           this.state = State.IMPLEMENTING;
           this.context.planAttempts = 0;
           this.context.codeAttempts = 0;
-          this.context.currentPlan = undefined;
-          this.context.currentChunk = undefined;
           this.context.codeFeedback = data; // Use rejection reason as feedback
           return true;
         } else if (event === Event.CODE_NEEDS_HUMAN) {
