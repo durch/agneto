@@ -226,6 +226,33 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     };
   }, [taskStateMachine]);
 
+  // Subscribe to immediate injection pause requests (Ctrl+I)
+  React.useEffect(() => {
+    const handleInjectionPauseRequest = () => {
+      // Use the same modal conflict detection as the existing polling logic
+      const isQuestionModalActive =
+        currentState === TaskState.TASK_REFINING &&
+        taskStateMachine.getCurrentQuestion() &&
+        !isAnsweringQuestion;
+
+      const isAnyModalActive = isQuestionModalActive || modalState.isOpen;
+
+      // Don't show modal if other modals are already active
+      if (isAnyModalActive) {
+        return;
+      }
+
+      setShowInjectionModal(true);
+      taskStateMachine.clearInjectionPause();
+    };
+
+    taskStateMachine.on('injection:pause:requested', handleInjectionPauseRequest);
+
+    return () => {
+      taskStateMachine.off('injection:pause:requested', handleInjectionPauseRequest);
+    };
+  }, [taskStateMachine, currentState, modalState.isOpen, isAnsweringQuestion]);
+
   // Reset approval flags when leaving their respective states
   React.useEffect(() => {
     if (currentState !== TaskState.TASK_CURMUDGEONING) {
