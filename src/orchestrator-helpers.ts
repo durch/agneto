@@ -148,10 +148,10 @@ export async function documentTaskCompletion(
  */
 export function logMergeInstructions(taskId: string): void {
   log.setSilent(false); // Ensure stdout is visible
-  log.info("\n📋 Task complete! Review the changes before merging:\n");
-  log.info(`cd .worktrees/${taskId}`);
-  log.info("git log --oneline -5");
-  log.info("git diff master --stat");
-  log.info("To merge:");
-  log.info(`git merge sandbox/${taskId}\n`);
+  log.rawInfo("\n📋 Task complete! Review the changes before merging:\n");
+  log.rawInfo(`cd .worktrees/${taskId}`);
+  log.rawInfo("git log --oneline -5");
+  log.rawInfo("git diff master --stat");
+  log.rawInfo("To merge:");
+  log.rawInfo(`git merge sandbox/${taskId}\n`);
 }
