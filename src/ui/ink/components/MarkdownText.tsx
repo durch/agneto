@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Text, Box } from "ink";
 import { prettyPrint } from "../../pretty.js";
 
@@ -12,12 +12,16 @@ interface MarkdownTextProps {
   maxHeight: number;
 }
 
-export const MarkdownText: React.FC<MarkdownTextProps> = ({
+const MarkdownTextComponent: React.FC<MarkdownTextProps> = ({
   children,
   maxHeight,
 }) => {
-  const formatted = prettyPrint(children, { width: 100 });
-  const lines = formatted.split("\n");
+  console.log('[MarkdownText] Render:', { childrenLength: children.length, maxHeight });
+
+  const lines = useMemo(
+    () => prettyPrint(children, { width: 100 }).split("\n"),
+    [children]
+  );
 
   let displayLines = lines;
   let isTruncated = false;
@@ -43,3 +47,5 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({
     </Box>
   );
 };
+
+export const MarkdownText = React.memo(MarkdownTextComponent);

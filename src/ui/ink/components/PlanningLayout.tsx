@@ -83,8 +83,26 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const [liveActivityMessage, setLiveActivityMessage] = useState(taskStateMachine.getLiveActivityMessage());
   const [taskToolStatus, setTaskToolStatus] = useState(taskStateMachine.getToolStatus());
 
+  // Isolated tool:status subscription - only updates taskToolStatus state
+  React.useEffect(() => {
+    const handleToolStatus = () => {
+      setTaskToolStatus(taskStateMachine.getToolStatus());
+    };
+
+    taskStateMachine.on('tool:status', handleToolStatus);
+
+    return () => {
+      taskStateMachine.off('tool:status', handleToolStatus);
+    };
+  }, [taskStateMachine]);
+
   // Derived data
   const taskToUse = context.taskToUse || context.humanTask;
+
+  // Verification log - track component render behavior
+  if (process.env.DEBUG) {
+    console.log('[PlanningLayout.tsx] Component render - State:', currentState, 'ToolStatus:', taskToolStatus?.tool);
+  }
 
   // Unified helper to open text input modal with context
   const openTextInputModal = (
@@ -140,7 +158,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       setSimplificationCount(taskStateMachine.getSimplificationCount());
       setIsAnsweringQuestion(taskStateMachine.getAnsweringQuestion());
       setLiveActivityMessage(taskStateMachine.getLiveActivityMessage());
-      setTaskToolStatus(taskStateMachine.getToolStatus());
 
       // Check if orchestrator is waiting for approval commands - restore menu visibility
       const pendingCommands = commandBus.getPendingCommandTypes();
@@ -193,7 +210,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
 
     // Subscribe to events
     taskStateMachine.on('activity:updated', handleDataUpdate);
-    taskStateMachine.on('tool:status', handleDataUpdate);
     taskStateMachine.on('plan:ready', handleDataUpdate);
     taskStateMachine.on('refinement:ready', handleDataUpdate);
     taskStateMachine.on('question:asked', handleDataUpdate);
@@ -213,7 +229,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         console.log('[PlanningLayout.tsx] Cleanup: removing event listeners from TaskStateMachine');
       }
       taskStateMachine.off('activity:updated', handleDataUpdate);
-      taskStateMachine.off('tool:status', handleDataUpdate);
       taskStateMachine.off('plan:ready', handleDataUpdate);
       taskStateMachine.off('refinement:ready', handleDataUpdate);
       taskStateMachine.off('question:asked', handleDataUpdate);
@@ -395,6 +410,60 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     (currentState === TaskState.TASK_REFINING && !pendingRefinement) ||
     (currentState === TaskState.TASK_PLANNING && !planMd) ||
     (currentState === TaskState.TASK_CURMUDGEONING && !curmudgeonFeedback);
+
+  // Memoized status line computation - prevents IIFE re-execution on unrelated renders
+  const statusLine = React.useMemo(() => {
+    // Recompute derived values inside memoization
+    const executionStateMachine = taskStateMachine.getExecutionStateMachine();
+    const executionState = executionStateMachine?.getCurrentState();
+    const toolStatus = executionStateMachine?.getToolStatus() || taskToolStatus;
+
+    // Recompute isQueryInProgress inside memoization
+    const isQueryInProgress =
+      (currentState === TaskState.TASK_REFINING && !pendingRefinement) ||
+      (currentState === TaskState.TASK_PLANNING && !planMd) ||
+      (currentState === TaskState.TASK_CURMUDGEONING && !curmudgeonFeedback);
+
+    // Base status message without redundant agent names
+    let baseStatus = '';
+    if (currentState === TaskState.TASK_REFINING) {
+      baseStatus = 'Refining task description...';
+    } else if (currentState === TaskState.TASK_PLANNING) {
+      baseStatus = 'Creating strategic plan...';
+    } else if (currentState === TaskState.TASK_CURMUDGEONING) {
+      baseStatus = 'Reviewing plan complexity...';
+    } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
+      baseStatus = 'Performing final quality check...';
+    } else if (currentState === TaskState.TASK_GARDENING) {
+      baseStatus = 'Updating documentation...';
+    } else if (currentState === TaskState.TASK_EXECUTING) {
+      baseStatus = executionState === State.BEAN_COUNTING ? 'Determining work chunk...' :
+                  executionState === State.PLANNING ? 'Proposing implementation...' :
+                  executionState === State.PLAN_REVIEW ? 'Evaluating approach...' :
+                  executionState === State.IMPLEMENTING ? 'Applying changes to codebase...' :
+                  executionState === State.CODE_REVIEW ? 'Validating implementation...' :
+                  'Executing task...';
+    }
+
+    // Merge tool status into message when active
+    const statusMessage = toolStatus ?
+      `${baseStatus} → ${toolStatus.tool}: ${toolStatus.summary}` :
+      baseStatus;
+
+    // Only show spinner when there's actual activity
+    const showSpinner = !!(toolStatus || isQueryInProgress);
+
+    if (process.env.DEBUG) {
+      console.log('[PlanningLayout] Status line recomputed:', {
+        toolStatus: toolStatus?.tool,
+        currentState,
+        executionState,
+        isQueryInProgress
+      });
+    }
+
+    return { statusMessage, showSpinner, toolStatus };
+  }, [taskToolStatus, currentState, taskStateMachine, pendingRefinement, planMd, curmudgeonFeedback]);
 
   // Determine phase title and color
   const isExecuting = currentState === TaskState.TASK_EXECUTING;
@@ -722,48 +791,11 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           )}
 
           {/* Combined status message with tool status */}
-          {(() => {
-            // Check execution state machine first (if in execution phase)
-            const executionStateMachine = taskStateMachine.getExecutionStateMachine();
-            const toolStatus = executionStateMachine?.getToolStatus() || taskToolStatus;
-
-            // Base status message without redundant agent names
-            let baseStatus = '';
-            if (currentState === TaskState.TASK_REFINING) {
-              baseStatus = 'Refining task description...';
-            } else if (currentState === TaskState.TASK_PLANNING) {
-              baseStatus = 'Creating strategic plan...';
-            } else if (currentState === TaskState.TASK_CURMUDGEONING) {
-              baseStatus = 'Reviewing plan complexity...';
-            } else if (currentState === TaskState.TASK_SUPER_REVIEWING) {
-              baseStatus = 'Performing final quality check...';
-            } else if (currentState === TaskState.TASK_GARDENING) {
-              baseStatus = 'Updating documentation...';
-            } else if (currentState === TaskState.TASK_EXECUTING) {
-              baseStatus = executionState === State.BEAN_COUNTING ? 'Determining work chunk...' :
-                          executionState === State.PLANNING ? 'Proposing implementation...' :
-                          executionState === State.PLAN_REVIEW ? 'Evaluating approach...' :
-                          executionState === State.IMPLEMENTING ? 'Applying changes to codebase...' :
-                          executionState === State.CODE_REVIEW ? 'Validating implementation...' :
-                          'Executing task...';
-            }
-
-            // Merge tool status into message when active
-            const statusMessage = toolStatus ?
-              `${baseStatus} → ${toolStatus.tool}: ${toolStatus.summary}` :
-              baseStatus;
-
-            // Only show spinner when there's actual activity
-            const showSpinner = !!(toolStatus || isQueryInProgress);
-
-            return (
-              <Text color={toolStatus ? "cyan" : undefined} dimColor={!toolStatus}>
-                {showSpinner && <Spinner isActive={true} />}
-                {showSpinner && " "}
-                {statusMessage}
-              </Text>
-            );
-          })()}
+          <Text color={statusLine.toolStatus ? "cyan" : undefined} dimColor={!statusLine.toolStatus}>
+            {statusLine.showSpinner && <Spinner isActive={true} />}
+            {statusLine.showSpinner && " "}
+            {statusLine.statusMessage}
+          </Text>
 
           {/* Interactive Instructions - Show for refinement or planning states */}
           {showRefinementApproval && (
