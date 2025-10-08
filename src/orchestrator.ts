@@ -499,7 +499,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     if (taskStateMachine.getCurmudgeonFeedback()) {
                         curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
                         log.orchestrator(`Re-planning with Curmudgeon feedback: ${curmudgeonFeedback}`);
-                        taskStateMachine.clearCurmudgeonFeedback();
                     } else if (taskStateMachine.isRetry()) {
                         // This is a retry from super review - update the task
                         taskToUse = taskStateMachine.getContext().retryFeedback ||
@@ -822,6 +821,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     // Clear retry feedback now that plan is approved and execution begins
                     taskStateMachine.clearRetryFeedback();
 
+                    // Clear curmudgeon feedback now that planning is complete
+                    taskStateMachine.clearCurmudgeonFeedback();
+
                     // UI updates automatically via state:changed event from transition to this state
                     log.orchestrator("🖥️ Entering execution phase...");
 
@@ -1129,7 +1131,6 @@ async function runRestoredTask(
                         if (taskStateMachine.getCurmudgeonFeedback()) {
                             curmudgeonFeedback = taskStateMachine.getCurmudgeonFeedback();
                             log.orchestrator(`Re-planning with Curmudgeon feedback: ${curmudgeonFeedback}`);
-                            taskStateMachine.clearCurmudgeonFeedback();
                         } else if (taskStateMachine.isRetry()) {
                             // This is a retry from super review - update the task
                             taskToUse = taskStateMachine.getContext().retryFeedback ||
@@ -1268,6 +1269,9 @@ async function runRestoredTask(
 
                         // Clear retry feedback now that plan is approved and execution begins
                         taskStateMachine.clearRetryFeedback();
+
+                        // Clear curmudgeon feedback now that planning is complete
+                        taskStateMachine.clearCurmudgeonFeedback();
 
                         // Cleanup Ink UI when entering execution phase (restored tasks)
                         // Note: Restored tasks don't have inkInstance reference since UI wasn't rendered in this session
