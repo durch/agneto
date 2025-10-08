@@ -741,25 +741,35 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                                     case "REJECT":
                                         log.orchestrator(`❌ Curmudgeon rejected plan: ${result.feedback.substring(0, 100)}...`);
-                                        taskStateMachine.setCurmudgeonFeedback(result.feedback);
 
-                                        // Interactive mode: show to user for decision
-                                        if (inkInstance && !options?.nonInteractive) {
-                                            // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
-                                            const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
+                                        if (simplificationCount >= maxSimplifications) {
+                                            // Hit the limit - show to user for final decision
+                                            log.orchestrator(`⚠️ Curmudgeon rejected but max attempts reached (${maxSimplifications}). Showing plan to user.`);
+                                            taskStateMachine.setCurmudgeonFeedback(result.feedback);
 
-                                            if (feedback.type === "approve") {
-                                                log.orchestrator("User overrode Curmudgeon rejection.");
-                                                taskStateMachine.setUserHasReviewedPlan(true);
-                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                            // Interactive mode: show plan to user for approval
+                                            if (inkInstance && !options?.nonInteractive) {
+                                                // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
+                                                const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
+
+                                                if (feedback.type === "approve") {
+                                                    log.orchestrator("User approved plan despite Curmudgeon rejection after max attempts.");
+                                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
+                                                } else {
+                                                    // User rejected - but we've hit max attempts, so abandon
+                                                    log.orchestrator("User confirmed rejection after max simplification attempts. Abandoning task.");
+                                                    taskStateMachine.transition(TaskEvent.HUMAN_ABANDON);
+                                                }
                                             } else {
-                                                log.orchestrator("User confirmed rejection - replanning.");
-                                                taskStateMachine.setUserHasReviewedPlan(false);
-                                                taskStateMachine.setCurmudgeonFeedback(feedback.details || result.feedback);
-                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
+                                                // Non-interactive: proceed automatically
+                                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                                             }
                                         } else {
-                                            // Non-interactive: treat reject as simplify
+                                            // Auto-loop back to planning with feedback (like SIMPLIFY)
+                                            log.orchestrator(`🔄 Curmudgeon rejected - replanning (attempt ${simplificationCount + 1}/${maxSimplifications})`);
+                                            taskStateMachine.setCurmudgeonFeedback(result.feedback);
+
+                                            // UI will update with feedback via state:changed event from transition
                                             taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                                         }
                                         break;

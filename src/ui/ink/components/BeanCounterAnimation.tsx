@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Text, Box } from 'ink';
-import { useSpinner } from '../hooks/useSpinner.js';
 
 /**
  * Humorous phrases the Bean Counter cycles through while working
@@ -55,7 +54,6 @@ const PHRASE_INTERVAL = 2000;
 export const BeanCounterAnimation = React.memo(() => {
   const [currentPhrase, setCurrentPhrase] = useState(BEAN_COUNTER_PHRASES[0]);
   const [unusedPhrases, setUnusedPhrases] = useState<string[]>([...BEAN_COUNTER_PHRASES]);
-  const spinner = useSpinner(true); // Always active when component is mounted
 
   // Phrase rotation effect - cycles through all phrases before repeating
   useEffect(() => {
@@ -86,7 +84,6 @@ export const BeanCounterAnimation = React.memo(() => {
   return (
     <Box flexDirection="column" alignItems="center" justifyContent="center" paddingY={1}>
       <Box>
-        <Text color="cyan">{spinner} </Text>
         <Text dimColor>{currentPhrase}</Text>
       </Box>
     </Box>

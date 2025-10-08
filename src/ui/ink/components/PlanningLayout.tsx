@@ -383,33 +383,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   const isWideTerminal = terminalWidth > 120;
   const panelWidth = Math.floor(terminalWidth * 0.49);
 
-  // Monitor injection pause and show modal when appropriate
-  React.useEffect(() => {
-    const pauseRequested = taskStateMachine.isInjectionPauseRequested();
-
-    // Determine if current phase is complete
-    const isPlanningComplete = planMd !== null && !isProcessingFeedback;
-    const isCurmudgeoningComplete = curmudgeonFeedback !== null && !isProcessingFeedback;
-
-    const isPhaseComplete =
-      (currentState === TaskState.TASK_PLANNING && isPlanningComplete) ||
-      (currentState === TaskState.TASK_CURMUDGEONING && isCurmudgeoningComplete);
-
-    // Detect if other modals are active
-    const isQuestionModalActive =
-      currentState === TaskState.TASK_REFINING &&
-      taskStateMachine.getCurrentQuestion() &&
-      !isAnsweringQuestion;
-
-    const isAnyModalActive = isQuestionModalActive || modalState.isOpen;
-
-    // Show injection modal when pause requested, phase complete, and no conflicts
-    if (pauseRequested && isPhaseComplete && !isAnyModalActive) {
-      setShowInjectionModal(true);
-      taskStateMachine.clearInjectionPause();
-    }
-  }, [planMd, curmudgeonFeedback, isProcessingFeedback, modalState.isOpen, isAnsweringQuestion, currentState]);
-
   // Get execution state machine data if in TASK_EXECUTING
   const executionStateMachine = taskStateMachine.getExecutionStateMachine();
   const executionState = executionStateMachine?.getCurrentState();
