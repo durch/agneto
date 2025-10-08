@@ -24,7 +24,8 @@ export async function runPlanner(
   superReviewerFeedback?: SuperReviewerResult,
   uiCallback?: (feedback: Promise<PlanFeedback>, rerenderCallback?: () => void) => void,
   taskStateMachine?: any,
-  inkInstance?: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null
+  inkInstance?: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null,
+  isRetry?: boolean
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   let sys = readFileSync(
     new URL("../prompts/planner.md", import.meta.url),
@@ -42,7 +43,13 @@ export async function runPlanner(
     // Non-interactive with streaming
     log.startStreaming("Planner");
 
-    let userMessage = `Task: ${task}`;
+    let userMessage = '';
+    if (isRetry && superReviewerFeedback) {
+      userMessage = `This is a RETRY cycle to fix issues identified by SuperReviewer. Address ONLY the following feedback:`;
+    } else {
+      userMessage = `Task: ${task}`;
+    }
+
     if (curmudgeonFeedback) {
       userMessage += `\n\nThe Curmudgeon has reviewed your previous plan with the following feedback:\n\n${curmudgeonFeedback}\n\nPlease address this feedback in your revised plan.`;
     }
@@ -107,7 +114,7 @@ export async function runPlanner(
   }
 
   // Interactive planning with iterative refinement
-  return await interactivePlanning(provider, cwd, task, taskId, sys, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
+  return await interactivePlanning(provider, cwd, task, taskId, sys, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance, isRetry);
 }
 
 async function interactivePlanning(
@@ -120,7 +127,8 @@ async function interactivePlanning(
   superReviewerFeedback?: SuperReviewerResult,
   uiCallback?: (feedback: Promise<PlanFeedback>, rerenderCallback?: () => void) => void,
   taskStateMachine?: any,
-  inkInstance?: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null
+  inkInstance?: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null,
+  isRetry?: boolean
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   let planMd = undefined;
   let approved = false;
@@ -137,7 +145,11 @@ async function interactivePlanning(
 
   // If we have SuperReviewer feedback, add it to the feedback history
   if (superReviewerFeedback) {
-    let superReviewerNote = `SuperReviewer feedback - ${superReviewerFeedback.summary}`;
+    let superReviewerNote = '';
+    if (isRetry) {
+      superReviewerNote = `RETRY CYCLE: Focus exclusively on fixing these issues. Do not re-plan the original task.\n\n`;
+    }
+    superReviewerNote += `SuperReviewer feedback - ${superReviewerFeedback.summary}`;
     if (superReviewerFeedback.issues && superReviewerFeedback.issues.length > 0) {
       superReviewerNote += `\nSpecific issues to address:\n`;
       superReviewerFeedback.issues.forEach((issue, index) => {

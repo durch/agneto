@@ -505,9 +505,8 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                     `Address SuperReviewer feedback: ${taskStateMachine.getSuperReviewResult()?.summary}`;
                         log.orchestrator(`Re-planning with feedback: ${taskToUse}`);
 
-                        // Update context with new task and clear retry feedback
+                        // Update context with new task (keep retry feedback until plan approved)
                         taskStateMachine.setRefinedTask(taskToUse, taskToUse);
-                        taskStateMachine.clearRetryFeedback();
 
                         // Reset the execution state machine for a fresh cycle
                         taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger));
@@ -535,7 +534,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         if (inkInstance && interactive) {
                             // Generate the plan without UI callback
                             await checkAndWaitForInjectionPause('Planner', taskStateMachine);
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback, undefined, taskStateMachine, inkInstance);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback, undefined, taskStateMachine, inkInstance, taskStateMachine.isRetry());
 
                             // Store the plan in state machine (UI auto-updates on plan:ready event)
                             taskStateMachine.setPlan(planMd, planPath);
@@ -549,7 +548,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         } else {
                             // Non-interactive mode - original behavior
                             await checkAndWaitForInjectionPause('Planner', taskStateMachine);
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance, taskStateMachine.isRetry());
                             if (!interactive) {
                                 // Display the full plan content in non-interactive mode
                                 if (planMd) {
@@ -824,6 +823,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                 case TaskState.TASK_EXECUTING: {
                     // Reset user review flag when entering execution (planning phase complete)
                     taskStateMachine.setUserHasReviewedPlan(false);
+
+                    // Clear retry feedback now that plan is approved and execution begins
+                    taskStateMachine.clearRetryFeedback();
 
                     // UI updates automatically via state:changed event from transition to this state
                     log.orchestrator("🖥️ Entering execution phase...");
@@ -1138,9 +1140,8 @@ async function runRestoredTask(
                                         `Address SuperReviewer feedback: ${taskStateMachine.getSuperReviewResult()?.summary}`;
                             log.orchestrator(`Re-planning with feedback: ${taskToUse}`);
 
-                            // Update context with new task and clear retry feedback
+                            // Update context with new task (keep retry feedback until plan approved)
                             taskStateMachine.setRefinedTask(taskToUse, taskToUse);
-                            taskStateMachine.clearRetryFeedback();
 
                             // Reset the execution state machine for a fresh cycle
                             taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger));
@@ -1156,7 +1157,7 @@ async function runRestoredTask(
                             const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
 
                             await checkAndWaitForInjectionPause('Planner', taskStateMachine);
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance, taskStateMachine.isRetry());
                             if (!interactive) {
                                 log.planner(`Saved plan → ${planPath}`);
                             }
@@ -1268,6 +1269,9 @@ async function runRestoredTask(
                     case TaskState.TASK_EXECUTING: {
                         // Reset user review flag when entering execution (planning phase complete)
                         taskStateMachine.setUserHasReviewedPlan(false);
+
+                        // Clear retry feedback now that plan is approved and execution begins
+                        taskStateMachine.clearRetryFeedback();
 
                         // Cleanup Ink UI when entering execution phase (restored tasks)
                         // Note: Restored tasks don't have inkInstance reference since UI wasn't rendered in this session
