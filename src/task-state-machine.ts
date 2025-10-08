@@ -369,6 +369,7 @@ export class TaskStateMachine extends EventEmitter {
   // Dynamic prompt injection state management
   requestInjectionPause(): void {
     this.injectionPauseRequested = true;
+    this.emit('injection:pause:requested');
   }
 
   isInjectionPauseRequested(): boolean {
