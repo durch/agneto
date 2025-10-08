@@ -104,7 +104,10 @@ Please analyze this completed task and update CLAUDE.md with relevant insights. 
         onProgress: log.streamProgress,
         onToolUse: (tool, input) => log.toolUse("Gardener", tool, input),
         onToolResult: (isError) => log.toolResult("Gardener", isError),
-        onComplete: (cost, duration) => log.complete("Gardener", cost, duration)
+        onComplete: (cost, duration, tokens) => {
+          log.complete("Gardener", cost, duration);
+          params.taskStateMachine?.recordAgentUsage("Gardener", cost, duration, tokens);
+        }
       }
     });
 

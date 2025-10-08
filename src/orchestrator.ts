@@ -40,7 +40,8 @@ import {
   revertLastCommit,
   commitChanges,
   documentTaskCompletion,
-  logMergeInstructions
+  logMergeInstructions,
+  logAgentUsageStats
 } from "./orchestrator-helpers.js";
 import type { CoderPlanProposal } from "./types.js";
 
@@ -1055,6 +1056,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                 const finalState = taskStateMachine.getCurrentState();
                 if (finalState === TaskState.TASK_COMPLETE) {
                     logMergeInstructions(taskId);
+                    logAgentUsageStats(taskStateMachine.getAgentUsageStats());
                 }
             } catch (cleanupError) {
                 log.warn(`⚠️ Ink UI cleanup error: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`);
@@ -1512,6 +1514,7 @@ async function runRestoredTask(
                 if (finalState === TaskState.TASK_COMPLETE) {
                     const taskId = taskStateMachine.getContext().taskId;
                     logMergeInstructions(taskId);
+                    logAgentUsageStats(taskStateMachine.getAgentUsageStats());
                 }
             } catch (cleanupError) {
                 log.warn(`⚠️ Ink UI cleanup error: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`);

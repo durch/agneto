@@ -104,6 +104,16 @@ export interface TaskContext {
   // Live activity tracking
   liveActivity: { agent: string; message: string } | null;
 
+  // Agent usage statistics tracking
+  agentUsageStats: Map<string, {
+    cost: number;
+    duration: number;
+    inputTokens: number;
+    cacheCreationTokens: number;
+    cacheReadTokens: number;
+    outputTokens: number;
+  }>;
+
   // Configuration options
   options: {
     autoMerge?: boolean;
@@ -158,6 +168,7 @@ export class TaskStateMachine extends EventEmitter {
       simplificationCount: 0,
       userHasReviewedPlan: false,
       liveActivity: null,
+      agentUsageStats: new Map(),
     };
     this.auditLogger = auditLogger;
     log.orchestrator(`Task state machine initialized: ${this.state}`);
@@ -417,6 +428,43 @@ export class TaskStateMachine extends EventEmitter {
 
   getAgentPromptConfig(agentName: string): string | undefined {
     return this.agentPromptsConfig?.[agentName];
+  }
+
+  // Agent usage statistics tracking
+  recordAgentUsage(
+    agentName: string,
+    cost: number,
+    duration: number,
+    tokens: { input: number; cacheCreation: number; cacheRead: number; output: number }
+  ): void {
+    const current = this.context.agentUsageStats.get(agentName) || {
+      cost: 0,
+      duration: 0,
+      inputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      outputTokens: 0,
+    };
+
+    current.cost += cost;
+    current.duration += duration;
+    current.inputTokens += tokens.input;
+    current.cacheCreationTokens += tokens.cacheCreation;
+    current.cacheReadTokens += tokens.cacheRead;
+    current.outputTokens += tokens.output;
+
+    this.context.agentUsageStats.set(agentName, current);
+  }
+
+  getAgentUsageStats(): Map<string, {
+    cost: number;
+    duration: number;
+    inputTokens: number;
+    cacheCreationTokens: number;
+    cacheReadTokens: number;
+    outputTokens: number;
+  }> {
+    return this.context.agentUsageStats;
   }
 
   // Signal that plan is ready for user approval (after Curmudgeon approval)

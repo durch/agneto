@@ -1,5 +1,6 @@
 import { log } from "./ui/log.js";
 import { execSync } from "child_process";
+import chalk from "chalk";
 import { runGardener, type GardenerParams } from "./agents/gardener.js";
 import type { LLMProvider } from "./providers/index.js";
 import type { GardenerResult } from "./types.js";
@@ -154,4 +155,105 @@ export function logMergeInstructions(taskId: string): void {
   log.info("git diff master --stat");
   log.info("To merge:");
   log.info(`git merge sandbox/${taskId}\n`);
+}
+
+/**
+ * Log agent usage statistics table to terminal after task completion
+ * Displays cost, duration, and token usage per agent with totals
+ */
+export function logAgentUsageStats(
+  stats: Map<string, {
+    cost: number;
+    duration: number;
+    inputTokens: number;
+    cacheCreationTokens: number;
+    cacheReadTokens: number;
+    outputTokens: number;
+  }>
+): void {
+  // Early return if no stats
+  if (stats.size === 0) {
+    return;
+  }
+
+  log.setSilent(false); // Ensure stdout is visible
+
+  // Calculate column widths
+  const agentWidth = Math.max(
+    10,
+    ...Array.from(stats.keys()).map(name => name.length)
+  );
+
+  // Format number with commas
+  const formatNumber = (num: number): string => {
+    return Math.round(num).toLocaleString();
+  };
+
+  // Format currency
+  const formatCost = (cost: number): string => {
+    return `$${cost.toFixed(2)}`;
+  };
+
+  // Format duration
+  const formatDuration = (ms: number): string => {
+    return `${(ms / 1000).toFixed(2)}s`;
+  };
+
+  // Build header
+  const header = [
+    chalk.bold.cyan('Agent'.padEnd(agentWidth)),
+    chalk.bold.cyan('Cost'.padStart(8)),
+    chalk.bold.cyan('Duration'.padStart(10)),
+    chalk.bold.cyan('Input'.padStart(10)),
+    chalk.bold.cyan('Cache Cr'.padStart(10)),
+    chalk.bold.cyan('Cache Rd'.padStart(10)),
+    chalk.bold.cyan('Output'.padStart(10))
+  ].join('  ');
+
+  log.info('\n' + header);
+  log.info('─'.repeat(header.length - 20)); // Subtract ANSI code overhead
+
+  // Build rows and calculate totals
+  let totalCost = 0;
+  let totalDuration = 0;
+  let totalInput = 0;
+  let totalCacheCr = 0;
+  let totalCacheRd = 0;
+  let totalOutput = 0;
+
+  for (const [agent, data] of stats) {
+    const row = [
+      agent.padEnd(agentWidth),
+      formatCost(data.cost).padStart(8),
+      formatDuration(data.duration).padStart(10),
+      formatNumber(data.inputTokens).padStart(10),
+      formatNumber(data.cacheCreationTokens).padStart(10),
+      formatNumber(data.cacheReadTokens).padStart(10),
+      formatNumber(data.outputTokens).padStart(10)
+    ].join('  ');
+
+    log.info(row);
+
+    totalCost += data.cost;
+    totalDuration += data.duration;
+    totalInput += data.inputTokens;
+    totalCacheCr += data.cacheCreationTokens;
+    totalCacheRd += data.cacheReadTokens;
+    totalOutput += data.outputTokens;
+  }
+
+  // Totals row
+  log.info('─'.repeat(header.length - 20));
+  const totalsRow = [
+    chalk.bold('TOTAL'.padEnd(agentWidth)),
+    chalk.bold(formatCost(totalCost).padStart(8)),
+    chalk.bold(formatDuration(totalDuration).padStart(10)),
+    chalk.bold(formatNumber(totalInput).padStart(10)),
+    chalk.bold(formatNumber(totalCacheCr).padStart(10)),
+    chalk.bold(formatNumber(totalCacheRd).padStart(10)),
+    chalk.bold(formatNumber(totalOutput).padStart(10))
+  ].join('  ');
+
+  log.info(totalsRow);
+  log.info(''); // Empty line after table
 }

@@ -1,12 +1,20 @@
 export type Role = "system" | "user" | "assistant";
 export type Msg = { role: Role; content: string };
 
+// Token usage breakdown from Claude CLI
+export interface TokenUsage {
+    input: number;
+    cacheCreation: number;
+    cacheRead: number;
+    output: number;
+}
+
 // Streaming callback types
 export interface StreamCallbacks {
     onProgress?: (text: string) => void;
     onToolUse?: (tool: string, input: any) => void;
     onToolResult?: (isError: boolean) => void;
-    onComplete?: (cost: number, duration: number) => void;
+    onComplete?: (cost: number, duration: number, tokens: TokenUsage) => void;
 }
 
 export interface LLMProvider {

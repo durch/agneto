@@ -68,6 +68,12 @@ interface StreamMessage {
   total_cost_usd?: number;
   duration_ms?: number;
   session_id?: string;
+  usage?: {
+    input_tokens: number;
+    cache_creation_input_tokens: number;
+    cache_read_input_tokens: number;
+    output_tokens: number;
+  };
 }
 
 async function runClaudeCLI(
@@ -165,7 +171,16 @@ async function runClaudeCLI(
             return;
           }
           finalResult = resultMessage.result;
-          callbacks?.onComplete?.(resultMessage.total_cost_usd || 0, resultMessage.duration_ms || 0);
+
+          // Extract token usage from CLI result
+          const tokens = {
+            input: resultMessage.usage?.input_tokens || 0,
+            cacheCreation: resultMessage.usage?.cache_creation_input_tokens || 0,
+            cacheRead: resultMessage.usage?.cache_read_input_tokens || 0,
+            output: resultMessage.usage?.output_tokens || 0,
+          };
+
+          callbacks?.onComplete?.(resultMessage.total_cost_usd || 0, resultMessage.duration_ms || 0, tokens);
         } catch (error) {
           console.error('Failed to parse result JSON:', maybePartialResult.slice(0, 200), error);
         }
