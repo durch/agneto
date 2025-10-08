@@ -155,6 +155,25 @@ export const ExecutionLayout: React.FC<ExecutionLayoutProps> = ({
     };
   }, [executionStateMachine, taskStateMachine, needsHumanReview, showRetryModal]);
 
+  // Subscribe to immediate injection pause requests (Ctrl+I)
+  React.useEffect(() => {
+    const handleInjectionPauseRequest = () => {
+      // Don't show modal if other modals are already active
+      if (needsHumanReview || showRetryModal) {
+        return;
+      }
+
+      setShowInjectionModal(true);
+      taskStateMachine.clearInjectionPause();
+    };
+
+    taskStateMachine.on('injection:pause:requested', handleInjectionPauseRequest);
+
+    return () => {
+      taskStateMachine.off('injection:pause:requested', handleInjectionPauseRequest);
+    };
+  }, [taskStateMachine, needsHumanReview, showRetryModal]);
+
   // Subscribe to execution events and sync local state
   React.useEffect(() => {
     if (!executionStateMachine) {
