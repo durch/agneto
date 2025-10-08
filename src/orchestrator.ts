@@ -711,6 +711,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                         if (simplificationCount >= maxSimplifications) {
                                             // Hit the limit - proceed anyway
                                             log.orchestrator(`⚠️ Curmudgeon requested simplification but max attempts reached (${maxSimplifications}). Proceeding with current plan.`);
+                                            taskStateMachine.setCurmudgeonFeedback(result.feedback);
 
                                             // Interactive mode: show plan to user for approval
                                             if (inkInstance && !options?.nonInteractive) {
@@ -1848,6 +1849,7 @@ async function runExecutionStateMachine(
 
                     // Generate concise summary of Coder implementation response
                     const coderSummary = await summarizeCoderOutput(provider, response, cwd);
+                    stateMachine.setAgentOutput('coder', response);
                     stateMachine.setSummary('coder', coderSummary);
 
                     // Check if Coder applied changes (don't log here since Coder already displayed its response)
