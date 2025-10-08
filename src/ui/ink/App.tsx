@@ -366,7 +366,7 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
         content={currentQuestion}
         placeholder="Type your answer and press Enter to submit"
         width={terminalWidth - 4}
-        height={Math.min(terminalHeight - 4, 30)}
+        height={terminalHeight - 4}
         onSubmit={async (answer) => {
           await commandBus.sendCommand({ type: 'question:answer', answer });
         }}
