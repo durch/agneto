@@ -231,7 +231,7 @@ export class RestorationService {
         warnings.push('Working directory has uncommitted changes that will be discarded during restoration');
       }
 
-      return { compatible: true, issues, warnings };
+      return { compatible: issues.length === 0, issues, warnings };
 
     } catch (error) {
       return {

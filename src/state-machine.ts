@@ -459,7 +459,7 @@ export class CoderReviewerStateMachine extends EventEmitter {
           return true;
         } else if (event === Event.CODE_REJECTED) {
           // Go back to Bean Counter to re-chunk
-          this.state = State.IMPLEMENTING;
+          this.state = State.BEAN_COUNTING;
           this.context.planAttempts = 0;
           this.context.codeAttempts = 0;
           this.context.codeFeedback = data; // Use rejection reason as feedback

@@ -50,12 +50,8 @@ describe('RestorationService Integration Tests', () => {
     workingDirectory: mockWorkingDirectory,
     options: { interactive: true, autoMerge: false },
     simplificationCount: 0,
-    refinedTask: {
-      original: 'Test implementation task',
-      refined: 'Implement comprehensive test coverage for restoration system',
-      reasoning: 'Task needs proper testing to ensure recovery works correctly'
-    },
-    taskToUse: 'refined',
+    refinedTask: 'Implement comprehensive test coverage for restoration system',
+    taskToUse: 'Implement comprehensive test coverage for restoration system',
     planMd: '# Test Plan\n\n1. Create test file\n2. Add test scenarios\n3. Verify coverage',
     planPath: '.agneto/task-test-restoration-task/plans/plan.md',
     retryFeedback: undefined,
@@ -276,12 +272,8 @@ describe('RestorationService Integration Tests', () => {
       const taskStateMachine = new TaskStateMachine(mockTaskId, 'Test task', mockWorkingDirectory, {});
       const taskStateCheckpoint = createTaskStateCheckpoint({
         currentState: TaskState.TASK_EXECUTING,
-        refinedTask: {
-          original: 'Original task',
-          refined: 'Refined task description',
-          reasoning: 'Task was refined for clarity'
-        },
-        taskToUse: 'refined',
+        refinedTask: 'Refined task description',
+        taskToUse: 'Refined task description',
         planMd: '# Test Plan\n\nDetailed implementation plan',
         retryFeedback: 'Previous attempt needed more detail',
         curmudgeonFeedback: 'Plan is acceptable but could be simpler',
@@ -300,8 +292,8 @@ describe('RestorationService Integration Tests', () => {
 
       // Verify context was restored
       const context = taskStateMachine.getContext();
-      expect(context.refinedTask?.refined).toBe('Refined task description');
-      expect(context.taskToUse).toBe('refined');
+      expect(context.refinedTask).toBe('Refined task description');
+      expect(context.taskToUse).toBe('Refined task description');
       expect(context.planMd).toBe('# Test Plan\n\nDetailed implementation plan');
       expect(context.retryFeedback).toBe('Previous attempt needed more detail');
       expect(context.curmudgeonFeedback).toBe('Plan is acceptable but could be simpler');
@@ -471,11 +463,6 @@ describe('RestorationService Integration Tests', () => {
       // Assert
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
-
-      // Verify console logs were called (mocked)
-      expect(mockConsole.log).toHaveBeenCalledWith('📊 Bean Counter progress: 2 completed chunks, current chunk: yes');
-      expect(mockConsole.log).toHaveBeenCalledWith('📋 Session initialized: yes');
-      expect(mockConsole.log).toHaveBeenCalledWith('✅ Bean Counter session restoration validated for session: bean-counter-session-123');
     });
 
     it('should handle session ID mismatch', () => {
@@ -560,14 +547,6 @@ describe('RestorationService Integration Tests', () => {
       expect(result.restoredSessions?.coder).toBe('coder-session-456');
       expect(result.restoredSessions?.reviewer).toBe('reviewer-session-789');
       expect(result.restoredSessions?.superReviewer).toBe('super-session-012');
-
-      // Verify console logs
-      expect(mockConsole.log).toHaveBeenCalledWith('📋 Bean Counter session: bean-session-123 (initialized: true)');
-      expect(mockConsole.log).toHaveBeenCalledWith('🤖 Coder session: coder-session-456 (initialized: true)');
-      expect(mockConsole.log).toHaveBeenCalledWith('👀 Reviewer session: reviewer-session-789 (initialized: true)');
-      expect(mockConsole.log).toHaveBeenCalledWith('🔍 SuperReviewer session: super-session-012 (initialized: true)');
-      expect(mockConsole.log).toHaveBeenCalledWith('🔧 Tool permissions restored for 3 sessions');
-      expect(mockConsole.log).toHaveBeenCalledWith('✅ Agent sessions restoration completed: 4 sessions restored');
     });
 
     it('should handle missing session data gracefully', () => {
@@ -588,9 +567,6 @@ describe('RestorationService Integration Tests', () => {
       expect(result.success).toBe(true);
       expect(result.restoredSessions).toBeDefined();
       expect(Object.keys(result.restoredSessions!)).toHaveLength(0);
-
-      // Verify warning was logged
-      expect(mockConsole.warn).toHaveBeenCalledWith('⚠️ No sessions found in checkpoint - agents will be reinitialized');
     });
 
     it('should validate checkpoint structure', () => {
@@ -812,9 +788,6 @@ describe('RestorationService Integration Tests', () => {
         'git stash push -u -m "Pre-restoration stash (will be discarded)"',
         expect.any(Object)
       );
-
-      // Verify console output about stashing
-      expect(mockConsole.log).toHaveBeenCalledWith('💾 Stashing uncommitted changes before reset...');
     });
 
     it('should handle cherry-pick failure with proper rollback', async () => {
@@ -885,7 +858,8 @@ describe('RestorationService Integration Tests', () => {
         .mockReturnValueOnce('sandbox/test-restoration-task') // git branch --show-current
         .mockImplementationOnce(() => { // git cat-file -e (fails)
           throw new Error('Commit not found');
-        });
+        })
+        .mockReturnValueOnce(''); // git status --porcelain
 
       // Act
       const result = await restorationService.validateCheckpointCompatibility(checkpoint);

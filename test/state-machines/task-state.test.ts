@@ -161,7 +161,7 @@ describe('TaskStateMachine', () => {
     });
 
     it('manages execution state machine', () => {
-      expect(stateMachine.getExecutionStateMachine()).toBeNull();
+      expect(stateMachine.getExecutionStateMachine()).toBeUndefined();
 
       const execMachine = new CoderReviewerStateMachine();
       stateMachine.setExecutionStateMachine(execMachine);
@@ -216,7 +216,7 @@ describe('TaskStateMachine', () => {
       stateMachine.setSuperReviewResult(result);
       stateMachine.transition(TaskEvent.SUPER_REVIEW_PASSED);
 
-      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_FINALIZING);
+      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_GARDENING);
       expect(stateMachine.getSuperReviewResult()).toEqual(result);
     });
 
@@ -235,7 +235,7 @@ describe('TaskStateMachine', () => {
 
     it('handles human approval after review', () => {
       stateMachine.transition(TaskEvent.HUMAN_APPROVED);
-      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_FINALIZING);
+      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_GARDENING);
     });
 
     it('handles human retry request', () => {
@@ -253,7 +253,7 @@ describe('TaskStateMachine', () => {
     });
   });
 
-  describe('Finalization Phase', () => {
+  describe('Gardening Phase', () => {
     beforeEach(() => {
       const nonInteractive = new TaskStateMachine(taskId, humanTask, cwd, { nonInteractive: true });
       nonInteractive.transition(TaskEvent.START_TASK);
@@ -265,25 +265,12 @@ describe('TaskStateMachine', () => {
       stateMachine = nonInteractive;
     });
 
-    it('enters finalization state', () => {
-      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_FINALIZING);
+    it('enters gardening state', () => {
+      expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_GARDENING);
     });
 
-    it('handles auto merge', () => {
-      const autoMerge = new TaskStateMachine(taskId, humanTask, cwd, { autoMerge: true, nonInteractive: true });
-      autoMerge.transition(TaskEvent.START_TASK);
-      autoMerge.setPlan('# Test Plan', '/test/plan.md');
-      autoMerge.transition(TaskEvent.PLAN_CREATED);
-      autoMerge.transition(TaskEvent.CURMUDGEON_APPROVED);
-      autoMerge.transition(TaskEvent.EXECUTION_COMPLETE);
-      autoMerge.transition(TaskEvent.SUPER_REVIEW_PASSED);
-
-      autoMerge.transition(TaskEvent.AUTO_MERGE);
-      expect(autoMerge.getCurrentState()).toBe(TaskState.TASK_COMPLETE);
-    });
-
-    it('handles manual merge', () => {
-      stateMachine.transition(TaskEvent.MANUAL_MERGE);
+    it('handles gardening completion', () => {
+      stateMachine.transition(TaskEvent.GARDENING_COMPLETE);
       expect(stateMachine.getCurrentState()).toBe(TaskState.TASK_COMPLETE);
     });
   });
