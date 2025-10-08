@@ -696,7 +696,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                             } else {
                                                 // User rejected - treat as simplify request
                                                 const rejectionFeedback = feedback.details || "User requested plan revision";
-                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.setUserHasReviewedPlan(false);
                                                 taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
                                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                                             }
@@ -753,7 +753,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                                             } else {
                                                 log.orchestrator("User confirmed rejection - replanning.");
-                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.setUserHasReviewedPlan(false);
                                                 taskStateMachine.setCurmudgeonFeedback(feedback.details || result.feedback);
                                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                                             }
@@ -778,7 +778,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                                             } else {
                                                 log.orchestrator("Human requested revision.");
-                                                taskStateMachine.setUserHasReviewedPlan(true);
+                                                taskStateMachine.setUserHasReviewedPlan(false);
                                                 taskStateMachine.setCurmudgeonFeedback(feedback.details || result.feedback);
                                                 taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
                                             }
