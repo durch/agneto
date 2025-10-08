@@ -84,7 +84,7 @@ npm run cleanup-task <task-id>  # cleanup only
 | Area | File | Purpose |
 | --- | --- | --- |
 | Orchestrator | `src/orchestrator.ts` | Main control flow tying agents, state machines, UI |
-| Orchestrator helpers | `src/orchestrator-helpers.ts` | Merge/cleanup helpers, commit/document utilities |
+| Orchestrator helpers | `src/orchestrator-helpers.ts` | Merge/cleanup helpers, commit/document utilities, usage stats display |
 | Task state | `src/task-state-machine.ts` | High-level task lifecycle, command bus coordination |
 | Execution state | `src/state-machine.ts` | Bean Counter ↔ Coder ↔ Reviewer loop management |
 | Agents | `src/agents/` | Planner/Curmudgeon/BeanCounter/Coder/Reviewer/etc. implementations |
@@ -102,7 +102,7 @@ npm run cleanup-task <task-id>  # cleanup only
 * Headless Claude CLI; `--output-format json`.
 * **plan mode** (read‑only): Planner/Curmudgeon/Refiner/Interpreter.
 * **default mode** (tools): Coder (ReadFile/ListDir/Grep/Bash/Write/Edit/MultiEdit), Reviewer (ReadFile/Grep/Bash), SuperReviewer (ReadFile/Grep/Bash).
-* Separate sessions per role; prompts injected once; metadata (cost/duration/session) captured.
+* Separate sessions per role; prompts injected once; metadata (cost/duration/session) captured and aggregated per agent in TaskContext.
 
 ## 🛠️ Development guide
 
@@ -130,7 +130,7 @@ npm test [-- --grep "..."]
 
 ## 📊 Current state & gotchas
 
-* Works well: interactive planning; auto Planner↔Curmudgeon loop + one user approval; safe sandbox; coordinated small chunks; retries; needs‑human flow; squash merge; comprehensive audit; live dashboard; terminal bell; env controls; NPX dist; state‑machine UIs; dynamic Ctrl+I injection; robust event‑driven flows; clean non‑interactive completion; responsive terminal panes; focused retry planning (SuperReviewer feedback becomes sole planning input, not full task replan).
+* Works well: interactive planning; auto Planner↔Curmudgeon loop + one user approval; safe sandbox; coordinated small chunks; retries; needs‑human flow; squash merge; comprehensive audit; live dashboard; terminal bell; env controls; NPX dist; state‑machine UIs; dynamic Ctrl+I injection; robust event‑driven flows; clean non‑interactive completion; responsive terminal panes; focused retry planning (SuperReviewer feedback becomes sole planning input, not full task replan); per‑agent usage statistics (cost/duration/tokens displayed in color table after task completion).
 * Gotchas: Refiner Q&A max 3; role‑scoped sessions (Refiner/BeanCounter/Coder/Reviewer/SuperReviewer); Bean Counter owns chunking/memory; Coder executes only; small chunks preferred; interpreter adds low‑cost calls; **Ctrl+I** single‑use and cleared; injection modal shows immediately on keypress.
 
 ## 🖥️ Ink (terminal) UI
