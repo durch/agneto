@@ -75,7 +75,7 @@ export async function interpretCoderResponse(
       cwd,
       mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
-      model: "sonnet",
+      model: "haiku",
       messages,
     });
 
@@ -115,7 +115,7 @@ export async function interpretReviewerResponse(
       cwd,
       mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
-      model: "sonnet",
+      model: "haiku",
       messages,
     });
 
@@ -155,7 +155,7 @@ export async function interpretBeanCounterResponse(
       cwd,
       mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
-      model: "sonnet",
+      model: "haiku",
       messages,
     });
 
@@ -195,7 +195,7 @@ export async function interpretSuperReviewerResponse(
       cwd,
       mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
-      model: "sonnet",
+      model: "haiku",
       messages,
     });
 
@@ -235,7 +235,7 @@ export async function interpretRefinerResponse(
       cwd,
       mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
-      model: "sonnet",
+      model: "haiku",
       messages,
     });
 
@@ -275,7 +275,7 @@ export async function interpretCurmudgeonResponse(
       cwd,
       mode: "default", // Use default mode for consistent streaming
       allowedTools: [],
-      model: "sonnet",
+      model: "haiku",
       messages,
     });
 

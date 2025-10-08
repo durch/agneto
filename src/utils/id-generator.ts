@@ -72,7 +72,7 @@ Output ONLY the task name, nothing else.`;
     const response = await provider.query({
       cwd: process.cwd(),
       mode: "plan", // Read-only mode, no tools needed
-      model: "sonnet", // Use fast Sonnet model
+      model: "haiku", // Use fast Sonnet model
       messages: [{ role: "user", content: prompt }],
     });
 

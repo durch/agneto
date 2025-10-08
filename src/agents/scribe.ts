@@ -18,7 +18,7 @@ Output ONLY the commit message, nothing else.`;
   const response = await provider.query({
     cwd,
     mode: "default",
-    model: "sonnet", // Use fast Sonnet model
+    model: "haiku", // Use fast haiku model
     allowedTools: ["Bash"],
     messages: [{ role: "user", content: prompt }],
   });

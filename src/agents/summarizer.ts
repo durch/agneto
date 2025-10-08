@@ -40,7 +40,7 @@ export async function summarizeCoderOutput(
       cwd,
       mode: "default",
       allowedTools: [],
-      model: "sonnet",
+      model: "haiku",
       messages,
     });
 
@@ -87,7 +87,7 @@ export async function summarizeReviewerOutput(
       cwd,
       mode: "default",
       allowedTools: [],
-      model: "sonnet",
+      model: "haiku",
       messages,
     });
 
