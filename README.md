@@ -100,6 +100,45 @@ npx agneto auth-fix-1 "fix authentication bug"
 DEBUG=true npx agneto "complex task"
 ```
 
+### Makefile Commands
+
+For frequent users, Agneto includes a Makefile with convenient shortcuts:
+
+```bash
+# Build TypeScript (always run first)
+make build
+
+# Start a new task
+make task ID=fix-auth DESC="fix authentication bug"
+
+# Quick task with auto-generated ID
+make quick DESC="add dark mode"
+
+# Auto-merge task (non-interactive)
+make auto DESC="fix typo in README"
+
+# Debug mode
+make debug ID=test-task DESC="complex feature"
+
+# Continue existing task
+make continue ID=fix-auth DESC="address review feedback"
+
+# List all worktrees
+make list
+
+# Merge completed task
+make merge ID=fix-auth
+
+# Clean up task worktree
+make cleanup ID=fix-auth
+
+# Run tests
+make test
+
+# Check system health
+make check
+```
+
 ## System Requirements
 
 - **Node.js**: Version 18.0.0 or higher
@@ -121,6 +160,9 @@ DEBUG=true npx agneto "complex task"
 ### Advanced Features
 - ✅ **Comprehensive audit system** - Full logging and checkpoint recovery
 - ✅ **Real-time web dashboard** - Live monitoring and visualization
+- ✅ **Push notifications** - Get notified via ntfy.sh when tasks complete
+- ✅ **Interactive refinement** - AI asks clarifying questions (up to 3 rounds)
+- ✅ **Gardener cleanup** - Final optimization and polishing after review
 - ✅ **Terminal bell notifications** - Audio feedback for task completion
 - ✅ **Environment variable controls** - Flexible configuration options
 - ✅ **NPX package distribution** - No installation required
@@ -135,28 +177,35 @@ Think of Agneto as a self-organizing AI development team with specialized roles:
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Planner   │ →  │ Curmudgeon  │ →  │Bean Counter │ →  │    Coder    │
-│ (Strategy)  │    │(Simplifies) │    │(Coordinates)│    │(Implements) │
+│   Refiner   │ →  │   Planner   │ ↔  │ Curmudgeon  │ →  │Bean Counter │
+│(Clarifies)  │    │ (Strategy)  │    │(Simplifies) │    │(Coordinates)│
 └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
                                                                    ↓
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│SuperReviewer│ ←  │ Task Refiner│ ←  │  Reviewer   │ ←  │   Scribe    │
-│(Final Check)│    │(Clarifies)  │    │ (Validates) │    │(Commits)    │
+│   Gardener  │ ←  │SuperReviewer│ ←  │  Reviewer   │ ←  │    Coder    │
+│ (Cleanup)   │    │(Final Check)│    │ (Validates) │    │(Implements) │
 └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+                           │
+                   ┌───────┴────────┐
+                   │     Scribe     │
+                   │   (Commits)    │
+                   └────────────────┘
 ```
 
 ### Execution Flow
 
 1. **You describe** what needs to be done
-2. **Task Refiner** clarifies vague descriptions (interactive mode)
-3. **Planner** creates the approach and shows you
-4. **Curmudgeon** reviews for over-engineering and simplifies
+2. **Refiner** clarifies vague descriptions through Q&A (up to 3 rounds, interactive mode)
+3. **Planner** creates the implementation approach
+4. **Curmudgeon** reviews for over-engineering and simplifies (automatic back-and-forth with Planner)
 5. **You approve** (or request changes to the plan)
 6. **Bean Counter** breaks work into small, manageable chunks
-7. **Coder** implements each chunk with built-in tools
-8. **Reviewer** validates each implementation
-9. **SuperReviewer** performs final quality check
-10. **You merge** when satisfied with the result
+7. **Coder** implements each chunk using file operations and shell commands
+8. **Scribe** creates clean commit messages for each chunk
+9. **Reviewer** validates each implementation
+10. **SuperReviewer** performs final quality check (can request retry if issues found)
+11. **Gardener** performs final cleanup and optimization
+12. **You merge** when satisfied with the result
 
 All work happens in isolated git worktrees (`.worktrees/<task-id>/`), so your main branch is always safe.
 
@@ -185,11 +234,14 @@ git branch -D sandbox/<task-id>
 Launch the real-time dashboard to monitor task execution:
 
 ```bash
-# Start dashboard (opens on http://localhost:3000)
+# Start dashboard (default port 3000)
 npm run dashboard
 
-# Or if using Agneto globally
-agneto-dashboard
+# Or specify custom port
+PORT=8080 npm run dashboard
+
+# Connect Agneto to dashboard
+AGNETO_DASHBOARD_ENDPOINT=http://localhost:3000 npx agneto "your task"
 ```
 
 The dashboard provides:
@@ -197,6 +249,12 @@ The dashboard provides:
 - **Performance metrics** including cost and duration tracking
 - **Event history** with search and filtering
 - **WebSocket updates** for real-time progress
+- **In-memory storage** - Retains up to 1000 events per task
+
+**Architecture:**
+```
+Task Events → EventEmitter → Express Server → WebSocket → Browser
+```
 
 ### Audit System
 
@@ -235,18 +293,119 @@ This shows:
 - Command construction details
 - File system operations
 
+## Advanced Features Explained
+
+### Task Refinement (Interactive Mode)
+
+In interactive mode, the **Refiner** agent helps clarify vague task descriptions through Q&A:
+
+```bash
+# Interactive mode (default)
+npx agneto "improve authentication"
+
+# Refiner might ask:
+# → "What specific aspects of authentication need improvement?"
+# → "Are there any specific security concerns to address?"
+# → "Should this include both login and registration flows?"
+```
+
+- Up to 3 rounds of questions
+- Helps ensure the task is well-understood before planning
+- Can be skipped with `--non-interactive` flag
+
+### Gardener Cleanup
+
+After **SuperReviewer** approves the implementation, the **Gardener** agent performs final cleanup:
+
+- Removes unnecessary comments or debug code
+- Optimizes imports and dependencies
+- Ensures consistent code formatting
+- Validates all changes compile and pass tests
+- Creates polished, production-ready code
+
+### Push Notifications
+
+Get notified when long-running tasks complete using [ntfy.sh](https://ntfy.sh):
+
+```bash
+# Set up notifications (one-time)
+export NTFY_TOPIC=my-unique-topic-name
+
+# Subscribe on your phone via ntfy.sh app or web
+# Topic: my-unique-topic-name
+
+# Run task - you'll get notified when complete
+npx agneto "refactor entire codebase" --non-interactive
+```
+
+**Custom server:**
+```bash
+# Use self-hosted ntfy server
+export NTFY_SERVER=https://ntfy.mycompany.com
+export NTFY_TOPIC=agneto-notifications
+```
+
 ## Configuration
 
 ### Environment Variables
 
+#### Core Settings
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DEBUG` | `false` | Enable verbose debugging output |
 | `LOG_LEVEL` | `info` | Logging verbosity (`debug`, `info`, `warn`, `error`) |
+
+#### Audit & Checkpoints
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `DISABLE_AUDIT` | `false` | Disable audit logging completely |
 | `DISABLE_CHECKPOINTS` | `false` | Disable checkpoint creation |
 | `MAX_CHECKPOINTS` | `10` | Maximum checkpoints to retain |
+| `CHECKPOINT_COMPRESSION` | `false` | Enable gzip compression for checkpoints |
+| `CHECKPOINT_NAMING` | `hybrid` | Naming strategy: `hybrid`, `timestamp`, `sequential`, or `semantic` |
+
+#### Dashboard & Notifications
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `AGNETO_DASHBOARD_ENDPOINT` | `http://localhost:3000` | Dashboard server URL |
+| `PORT` | `3000` | Dashboard server port |
+| `NTFY_TOPIC` | - | Ntfy.sh topic for push notifications (required to enable) |
+| `NTFY_SERVER` | `https://ntfy.sh` | Custom ntfy server URL |
+
+### Agent Prompt Customization
+
+Create a `.agneto.json` file in your project root to customize agent behaviors:
+
+```json
+{
+  "prompts": {
+    "refiner": "Focus on clarifying technical specifications and API requirements.",
+    "planner": "Prefer small, incremental changes. Always consider backward compatibility.",
+    "curmudgeon": "Be extra strict about avoiding unnecessary dependencies.",
+    "bean-counter": "Keep chunks very small - maximum 50 lines of code per chunk.",
+    "coder": "Follow our team's coding style guide in docs/STYLE.md.",
+    "reviewer": "Pay special attention to error handling and edge cases.",
+    "super-reviewer": "Verify all database migrations are reversible.",
+    "gardener": "Ensure all TODO comments reference Jira tickets."
+  }
+}
+```
+
+**Available agents to customize:**
+- `refiner` - Initial task clarification (read-only mode)
+- `planner` - Implementation strategy (read-only mode)
+- `curmudgeon` - Simplification review (read-only mode)
+- `bean-counter` - Work breakdown coordination
+- `coder` - Code implementation (has file/shell tools)
+- `reviewer` - Code validation (has read/shell tools)
+- `super-reviewer` - Final quality check (has read/shell tools)
+- `gardener` - Cleanup and optimization
+
+**Notes:**
+- Prompts are injected into agent system prompts at task start
+- They persist throughout the entire task execution
+- Keep prompts concise and focused on specific behaviors
+- Changes take effect on next task start
 
 ### Common Configurations
 
@@ -267,6 +426,12 @@ DISABLE_AUDIT=true npx agneto "ci task" --non-interactive
 ```bash
 # Optimized with checkpoints
 LOG_LEVEL=warn MAX_CHECKPOINTS=5 npx agneto "production task" --non-interactive
+```
+
+**With push notifications:**
+```bash
+# Get notified when tasks complete
+NTFY_TOPIC=my-agneto-tasks npx agneto "long running task" --non-interactive
 ```
 
 ## What Makes Agneto Different
