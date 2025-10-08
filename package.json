@@ -1,6 +1,6 @@
 {
   "name": "agneto",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "AI-powered autonomous coding agent with human-in-the-loop planning",
   "type": "module",
   "bin": {
