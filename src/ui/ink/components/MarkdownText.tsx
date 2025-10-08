@@ -16,7 +16,7 @@ const MarkdownTextComponent: React.FC<MarkdownTextProps> = ({
   children,
   maxHeight,
 }) => {
-  console.log('[MarkdownText] Render:', { childrenLength: children.length, maxHeight });
+  // console.log('[MarkdownText] Render:', { childrenLength: children.length, maxHeight });
 
   const lines = useMemo(
     () => prettyPrint(children, { width: 100 }).split("\n"),

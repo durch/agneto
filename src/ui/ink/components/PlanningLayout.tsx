@@ -86,7 +86,18 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Isolated tool:status subscription - only updates taskToolStatus state
   React.useEffect(() => {
     const handleToolStatus = () => {
-      setTaskToolStatus(taskStateMachine.getToolStatus());
+      const next = taskStateMachine.getToolStatus();
+
+      setTaskToolStatus(prev => {
+        if (
+          prev?.agent === next?.agent &&
+          prev?.tool === next?.tool &&
+          prev?.summary === next?.summary
+        ) {
+          return prev;          // no change → skip re-render
+        }
+        return next ?? null;    // set to new status (or null when cleared)
+      });
     };
 
     taskStateMachine.on('tool:status', handleToolStatus);
