@@ -99,8 +99,10 @@ export async function runPlanner(
               taskStateMachine.clearToolStatus();
             }
           },
-          onComplete: (cost, duration) =>
-            log.complete("Planner", cost, duration),
+          onComplete: (cost, duration, tokens) => {
+            log.complete("Planner", cost, duration);
+            taskStateMachine?.recordAgentUsage("Planner", cost, duration, tokens);
+          },
         },
         taskStateMachine,
       })
@@ -202,8 +204,10 @@ async function interactivePlanning(
                 taskStateMachine.clearToolStatus();
               }
             },
-            onComplete: (cost, duration) =>
-              log.complete("Planner", cost, duration),
+            onComplete: (cost, duration, tokens) => {
+              log.complete("Planner", cost, duration);
+              taskStateMachine?.recordAgentUsage("Planner", cost, duration, tokens);
+            },
           },
           taskStateMachine,
         })
@@ -251,8 +255,10 @@ async function interactivePlanning(
                 taskStateMachine.clearToolStatus();
               }
             },
-            onComplete: (cost, duration) =>
-              log.complete("Planner", cost, duration),
+            onComplete: (cost, duration, tokens) => {
+              log.complete("Planner", cost, duration);
+              taskStateMachine?.recordAgentUsage("Planner", cost, duration, tokens);
+            },
           },
           taskStateMachine,
         })

@@ -67,8 +67,10 @@ export async function runCurmudgeon(
           taskStateMachine.clearToolStatus();
         }
       },
-      onComplete: (cost, duration) =>
-        log.complete("Curmudgeon", cost, duration),
+      onComplete: (cost, duration, tokens) => {
+        log.complete("Curmudgeon", cost, duration);
+        taskStateMachine?.recordAgentUsage("Curmudgeon", cost, duration, tokens);
+      },
     },
   });
 

@@ -60,8 +60,10 @@ export async function runSuperReviewer(
           taskStateMachine.clearToolStatus();
         }
       },
-      onComplete: (cost, duration) =>
-        log.complete("Super-Reviewer", cost, duration),
+      onComplete: (cost, duration, tokens) => {
+        log.complete("Super-Reviewer", cost, duration);
+        taskStateMachine?.recordAgentUsage("Super-Reviewer", cost, duration, tokens);
+      },
     },
     taskStateMachine,
   });

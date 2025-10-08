@@ -66,7 +66,10 @@ export async function reviewPlan(
                     stateMachine.clearToolStatus();
                 }
             },
-            onComplete: (cost, duration) => log.complete("Reviewer", cost, duration)
+            onComplete: (cost, duration, tokens) => {
+                log.complete("Reviewer", cost, duration);
+                taskStateMachine?.recordAgentUsage("Reviewer", cost, duration, tokens);
+            }
         },
         taskStateMachine,
     });
@@ -179,7 +182,10 @@ export async function reviewCode(
                     stateMachine.clearToolStatus();
                 }
             },
-            onComplete: (cost, duration) => log.complete("Reviewer", cost, duration)
+            onComplete: (cost, duration, tokens) => {
+                log.complete("Reviewer", cost, duration);
+                taskStateMachine?.recordAgentUsage("Reviewer", cost, duration, tokens);
+            }
         },
         taskStateMachine,
     });

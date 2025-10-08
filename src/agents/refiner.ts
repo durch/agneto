@@ -75,8 +75,10 @@ export class RefinerAgent {
             taskStateMachine.clearToolStatus();
           }
         },
-        onComplete: (cost, duration) =>
-          log.complete("Task Refiner", cost, duration),
+        onComplete: (cost, duration, tokens) => {
+          log.complete("Task Refiner", cost, duration);
+          this.taskStateMachine?.recordAgentUsage("Task Refiner", cost, duration, tokens);
+        },
       },
     });
 
@@ -109,8 +111,10 @@ Based on this answer, please do one of the following:
       }],
       callbacks: {
         // onProgress: log.streamProgress,
-        onComplete: (cost, duration) =>
-          log.complete("Task Refiner", cost, duration),
+        onComplete: (cost, duration, tokens) => {
+          log.complete("Task Refiner", cost, duration);
+          this.taskStateMachine?.recordAgentUsage("Task Refiner", cost, duration, tokens);
+        },
       },
     });
 

@@ -68,7 +68,10 @@ export async function proposePlan(
                     stateMachine.clearToolStatus();
                 }
             },
-            onComplete: (cost, duration) => log.complete("Coder", cost, duration)
+            onComplete: (cost, duration, tokens) => {
+                log.complete("Coder", cost, duration);
+                taskStateMachine?.recordAgentUsage("Coder", cost, duration, tokens);
+            }
         },
         taskStateMachine,
     });
@@ -161,7 +164,10 @@ export async function implementPlan(
                     stateMachine.clearToolStatus();
                 }
             },
-            onComplete: (cost, duration) => log.complete("Coder", cost, duration)
+            onComplete: (cost, duration, tokens) => {
+                log.complete("Coder", cost, duration);
+                taskStateMachine?.recordAgentUsage("Coder", cost, duration, tokens);
+            }
         },
         taskStateMachine,
     });
