@@ -90,10 +90,8 @@ export async function getNextChunk(
             stateMachine.clearToolStatus();
           }
         },
-        onComplete: (cost, duration, tokens) => {
-          log.complete("Bean Counter", cost, duration);
-          taskStateMachine?.recordAgentUsage("Bean Counter", cost, duration, tokens);
-        },
+        onComplete: (cost, duration) =>
+          log.complete("Bean Counter", cost, duration),
       },
       taskStateMachine,
     });

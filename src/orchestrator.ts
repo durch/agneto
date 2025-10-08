@@ -645,28 +645,11 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // Clear live activity message after curmudgeon completes
                         taskStateMachine.clearLiveActivityMessage();
 
+                        // Check if Curmudgeon returned any result
                         if (!result || !result.feedback) {
-                            // No feedback or error - proceed with plan as-is
-                            log.orchestrator("✅ Curmudgeon has no concerns - proceeding with plan");
-
-                            // Interactive mode: show plan to user for approval
-                            if (inkInstance && !options?.nonInteractive) {
-                                // AIDEV-NOTE: Helper ensures we listen for both approve and reject to prevent deadlock
-                                const feedback = await waitForPlanApproval(commandBus, taskStateMachine);
-
-                                if (feedback.type === "approve") {
-                                    log.orchestrator("Plan approved by user (Curmudgeon had no concerns).");
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                                } else {
-                                    // User rejected - go back to planning with feedback
-                                    const rejectionFeedback = feedback.details || "User requested plan revision";
-                                    taskStateMachine.setCurmudgeonFeedback(rejectionFeedback);
-                                    taskStateMachine.transition(TaskEvent.CURMUDGEON_SIMPLIFY);
-                                }
-                            } else {
-                                // Non-interactive: proceed automatically
-                                taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
-                            }
+                            // No feedback from Curmudgeon - treat as error and proceed with plan
+                            log.warn("Curmudgeon returned no feedback - proceeding with plan as-is");
+                            taskStateMachine.transition(TaskEvent.CURMUDGEON_APPROVED);
                         } else {
                             // Curmudgeon provided feedback - use interpreter for structured decision
                             log.orchestrator("🔍 Interpreting Curmudgeon response...");

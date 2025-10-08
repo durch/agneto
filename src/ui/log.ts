@@ -293,6 +293,7 @@ class LogUI {
 
   // Real-time streaming functions (verbose level - shown in verbose and debug modes)
   streamProgress(text: string): void {
+    return;
     if (!this.shouldLog('verbose')) return;
 
     // Handle streaming text with proper formatting
