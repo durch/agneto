@@ -49,6 +49,7 @@ class LogUI {
     this.toolResult = this.toolResult.bind(this);
     this.complete = this.complete.bind(this);
     this.info = this.info.bind(this);
+    this.rawInfo = this.rawInfo.bind(this);
     this.warn = this.warn.bind(this);
     this.logDivider = this.logDivider.bind(this);
     this.startStreaming = this.startStreaming.bind(this);
@@ -364,6 +365,20 @@ class LogUI {
           console.log(prefix + badge + chalk.blue("ℹ️ Info:"), indentedMessage);
         } else {
           console.log(badge + chalk.blue("ℹ️ Info:"), indentedMessage);
+        }
+      }
+    }
+  }
+
+  rawInfo(s: string): void {
+    if (this.shouldLog('info')) {
+      const prefix = this.getIndentPrefix();
+      const indentedMessage = this.applyIndentToMultiline(s);
+      if (!this.silent) {
+        if (prefix) {
+          console.log(prefix + indentedMessage);
+        } else {
+          console.log(indentedMessage);
         }
       }
     }
