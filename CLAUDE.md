@@ -131,12 +131,12 @@ npm test [-- --grep "..."]
 ## 📊 Current state & gotchas
 
 * Works well: interactive planning; auto Planner↔Curmudgeon loop + one user approval; safe sandbox; coordinated small chunks; retries; needs‑human flow; squash merge; comprehensive audit; live dashboard; terminal bell; env controls; NPX dist; state‑machine UIs; dynamic Ctrl+I injection; robust event‑driven flows; clean non‑interactive completion; responsive terminal panes; focused retry planning (SuperReviewer feedback becomes sole planning input, not full task replan).
-* Gotchas: Refiner Q&A max 3; role‑scoped sessions (Refiner/BeanCounter/Coder/Reviewer/SuperReviewer); Bean Counter owns chunking/memory; Coder executes only; small chunks preferred; interpreter adds low‑cost calls; **Ctrl+I** single‑use and cleared; injection pause is graceful.
+* Gotchas: Refiner Q&A max 3; role‑scoped sessions (Refiner/BeanCounter/Coder/Reviewer/SuperReviewer); Bean Counter owns chunking/memory; Coder executes only; small chunks preferred; interpreter adds low‑cost calls; **Ctrl+I** single‑use and cleared; injection modal shows immediately on keypress.
 
 ## 🖥️ Ink (terminal) UI
 
 * UI created once; event‑driven via **TaskStateMachine (EventEmitter)** + **CommandBus**.
-* Events: `state:changed`, `plan:ready`, `refinement:ready`, `question:asked`, `question:answering`, `superreview:complete`, `gardener:complete`, `execution:phase:changed`.
+* Events: `state:changed`, `plan:ready`, `refinement:ready`, `question:asked`, `question:answering`, `superreview:complete`, `gardener:complete`, `execution:phase:changed`, `injection:pause:requested`.
 * Commands: `refinement:approve/reject`, `plan:approve/reject`, `question:answer`, `superreview:approve/retry/abandon`, `merge:approve/skip`.
 * Auto re‑render on events; common pitfalls: missing subscriptions/cleanup, stale props—read live state.
 * Implementation checklist covers state getters/setters, event emits, CommandBus waits/sends, conditional rendering.
