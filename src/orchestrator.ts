@@ -534,7 +534,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         if (inkInstance && interactive) {
                             // Generate the plan without UI callback
                             await checkAndWaitForInjectionPause('Planner', taskStateMachine);
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback, undefined, taskStateMachine, inkInstance);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback, undefined, taskStateMachine, inkInstance, taskStateMachine.isRetry());
 
                             // Store the plan in state machine (UI auto-updates on plan:ready event)
                             taskStateMachine.setPlan(planMd, planPath);
@@ -548,7 +548,7 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         } else {
                             // Non-interactive mode - original behavior
                             await checkAndWaitForInjectionPause('Planner', taskStateMachine);
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance, taskStateMachine.isRetry());
                             if (!interactive) {
                                 // Display the full plan content in non-interactive mode
                                 if (planMd) {
@@ -1157,7 +1157,7 @@ async function runRestoredTask(
                             const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
 
                             await checkAndWaitForInjectionPause('Planner', taskStateMachine);
-                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance);
+                            const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance, taskStateMachine.isRetry());
                             if (!interactive) {
                                 log.planner(`Saved plan → ${planPath}`);
                             }

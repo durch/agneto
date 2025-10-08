@@ -24,7 +24,8 @@ export async function runPlanner(
   superReviewerFeedback?: SuperReviewerResult,
   uiCallback?: (feedback: Promise<PlanFeedback>, rerenderCallback?: () => void) => void,
   taskStateMachine?: any,
-  inkInstance?: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null
+  inkInstance?: { waitUntilExit: () => Promise<void>; unmount: () => void; rerender: (node: React.ReactElement) => void } | null,
+  isRetry?: boolean
 ): Promise<{ planMd: string | undefined; planPath: string }> {
   let sys = readFileSync(
     new URL("../prompts/planner.md", import.meta.url),
