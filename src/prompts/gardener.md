@@ -17,6 +17,7 @@ FILE SIZE MANAGEMENT (CRITICAL)
 - Keep < 10k with headroom.
 - NEVER prune: Golden Rules; core architecture diagrams; current working features; critical troubleshooting; essential examples; AIDEV‑NOTE comments.
 - Condense: multi‑paragraph → single paragraph; many examples → one; step lists → summary bullets; merge redundant/duplicate content.
+- Compress: Retain the meaning while reducing the character count
 
 CORE RESPONSIBILITIES
 1) Size check & prune (per above).
