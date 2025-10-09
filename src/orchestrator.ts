@@ -509,7 +509,9 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         taskStateMachine.setRefinedTask(taskToUse, taskToUse);
 
                         // Reset the execution state machine for a fresh cycle
-                        taskStateMachine.setExecutionStateMachine(new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger));
+                        const newMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
+                        newMachine.transition(Event.START_CHUNKING);
+                        taskStateMachine.setExecutionStateMachine(newMachine);
 
                         // AIDEV-FIX: Reset agent session state to prevent stale data from previous cycle
                         log.orchestrator("🔄 Resetting agent sessions for new cycle...");
@@ -818,9 +820,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     // Reset user review flag when entering execution (planning phase complete)
                     taskStateMachine.setUserHasReviewedPlan(false);
 
-                    // Clear retry feedback now that plan is approved and execution begins
-                    taskStateMachine.clearRetryFeedback();
-
                     // Clear curmudgeon feedback now that planning is complete
                     taskStateMachine.clearCurmudgeonFeedback();
 
@@ -846,13 +845,10 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
                         taskStateMachine.setExecutionStateMachine(executionStateMachine);
                         executionStateMachine.transition(Event.START_CHUNKING);
-                    } else if (taskStateMachine.getContext().retryFeedback) {
-                        // We're retrying after SuperReviewer feedback - reset the state machine
-                        log.orchestrator("🔄 Resetting execution state machine for retry cycle");
-                        executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
-                        taskStateMachine.setExecutionStateMachine(executionStateMachine);
-                        executionStateMachine.transition(Event.START_CHUNKING);
                     }
+
+                    // Clear retry feedback now that plan is approved and execution begins
+                    taskStateMachine.clearRetryFeedback();
 
                     // Run the execution state machine
                     const planMd = taskStateMachine.getPlanMd();
