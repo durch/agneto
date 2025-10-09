@@ -409,6 +409,18 @@ export class TaskStateMachine extends EventEmitter {
     return this.pendingInjection !== null;
   }
 
+  setAgentInjection(agent: string, content: string): void {
+    this.agentInjections.set(agent, content);
+  }
+
+  getAgentInjection(agent: string): string | undefined {
+    return this.agentInjections.get(agent);
+  }
+
+  clearAgentInjection(agent: string): void {
+    this.agentInjections.delete(agent);
+  }
+
   // Merge instructions management
   setMergeInstructions(instructions: string, status: 'success' | 'failed'): void {
     this.mergeInstructions = instructions;
