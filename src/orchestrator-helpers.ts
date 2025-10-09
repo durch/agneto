@@ -244,7 +244,7 @@ export function logAgentUsageStats(
   }
 
   // Totals row
-  log.info('─'.repeat(header.length - 20));
+  log.rawInfo('─'.repeat(header.length - 20));
   const totalsRow = [
     chalk.bold('TOTAL'.padEnd(agentWidth)),
     chalk.bold(formatCost(totalCost).padStart(8)),
