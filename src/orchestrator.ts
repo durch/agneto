@@ -83,38 +83,6 @@ function loadAgentPromptsConfig(): Record<string, string> | undefined {
   }
 }
 
-// Helper function to wait for pause flag to be cleared
-async function waitForResume(taskStateMachine: TaskStateMachine): Promise<void> {
-  return new Promise<void>((resolve) => {
-    // Poll for pause flag to be cleared
-    const checkInterval = setInterval(() => {
-      if (!taskStateMachine.isInjectionPauseRequested()) {
-        clearInterval(checkInterval);
-        if (process.env.DEBUG === 'true') {
-          console.log('[Orchestrator] Resuming execution after pause cleared');
-        }
-        resolve();
-      }
-    }, 100); // Check every 100ms
-  });
-}
-
-// Helper function to check and wait for injection pause
-async function checkAndWaitForInjectionPause(
-  agentName: string,
-  taskStateMachine: TaskStateMachine
-): Promise<void> {
-  const isPauseRequested = taskStateMachine.isInjectionPauseRequested();
-  if (process.env.DEBUG === 'true') {
-    console.log(`[Orchestrator] Pause check before ${agentName}: ${isPauseRequested ? 'PAUSED' : 'CONTINUE'}`);
-  }
-
-  if (isPauseRequested) {
-    // Block here until UI clears pause flag
-    await waitForResume(taskStateMachine);
-  }
-}
-
 /**
  * Wait for user approval or rejection of the plan.
  * AIDEV-NOTE: This helper prevents deadlock by listening for both approve and reject commands.
@@ -367,14 +335,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
     try {
         while (taskStateMachine.canContinue() && iterations < maxIterations) {
-        // Check for injection pause at top of main loop
-        if (taskStateMachine.isInjectionPauseRequested()) {
-            if (process.env.DEBUG === 'true') {
-                console.log('[Orchestrator] Main loop paused, waiting for resume...');
-            }
-            await waitForResume(taskStateMachine);
-        }
-
         iterations++;
 
         try {
@@ -535,7 +495,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // For Ink UI mode, handle plan approval like refiner
                         if (inkInstance && interactive) {
                             // Generate the plan without UI callback
-                            await checkAndWaitForInjectionPause('Planner', taskStateMachine);
                             const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, false, curmudgeonFeedback, superReviewerFeedback, undefined, taskStateMachine, inkInstance, taskStateMachine.isRetry());
 
                             // Store the plan in state machine (UI auto-updates on plan:ready event)
@@ -549,7 +508,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
 
                         } else {
                             // Non-interactive mode - original behavior
-                            await checkAndWaitForInjectionPause('Planner', taskStateMachine);
                             const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance, taskStateMachine.isRetry());
                             if (!interactive) {
                                 // Display the full plan content in non-interactive mode
@@ -640,7 +598,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // This could be the refined task or the original task
                         const taskDescription = taskStateMachine.getContext().taskToUse || humanTask;
 
-                        await checkAndWaitForInjectionPause('Curmudgeon', taskStateMachine);
                         const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription, taskStateMachine);
 
                         // Clear live activity message after curmudgeon completes
@@ -902,7 +859,6 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                     // UI updates automatically via state:changed event from transition to this state
 
                     log.orchestrator("🔍 Running SuperReviewer for final quality check...");
-                    await checkAndWaitForInjectionPause('SuperReviewer', taskStateMachine);
                     const superReviewResult = await runSuperReviewer(
                         provider,
                         cwd,
@@ -1085,14 +1041,6 @@ async function runRestoredTask(
 
     try {
         while (taskStateMachine.canContinue() && iterations < maxIterations) {
-            // Check for injection pause at top of main loop
-            if (taskStateMachine.isInjectionPauseRequested()) {
-                if (process.env.DEBUG === 'true') {
-                    console.log('[Orchestrator] Main loop paused, waiting for resume...');
-                }
-                await waitForResume(taskStateMachine);
-            }
-
             iterations++;
 
             try {
@@ -1149,7 +1097,6 @@ async function runRestoredTask(
                             // Get SuperReviewer feedback if this is a retry cycle
                             const superReviewerFeedback = taskStateMachine.isRetry() ? taskStateMachine.getSuperReviewResult() : undefined;
 
-                            await checkAndWaitForInjectionPause('Planner', taskStateMachine);
                             const { planMd, planPath } = await runPlanner(provider, cwd, taskToUse, taskStateMachine.getContext().taskId, interactive, curmudgeonFeedback, superReviewerFeedback, uiCallback, taskStateMachine, inkInstance, taskStateMachine.isRetry());
                             if (!interactive) {
                                 log.planner(`Saved plan → ${planPath}`);
@@ -1193,7 +1140,6 @@ async function runRestoredTask(
                             // This could be the refined task or the original task
                             const taskDescription = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
 
-                            await checkAndWaitForInjectionPause('Curmudgeon', taskStateMachine);
                             const result = await runCurmudgeon(provider, cwd, planMd || "", taskDescription, taskStateMachine);
 
                             // Clear live activity message after curmudgeon completes
@@ -1363,7 +1309,6 @@ async function runRestoredTask(
                         }
 
                         log.orchestrator("🔍 Running SuperReviewer for final quality check...");
-                        await checkAndWaitForInjectionPause('SuperReviewer', taskStateMachine);
                         const superReviewResult = await runSuperReviewer(
                             provider,
                             cwd,
@@ -1540,14 +1485,6 @@ async function runExecutionStateMachine(
 
     // Run the execution state machine loop
     while (stateMachine.canContinue()) {
-        // Check for injection pause at top of execution loop
-        if (taskStateMachine.isInjectionPauseRequested()) {
-            if (process.env.DEBUG === 'true') {
-                console.log('[Orchestrator] Execution loop paused, waiting for resume...');
-            }
-            await waitForResume(taskStateMachine);
-        }
-
         try {
             const currentState = stateMachine.getCurrentState();
 
@@ -1561,7 +1498,6 @@ async function runExecutionStateMachine(
                         ? context.codeFeedback
                         : undefined;
 
-                    await checkAndWaitForInjectionPause('Bean Counter', taskStateMachine);
                     const result = await getNextChunk(
                         provider,
                         cwd,
@@ -1641,7 +1577,6 @@ async function runExecutionStateMachine(
 
                     const chunkDescription = `${currentChunk.description}\n\nRequirements:\n${currentChunk.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${currentChunk.context}`;
 
-                    await checkAndWaitForInjectionPause('Coder', taskStateMachine);
                     let proposal = await proposePlan(
                         provider,
                         cwd,
@@ -1697,7 +1632,6 @@ async function runExecutionStateMachine(
                     }
 
                     // Reviewer reviews plan against chunk requirements
-                    await checkAndWaitForInjectionPause('Reviewer', taskStateMachine);
                     const verdict = await reviewPlan(
                         provider,
                         cwd,
@@ -1819,7 +1753,6 @@ async function runExecutionStateMachine(
                     }
 
                     // Coder implements the approved plan
-                    await checkAndWaitForInjectionPause('Coder', taskStateMachine);
                     const response = await implementPlan(
                         provider,
                         cwd,
@@ -1853,7 +1786,6 @@ async function runExecutionStateMachine(
                     const reviewChunk = stateMachine.getCurrentChunk() || null;
 
                     // Reviewer reviews code
-                    await checkAndWaitForInjectionPause('Reviewer', taskStateMachine);
                     const verdict = await reviewCode(
                         provider,
                         cwd,
