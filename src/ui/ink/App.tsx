@@ -101,7 +101,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
   const [superReviewResult, setSuperReviewResult] = useState<SuperReviewerResult | undefined>(taskStateMachine.getSuperReviewResult());
   const [gardenerResult, setGardenerResult] = useState<GardenerResult | null>(taskStateMachine.getGardenerResult());
   const [curmudgeonFeedback, setCurmudgeonFeedback] = useState<string | undefined>(taskStateMachine.getCurmudgeonFeedback());
-  const [pendingInjection, setPendingInjection] = useState<string | null>(taskStateMachine.getPendingInjection());
   const [context, setContext] = useState(taskStateMachine.getContext());
 
   // Subscribe to TaskStateMachine events for automatic re-rendering
@@ -126,7 +125,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
       setSuperReviewResult(taskStateMachine.getSuperReviewResult());
       setGardenerResult(taskStateMachine.getGardenerResult());
       setCurmudgeonFeedback(taskStateMachine.getCurmudgeonFeedback());
-      setPendingInjection(taskStateMachine.getPendingInjection());
       setContext(taskStateMachine.getContext());
     };
 
@@ -190,25 +188,6 @@ export const App: React.FC<AppProps> = ({ taskStateMachine, commandBus, onRefine
     if (key.ctrl && (input === 't' || input === 'T')) {
       if (context.taskToUse || context.humanTask) {
         setIsTaskModalOpen(!isTaskModalOpen);
-      }
-      return;
-    }
-
-    // Handle Ctrl+I to trigger dynamic prompt injection pause
-    // This sets a pause flag that allows user to inject additional context mid-execution
-    if (key.ctrl && (input === 'i' || input === 'I')) {
-      // Check if there's already a pending injection
-      if (pendingInjection !== null) {
-        // Override pattern: user wants to replace the pending injection
-        if (process.env.DEBUG) {
-          console.log('Injection override: replacing pending injection');
-        }
-        // Clear and re-trigger the pause flag to immediately show modal in layouts
-        taskStateMachine.clearInjectionPause();
-        taskStateMachine.requestInjectionPause();
-      } else {
-        // Normal case: first injection request
-        taskStateMachine.requestInjectionPause();
       }
       return;
     }
