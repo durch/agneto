@@ -152,29 +152,6 @@ export interface TaskStateCheckpoint {
     issues?: string[];
   };
 
-  /**
-   * Dynamic prompt injection state (Ctrl+I override mechanism)
-   *
-   * These fields capture the state when a user presses Ctrl+I to inject a dynamic prompt.
-   * The system pauses execution, shows an input modal, and stores the pending injection
-   * until it can be safely applied to the current agent session.
-   *
-   * Checkpoint format:
-   * - injectionPauseRequested: boolean flag indicating Ctrl+I was pressed during execution
-   * - pendingInjection: the actual text content to inject (null if no injection pending)
-   *
-   * Recovery behavior:
-   * When restoring from checkpoint, both fields are applied to TaskStateMachine to ensure
-   * any pending injection that wasn't yet delivered to an agent is preserved. This prevents
-   * losing user input if task execution is interrupted and recovered.
-   *
-   * @see TaskStateMachine.requestInjectionPause()
-   * @see TaskStateMachine.setPendingInjection()
-   * @see TaskStateMachine.getPendingInjection()
-   */
-  injectionPauseRequested?: boolean;
-  pendingInjection?: string | null;
-
   /** Merge instructions generated after task completion */
   mergeInstructions?: string | null;
 

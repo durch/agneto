@@ -209,11 +209,7 @@ export class CheckpointService {
         simplificationCount: taskStateMachine.getSimplificationCount?.() || 0,
         curmudgeonFeedback: taskStateMachine.getCurmudgeonFeedback?.(),
         userHasReviewedPlan: taskStateMachine.getUserHasReviewedPlan?.() || false,
-        superReviewResult: taskStateMachine.getSuperReviewResult?.(),
-        // Dynamic prompt injection state (Ctrl+I override mechanism)
-        // Captures pending user input from Ctrl+I that hasn't been delivered to agent yet
-        injectionPauseRequested: taskStateMachine.isInjectionPauseRequested?.() || false,
-        pendingInjection: taskStateMachine.getPendingInjection?.() || null
+        superReviewResult: taskStateMachine.getSuperReviewResult?.()
       };
     } catch (error) {
       console.warn(`⚠️ Task state extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
