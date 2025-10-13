@@ -245,29 +245,6 @@ const anthropic: LLMProvider = {
   }) {
     let prompt = flattenMessages(messages);
 
-    // Check for pending dynamic prompt injection
-    const injection = taskStateMachine?.getPendingInjection?.();
-    if (injection) {
-      if (DEBUG) {
-        console.error("\n=== DEBUG: Dynamic Prompt Injection Detected ===");
-        console.error("Injection content (truncated):", injection.substring(0, 100) + (injection.length > 100 ? "..." : ""));
-        console.error("Appending injection to prompt with delimiter");
-        console.error("================================================\n");
-      }
-
-      // Append injection with clear delimiter
-      prompt = prompt + `\n\n## Dynamic User Instruction\n\n${injection}\n\n`;
-
-      // Clear injection immediately after appending (single-use)
-      taskStateMachine?.clearPendingInjection?.();
-
-      if (DEBUG) {
-        console.error("=== DEBUG: Injection cleared (single-use auto-clear) ===\n");
-      }
-    } else if (DEBUG) {
-      console.error("=== DEBUG: No pending injection detected ===\n");
-    }
-
     const maxRetries = 3;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
