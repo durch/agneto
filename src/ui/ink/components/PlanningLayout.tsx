@@ -70,8 +70,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
   // Track previous curmudgeon feedback to enable swap pattern when replanning
   const [previousCurmudgeonFeedback, setPreviousCurmudgeonFeedback] = useState<string | null>(null);
 
-  // Injection modal state
-  const [showInjectionModal, setShowInjectionModal] = useState(false);
 
   // React state mirroring TaskStateMachine data (event-driven updates)
   const [context, setContext] = useState(taskStateMachine.getContext());
@@ -228,32 +226,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     };
   }, [taskStateMachine]);
 
-  // Subscribe to immediate injection pause requests (Ctrl+I)
-  React.useEffect(() => {
-    const handleInjectionPauseRequest = () => {
-      // Use the same modal conflict detection as the existing polling logic
-      const isQuestionModalActive =
-        currentState === TaskState.TASK_REFINING &&
-        taskStateMachine.getCurrentQuestion() &&
-        !isAnsweringQuestion;
-
-      const isAnyModalActive = isQuestionModalActive || modalState.isOpen;
-
-      // Don't show modal if other modals are already active
-      if (isAnyModalActive) {
-        return;
-      }
-
-      setShowInjectionModal(true);
-      taskStateMachine.clearInjectionPause();
-    };
-
-    taskStateMachine.on('injection:pause:requested', handleInjectionPauseRequest);
-
-    return () => {
-      taskStateMachine.off('injection:pause:requested', handleInjectionPauseRequest);
-    };
-  }, [taskStateMachine, currentState, modalState.isOpen, isAnsweringQuestion]);
 
   // Reset approval flags when leaving their respective states
   React.useEffect(() => {
@@ -367,17 +339,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       placeholder: ''
     });
     setActiveResolver(null);
-  };
-
-  // Handle injection modal submit
-  const handleInjectionSubmit = (content: string) => {
-    taskStateMachine.setPendingInjection(content);
-    setShowInjectionModal(false);
-  };
-
-  // Handle injection modal cancel
-  const handleInjectionCancel = () => {
-    setShowInjectionModal(false);
   };
 
 
@@ -716,13 +677,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
         flexShrink={0}
       >
         <Box flexDirection="column">
-          {/* Injection pending indicator */}
-          {taskStateMachine.hasPendingInjection() && (
-            <Box marginBottom={1}>
-              <Text dimColor>🎯 Injection Pending (Next Agent)</Text>
-            </Box>
-          )}
-
           {/* Combined status message with tool status */}
           <PlanningStatusLine
             taskStateMachine={taskStateMachine}
@@ -834,23 +788,6 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
           onCancel={handleModalCancel}
         />
       )}
-
-      {/* Injection Modal - for dynamic prompt injection */}
-      {showInjectionModal && (() => {
-        const agentType = currentState === TaskState.TASK_PLANNING ? 'Planner' : 'Curmudgeon';
-        const modalTitle = `Dynamic Prompt Injection → ${agentType}`;
-        const taskDesc = taskStateMachine.getContext().taskToUse || taskStateMachine.getContext().humanTask;
-        const contextInfo = `Task: ${taskDesc.substring(0, 60)}${taskDesc.length > 60 ? '...' : ''}`;
-
-        return (
-          <TextInputModal
-            title={modalTitle}
-            placeholder={contextInfo}
-            onSubmit={handleInjectionSubmit}
-            onCancel={handleInjectionCancel}
-          />
-        );
-      })()}
     </Box>
   );
 };
