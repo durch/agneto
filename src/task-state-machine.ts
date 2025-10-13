@@ -146,9 +146,6 @@ export class TaskStateMachine extends EventEmitter {
   private currentQuestion: string | null = null;
   private answeringQuestion: boolean = false;
   private gardenerResult: GardenerResult | null = null;
-  private injectionPauseRequested: boolean = false;
-  private pendingInjection: string | null = null;
-  private agentInjections: Map<string, string>;
   private mergeInstructions: string | null = null;
   private clipboardStatus: 'success' | 'failed' | null = null;
   private agentPromptsConfig: Record<string, string> | undefined = undefined;
@@ -161,7 +158,6 @@ export class TaskStateMachine extends EventEmitter {
     auditLogger?: AuditLogger
   ) {
     super(); // EventEmitter constructor
-    this.agentInjections = new Map();
     this.context = {
       taskId,
       humanTask,
@@ -377,48 +373,6 @@ export class TaskStateMachine extends EventEmitter {
 
   getBaselineCommit(): string | undefined {
     return this.context.baselineCommit;
-  }
-
-  // Dynamic prompt injection state management
-  requestInjectionPause(): void {
-    this.injectionPauseRequested = true;
-    this.emit('injection:pause:requested');
-  }
-
-  isInjectionPauseRequested(): boolean {
-    return this.injectionPauseRequested;
-  }
-
-  clearInjectionPause(): void {
-    this.injectionPauseRequested = false;
-  }
-
-  setPendingInjection(content: string): void {
-    this.pendingInjection = content;
-  }
-
-  getPendingInjection(): string | null {
-    return this.pendingInjection;
-  }
-
-  clearPendingInjection(): void {
-    this.pendingInjection = null;
-  }
-
-  hasPendingInjection(): boolean {
-    return this.pendingInjection !== null;
-  }
-
-  setAgentInjection(agent: string, content: string): void {
-    this.agentInjections.set(agent, content);
-  }
-
-  getAgentInjection(agent: string): string | undefined {
-    return this.agentInjections.get(agent);
-  }
-
-  clearAgentInjection(agent: string): void {
-    this.agentInjections.delete(agent);
   }
 
   // Merge instructions management
@@ -788,11 +742,6 @@ export class TaskStateMachine extends EventEmitter {
 
       // Restore user review tracking
       this.context.userHasReviewedPlan = checkpoint.userHasReviewedPlan || false;
-
-      // Restore dynamic prompt injection state (Ctrl+I override mechanism)
-      // These fields ensure pending user input isn't lost during checkpoint recovery
-      this.injectionPauseRequested = checkpoint.injectionPauseRequested || false;
-      this.pendingInjection = checkpoint.pendingInjection || null;
 
       // Restore merge instructions if available
       this.mergeInstructions = checkpoint.mergeInstructions || null;

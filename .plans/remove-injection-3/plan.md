@@ -1,165 +1,154 @@
-# Remove Dynamic Prompt Injection Feature
+# Remove Complete Ctrl+I Injection Infrastructure
 
-**Strategic Intent:** Safely excise the Ctrl+I injection feature while preserving all other agent orchestration, UI events, and checkpoint recovery mechanisms.
+**Strategic Intent:** Eliminate all remaining dynamic injection infrastructure (state management, provider logic, orchestrator checks, checkpoint serialization) to complete the removal started in the previous attempt.
 
 ## Context
 
-Agneto's Ctrl+I feature allows mid-execution prompt injection to agents. This involves keyboard handlers, state management in TaskStateMachine, UI modals, provider integration, orchestrator pause checks, and checkpoint persistence. The feature must be completely removed while ensuring the remaining event-driven architecture and state machine flows remain intact.
+The previous implementation successfully removed the UI layer (keyboard handlers, modals, event listeners) but left the entire backend infrastructure intact. This retry must complete the removal by eliminating: TaskStateMachine injection state/methods, provider prompt augmentation, orchestrator pause checks, and checkpoint serialization across 7 files with specific line-targeted deletions.
 
 ## Acceptance Criteria
 
-- [ ] No Ctrl+I keyboard handlers remain in App.tsx or layout components
-- [ ] TaskStateMachine has zero injection-related methods, properties, or state
-- [ ] TaskStateCheckpoint interface contains no injection fields
-- [ ] Provider (anthropic.ts) has no injection prompt augmentation logic
-- [ ] Orchestrator loops contain no injection pause checks
-- [ ] `injection:pause:requested` event eliminated from event system
-- [ ] No UI components reference injection modals or handlers
-- [ ] `npm run build` succeeds with zero errors
-- [ ] No orphaned imports or undefined method calls
-- [ ] Checkpoint restoration does not reference removed injection state
+- [ ] TaskStateMachine (src/task-state-machine.ts) has zero injection properties (lines 149-151 removed)
+- [ ] TaskStateMachine has zero injection methods (lines 382-422 removed: all 9 methods)
+- [ ] TaskStateMachine checkpoint restoration logic removed (lines 792-794)
+- [ ] Provider (src/providers/anthropic.ts) injection augmentation block removed (lines 248-269)
+- [ ] Orchestrator helper function `checkAndWaitForInjectionPause()` removed (src/orchestrator.ts:102-110)
+- [ ] All orchestrator pause checks removed (lines 370-376, 1088, 1543)
+- [ ] TaskStateCheckpoint interface injection fields removed (src/audit/types.ts:175-176)
+- [ ] TaskStateCheckpoint JSDoc injection documentation removed (src/audit/types.ts:156-174)
+- [ ] Checkpoint service serialization logic removed (src/audit/checkpoint-service.ts:213-216)
+- [ ] Final verification: `grep -r "injection" src/` returns zero matches (excluding comments in CLAUDE.md references)
+- [ ] Build succeeds: `npm run build` completes with exit code 0
 
 ## Steps
 
-### 1. Remove keyboard handler and event emission
-**Intent:** Eliminate the Ctrl+I keypress listener that initiates injection flow.
+### 1. Remove TaskStateMachine injection properties and methods
+**Intent:** Eliminate complete injection state management layer (3 properties + 9 methods + checkpoint restoration)
 
 **Files:**
-- `src/ui/App.tsx` (lines ~197-214)
+- `src/task-state-machine.ts`
 
 **Actions:**
-- Delete the `useInput` hook handler for Ctrl+I
-- Verify no other keypress handlers are affected
+- Delete lines 149-151: `injectionPauseRequested`, `pendingInjection`, `agentInjections` property declarations
+- Delete lines 382-422: All 9 injection methods (`requestInjectionPause`, `isInjectionPauseRequested`, `clearInjectionPause`, `setPendingInjection`, `getPendingInjection`, `clearPendingInjection`, `hasPendingInjection`, `setAgentInjection`, `getAgentInjection`, `clearAgentInjection`)
+- Delete lines 792-794: Checkpoint restoration block for injection state
 
 **Verification:**
-- Grep for `injection:pause:requested` event emission — should find zero matches in App.tsx
-- `npm run build` compiles successfully
+```bash
+# No injection properties in class
+grep -n "injection" src/task-state-machine.ts | wc -l  # Should be 0
 
----
+# Methods no longer exist
+grep -n "requestInjectionPause\|setPendingInjection\|getAgentInjection" src/task-state-machine.ts  # Should return nothing
+```
 
-### 2. Remove injection UI components from layouts
-**Intent:** Delete modal dialogs and event listeners for injection input.
+### 2. Remove provider injection prompt augmentation
+**Intent:** Eliminate logic that appends pending injections to agent prompts
 
 **Files:**
-- `src/ui/PlanningLayout.tsx`
-- `src/ui/ExecutionLayout.tsx`
+- `src/providers/anthropic.ts`
 
 **Actions:**
-- Remove `injectionPauseRequested` state subscriptions (via `stateMachine.on('state:changed', ...)`)
-- Delete injection modal conditional renders
-- Remove any `setPendingInjection` or `clearPendingInjection` calls in layout components
+- Delete lines 248-269: Complete injection detection and augmentation block (if statement checking `getPendingInjection()`, content appending, `clearPendingInjection()` call, debug logging)
 
 **Verification:**
-- Grep for `injectionPauseRequested|setPendingInjection|clearPendingInjection` in `src/ui/` — should return zero matches in layout files
-- Grep for `injection` in layout files — should find no modal or handler references
-- `npm run build` succeeds
+```bash
+# No injection logic in provider
+grep -n "getPendingInjection\|clearPendingInjection" src/providers/anthropic.ts  # Should return nothing
 
----
+# Verify augmentedPrompt assignment is clean
+grep -A5 "const augmentedPrompt" src/providers/anthropic.ts  # Should show direct assignment without injection block
+```
 
-### 3. Purge injection state from TaskStateMachine
-**Intent:** Remove all injection-related methods, properties, and event definitions from the state machine.
-
-**Files:**
-- `src/task-state-machine.ts` (lines ~149-151 for properties, ~382-422 for methods)
-
-**Actions:**
-- Delete `injectionPauseRequested` boolean property (line ~149)
-- Delete `pendingInjection` string property (line ~150)
-- Delete `agentInjections` Map property (line ~151)
-- Delete methods: `requestInjectionPause()`, `clearInjectionPauseRequest()`, `setPendingInjection()`, `clearPendingInjection()`, `getPendingInjection()`, `recordAgentInjection()`, `getAgentInjections()` (lines ~382-422)
-- Remove `injection:pause:requested` from event emission anywhere in the class
-- Check constructor initialization for injection-related defaults
-
-**Verification:**
-- Grep for `injection` in `task-state-machine.ts` — should return zero matches
-- `npm run build` succeeds
-
----
-
-### 4. Remove injection fields from checkpoint interface and restoration
-**Intent:** Ensure checkpoint snapshots no longer serialize injection state.
-
-**Files:**
-- `src/audit/types.ts` (lines ~175-176 in TaskStateCheckpoint interface)
-- `src/task-state-machine.ts` (checkpoint save/restore methods)
-
-**Actions:**
-- Delete `pendingInjection?: string` from TaskStateCheckpoint interface
-- Delete `agentInjections?: Map<string, string[]>` from TaskStateCheckpoint interface
-- In TaskStateMachine's `saveCheckpoint()` method, remove any injection state serialization
-- In TaskStateMachine's restore logic, remove any injection state deserialization
-
-**Verification:**
-- Grep for `pendingInjection|agentInjections` in `src/audit/types.ts` — should find zero matches
-- Grep for `injection` in checkpoint save/restore code — should find zero matches
-- `npm run build` succeeds
-
----
-
-### 5. Remove provider injection logic
-**Intent:** Delete the code that reads pending injection and appends it to agent prompts before sending to Claude CLI.
-
-**Files:**
-- `src/providers/anthropic.ts` (lines ~248-269)
-
-**Actions:**
-- Locate the block that calls `getPendingInjection()` and conditionally appends to the prompt
-- Delete the entire block (likely inside `sendMessage` or similar method)
-- Remove any related imports (e.g., methods from TaskStateMachine no longer used)
-
-**Verification:**
-- Grep for `getPendingInjection|clearPendingInjection` in `anthropic.ts` — should return zero matches
-- Grep for `injection` in `anthropic.ts` — should find zero references to injection appending logic
-- `npm run build` succeeds
-
----
-
-### 6. Remove orchestrator pause checks
-**Intent:** Eliminate any conditional branches in orchestrator loops that check for `injectionPauseRequested` and pause execution.
+### 3. Remove orchestrator injection pause infrastructure
+**Intent:** Eliminate helper function and all pause checks from orchestrator loops
 
 **Files:**
 - `src/orchestrator.ts`
-- `src/orchestrator-helpers.ts` (if any injection checks exist)
 
 **Actions:**
-- Grep for `injectionPauseRequested` in both files
-- Delete conditional checks and any related pause/await logic
-- Ensure no orphaned `clearInjectionPauseRequest()` calls remain
+- Delete lines 102-110: `checkAndWaitForInjectionPause()` helper function definition
+- Delete lines 370-376: Main loop injection pause check calling `isInjectionPauseRequested()` and `waitForResume()`
+- Locate and delete pause checks at lines ~1088 and ~1543 (verify exact lines with grep)
 
 **Verification:**
-- Grep for `injection` in `src/orchestrator*.ts` — should return zero matches
-- `npm run build` succeeds
+```bash
+# No injection pause checks
+grep -n "checkAndWaitForInjectionPause\|isInjectionPauseRequested" src/orchestrator.ts  # Should return nothing
 
----
+# No waitForResume calls related to injection
+grep -n "waitForResume" src/orchestrator.ts | grep -i inject  # Should return nothing
+```
 
-### 7. Final cleanup and verification
-**Intent:** Ensure no stray references, imports, or comments remain; confirm compilation.
+### 4. Remove checkpoint interface injection fields and documentation
+**Intent:** Clean audit type definitions of injection-related fields
 
 **Files:**
-- Entire `src/` directory
+- `src/audit/types.ts`
 
 **Actions:**
-- Run `grep -r "injection" src/` (case-insensitive if needed) to find any remaining references
-- Remove orphaned imports (e.g., unused methods imported from TaskStateMachine)
-- Check for any TODO or AIDEV- comments mentioning injection feature
-- Verify no broken type references or undefined method calls
+- Delete lines 156-174: Complete JSDoc documentation block describing injection feature
+- Delete lines 175-176: `injectionPauseRequested?: boolean` and `pendingInjection?: string | null` field declarations from TaskStateCheckpoint interface
 
 **Verification:**
-- `grep -ri "injection" src/` returns only unrelated hits (if any, e.g., dependency injection in unrelated contexts) or zero matches
-- `npm run build` compiles with no errors or warnings related to removed code
-- Git diff shows clean removal with no accidental deletions of unrelated code
+```bash
+# No injection fields in checkpoint interface
+grep -n "injectionPauseRequested\|pendingInjection" src/audit/types.ts  # Should return nothing
 
----
+# Verify interface is valid TypeScript
+npm run build 2>&1 | grep "types.ts"  # Should show no errors
+```
+
+### 5. Remove checkpoint service injection serialization
+**Intent:** Eliminate checkpoint save logic that serializes injection state
+
+**Files:**
+- `src/audit/checkpoint-service.ts`
+
+**Actions:**
+- Delete lines 213-216: Injection state serialization block (comment + two field assignments calling `isInjectionPauseRequested()` and `getPendingInjection()`)
+
+**Verification:**
+```bash
+# No injection serialization
+grep -n "injectionPauseRequested\|pendingInjection" src/audit/checkpoint-service.ts  # Should return nothing
+
+# No calls to injection methods
+grep -n "isInjectionPauseRequested\|getPendingInjection" src/audit/checkpoint-service.ts  # Should return nothing
+```
+
+### 6. Comprehensive final verification
+**Intent:** Confirm zero injection references remain in codebase (excluding documentation)
+
+**Files:** All `src/` directory
+
+**Actions:**
+- Run comprehensive grep across entire source tree
+- Verify build succeeds
+
+**Verification:**
+```bash
+# Should return ONLY matches in CLAUDE.md or test fixtures (if any)
+grep -r "injection" src/ --include="*.ts" --include="*.tsx"
+
+# More specific: should return absolutely nothing
+grep -r "injectionPause\|pendingInjection\|agentInjection\|checkAndWaitForInjectionPause" src/
+
+# Build must succeed
+npm run build
+echo $?  # Should output: 0
+```
 
 ## Risks & Rollbacks
 
-**Risks:**
-- **Broken checkpoint restoration:** If injection state is serialized in existing checkpoints, restoration might fail. Mitigation: Ensure checkpoint deserialization gracefully ignores missing fields (TypeScript optional fields should handle this).
-- **Orphaned event listeners:** Other components might still listen for `injection:pause:requested` event. Mitigation: Thorough grep for event name; verify no listeners remain.
-- **Accidental deletion of adjacent code:** Injection logic is interleaved with other state machine methods. Mitigation: Careful line-by-line review; use git diff to confirm only injection-related code is removed.
+**Risk:** Checkpoint restoration may fail if old checkpoints contain injection state
+**Mitigation:** Existing optional chaining (`?.()`) will handle missing methods gracefully; old checkpoints will simply skip injection restoration
 
-**Rollback:**
-- Git revert commits in this worktree if compilation fails or unintended breakage detected.
-- Restore from `.agneto/task-*/` checkpoints if state machine corruption occurs (though we're removing, not corrupting).
+**Risk:** Orphaned event listeners in code we haven't inspected
+**Mitigation:** Final grep verification (Step 6) will catch any remaining references
 
-**Confidence:** Confident in plan structure; concerned about hidden dependencies in checkpoint restoration and event listener cleanup. Will verify exhaustively with grep and build checks at each step.
+**Rollback:** If build fails, git diff will show exact deletions to revert; all changes are pure deletions with no refactoring
+
+## Confidence
+
+**Confident** — This is a pure deletion task with specific line ranges identified by SuperReviewer. Each step targets concrete, verified code blocks. The comprehensive grep verification (Step 6) will catch any missed references before claiming completion.
