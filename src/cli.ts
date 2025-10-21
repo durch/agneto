@@ -142,7 +142,7 @@ const program = new Command();
 program
     .name("agneto")
     .description("Interactive AI development assistant with Planner→Coder→Reviewer loop")
-    .argument("<task-description-or-id>", "task description or ID")
+    .argument("[task-description-or-id]", "task description or ID (optional if --file is used)")
     .argument("[task-description]", "task description if ID was provided")
     .option("--auto-merge", "automatically merge to master when complete")
     .option("--non-interactive", "skip interactive planning (for CI/automation)")
@@ -156,6 +156,12 @@ Examples:
   # With custom ID
   $ npm start -- auth-fix-1 "fix authentication bug"
 
+  # Load task description from file (auto-generated ID)
+  $ npm start -- --file task-spec.md
+
+  # Load from file with custom ID
+  $ npm start -- my-task-id --file task-spec.md
+
   # Non-interactive mode
   $ npm start -- "update dependencies" --non-interactive
 
@@ -166,11 +172,32 @@ Examples:
   $ npm start -- "new feature" --base-branch feature-branch`)
     .action(async (taskOrId, task, options) => {
         try {
-            // Determine if user provided ID + description or just description
+            // Validate input: require either positional arguments OR --file option
+            if (!taskOrId && !options.file) {
+                throw new Error("Either provide a task description or use --file to load from a file");
+            }
+
+            // Reject conflicting inputs: both inline description AND --file
+            if (task && options.file) {
+                throw new Error("Cannot use both inline task description and --file option together");
+            }
+
             let taskId: string;
             let taskDescription: string;
-            
-            if (task) {
+
+            if (options.file) {
+                // Load task description from file
+                taskDescription = loadTaskFile(options.file);
+
+                if (taskOrId) {
+                    // User provided explicit ID with --file
+                    taskId = taskOrId;
+                } else {
+                    // Auto-generate ID from file content
+                    const provider = await selectProvider();
+                    taskId = await generateTaskName(provider, taskDescription);
+                }
+            } else if (task) {
                 // Both arguments provided: first is ID, second is description
                 taskId = taskOrId;
                 taskDescription = task;
