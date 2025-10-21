@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { select, confirm } from "@inquirer/prompts";
 import chalk from "chalk";
+import { readFileSync } from "node:fs";
 import { runTask } from "./orchestrator.js";
 import { generateTaskId, generateTaskName } from "./utils/id-generator.js";
 import { selectProvider } from "./providers/index.js";
@@ -11,6 +12,30 @@ export type RecoveryOption = "resume" | "fresh" | "details";
 export interface RecoveryDecision {
     action: RecoveryOption;
     checkpointNumber?: number;
+}
+
+/**
+ * Load task description from a file
+ * @param filePath - Path to the file containing the task description
+ * @returns Trimmed file content
+ * @throws Error if file not found or empty
+ */
+function loadTaskFile(filePath: string): string {
+    try {
+        const content = readFileSync(filePath, 'utf-8');
+        const trimmed = content.trim();
+
+        if (!trimmed) {
+            throw new Error(`Task file is empty: ${filePath}`);
+        }
+
+        return trimmed;
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            throw new Error(`Task file not found: ${filePath}`);
+        }
+        throw error;
+    }
 }
 
 /**
@@ -122,6 +147,7 @@ program
     .option("--auto-merge", "automatically merge to master when complete")
     .option("--non-interactive", "skip interactive planning (for CI/automation)")
     .option("--base-branch <branch>", "use specified branch as base for worktree (default: auto-detect main/master)")
+    .option("--file <path>", "load task description from a file")
     .addHelpText('after', `
 Examples:
   # Simple usage - auto-generated ID
