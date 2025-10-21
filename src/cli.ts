@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { select, confirm } from "@inquirer/prompts";
 import chalk from "chalk";
+import { readFileSync } from "node:fs";
 import { runTask } from "./orchestrator.js";
 import { generateTaskId, generateTaskName } from "./utils/id-generator.js";
 import { selectProvider } from "./providers/index.js";
@@ -11,6 +12,30 @@ export type RecoveryOption = "resume" | "fresh" | "details";
 export interface RecoveryDecision {
     action: RecoveryOption;
     checkpointNumber?: number;
+}
+
+/**
+ * Load task description from a file
+ * @param filePath - Path to the file containing the task description
+ * @returns Trimmed file content
+ * @throws Error if file not found or empty
+ */
+function loadTaskFile(filePath: string): string {
+    try {
+        const content = readFileSync(filePath, 'utf-8');
+        const trimmed = content.trim();
+
+        if (!trimmed) {
+            throw new Error(`Task file is empty: ${filePath}`);
+        }
+
+        return trimmed;
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            throw new Error(`Task file not found: ${filePath}`);
+        }
+        throw error;
+    }
 }
 
 /**
@@ -117,11 +142,12 @@ const program = new Command();
 program
     .name("agneto")
     .description("Interactive AI development assistant with Planner→Coder→Reviewer loop")
-    .argument("<task-description-or-id>", "task description or ID")
+    .argument("[task-description-or-id]", "task description or ID (optional if --file is used)")
     .argument("[task-description]", "task description if ID was provided")
     .option("--auto-merge", "automatically merge to master when complete")
     .option("--non-interactive", "skip interactive planning (for CI/automation)")
     .option("--base-branch <branch>", "use specified branch as base for worktree (default: auto-detect main/master)")
+    .option("--file <path>", "load task description from a file")
     .addHelpText('after', `
 Examples:
   # Simple usage - auto-generated ID
@@ -129,6 +155,12 @@ Examples:
 
   # With custom ID
   $ npm start -- auth-fix-1 "fix authentication bug"
+
+  # Load task description from file (auto-generated ID)
+  $ npm start -- --file task-spec.md
+
+  # Load from file with custom ID
+  $ npm start -- my-task-id --file task-spec.md
 
   # Non-interactive mode
   $ npm start -- "update dependencies" --non-interactive
@@ -140,11 +172,32 @@ Examples:
   $ npm start -- "new feature" --base-branch feature-branch`)
     .action(async (taskOrId, task, options) => {
         try {
-            // Determine if user provided ID + description or just description
+            // Validate input: require either positional arguments OR --file option
+            if (!taskOrId && !options.file) {
+                throw new Error("Either provide a task description or use --file to load from a file");
+            }
+
+            // Reject conflicting inputs: both inline description AND --file
+            if (task && options.file) {
+                throw new Error("Cannot use both inline task description and --file option together");
+            }
+
             let taskId: string;
             let taskDescription: string;
-            
-            if (task) {
+
+            if (options.file) {
+                // Load task description from file
+                taskDescription = loadTaskFile(options.file);
+
+                if (taskOrId) {
+                    // User provided explicit ID with --file
+                    taskId = taskOrId;
+                } else {
+                    // Auto-generate ID from file content
+                    const provider = await selectProvider();
+                    taskId = await generateTaskName(provider, taskDescription);
+                }
+            } else if (task) {
                 // Both arguments provided: first is ID, second is description
                 taskId = taskOrId;
                 taskDescription = task;
