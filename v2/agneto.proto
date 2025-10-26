@@ -1,0 +1,216 @@
+syntax = "proto3";
+
+package agneto.types;
+
+// ==============================================================================
+// AGNETO APPLICATION TYPES
+//
+// This schema defines Agneto-specific types that use the framework.events
+// protocol. These types provide compile-time safety for the Rust backend.
+//
+// The Rust orchestrator deserializes framework.events.StateExecutedData into
+// these typed structures for business logic, while the Go TUI and mobile clients
+// work directly with strings.
+//
+// Usage Pattern (Rust):
+//   1. Receive framework::Event from NATS
+//   2. Extract StateExecutedData.context (map<string, string>)
+//   3. Deserialize into AgnetoCoderContext, AgnetoCurmudgeonContext, etc.
+//   4. Use typed enums for state machine logic
+// ==============================================================================
+
+// ==============================================================================
+// STATE MACHINE TYPES
+// ==============================================================================
+
+// Machine types (for nested state machines)
+enum MachineType {
+  MACHINE_TYPE_UNSPECIFIED = 0;
+  TASK_MACHINE = 1;
+  EXECUTION_MACHINE = 2;
+}
+
+// Agneto task-level states
+enum AgnetoTaskState {
+  AGNETO_TASK_STATE_UNSPECIFIED = 0;
+  TASK_INIT = 1;
+  TASK_REFINING = 2;
+  TASK_PLANNING = 3;
+  TASK_CURMUDGEONING = 4;
+  TASK_EXECUTING = 5;
+  TASK_SUPER_REVIEWING = 6;
+  TASK_GARDENING = 7;
+  TASK_COMPLETE = 8;
+  TASK_ABANDONED = 9;
+}
+
+// Agneto execution-level states (nested machine)
+enum AgnetoExecutionState {
+  AGNETO_EXECUTION_STATE_UNSPECIFIED = 0;
+  EXECUTION_START = 1;
+  EXECUTION_BEAN_COUNTING = 2;
+  EXECUTION_PLANNING = 3;
+  EXECUTION_PLAN_REVIEW = 4;
+  EXECUTION_IMPLEMENTING = 5;
+  EXECUTION_CODE_REVIEW = 6;
+  EXECUTION_COMPLETE = 7;
+  EXECUTION_FAILED = 8;
+  EXECUTION_ABORTED = 9;
+}
+
+// ==============================================================================
+// VERDICT TYPES
+// ==============================================================================
+
+// Curmudgeon agent verdicts
+enum CurmudgeonVerdict {
+  CURMUDGEON_VERDICT_UNSPECIFIED = 0;
+  CURMUDGEON_APPROVE = 1;
+  CURMUDGEON_SIMPLIFY = 2;
+  CURMUDGEON_REJECT = 3;
+  CURMUDGEON_NEEDS_HUMAN = 4;
+}
+
+// Reviewer agent verdicts
+enum ReviewerVerdict {
+  REVIEWER_VERDICT_UNSPECIFIED = 0;
+  REVIEWER_APPROVE = 1;
+  REVIEWER_REVISE = 2;
+  REVIEWER_REJECT = 3;
+  REVIEWER_NEEDS_HUMAN = 4;
+  REVIEWER_ALREADY_COMPLETE = 5;
+}
+
+// Planner agent verdicts
+enum PlannerVerdict {
+  PLANNER_VERDICT_UNSPECIFIED = 0;
+  PLANNER_SUCCESS = 1;
+  PLANNER_FAILED = 2;
+}
+
+// Bean Counter agent verdicts
+enum BeanCounterVerdict {
+  BEAN_COUNTER_VERDICT_UNSPECIFIED = 0;
+  BEAN_COUNTER_WORK_CHUNK = 1;
+  BEAN_COUNTER_TASK_COMPLETE = 2;
+}
+
+// ==============================================================================
+// FAILURE AND AWAIT TYPES
+// ==============================================================================
+
+// Agneto failure reasons
+enum AgnetoFailureReason {
+  AGNETO_FAILURE_REASON_UNSPECIFIED = 0;
+  AGNETO_MAX_PLAN_ATTEMPTS = 1;
+  AGNETO_MAX_CODE_ATTEMPTS = 2;
+  AGNETO_AGENT_ERROR = 3;
+  AGNETO_USER_ABANDONED = 4;
+}
+
+// Agneto-specific await types
+enum AgnetoAwaitType {
+  AGNETO_AWAIT_TYPE_UNSPECIFIED = 0;
+  AGNETO_PLAN_APPROVAL = 1;
+  AGNETO_REFINEMENT_APPROVAL = 2;
+  AGNETO_QUESTION_ANSWER = 3;
+  AGNETO_SUPERREVIEW_DECISION = 4;
+  AGNETO_HUMANREVIEW_DECISION = 5;
+}
+
+// Review phase discriminator
+enum ReviewPhase {
+  REVIEW_PHASE_UNSPECIFIED = 0;
+  PLAN_REVIEW = 1;
+  CODE_REVIEW = 2;
+}
+
+// ==============================================================================
+// WORKFLOW CONFIG & SUMMARY
+// ==============================================================================
+
+// Agneto workflow configuration
+message AgnetoConfig {
+  bool interactive = 1;  // Run with user approval steps
+}
+
+// Agneto workflow completion summary
+message AgnetoSummary {
+  string final_plan = 1;
+  int32 total_chunks = 2;
+  repeated string commit_hashes = 3;
+}
+
+// ==============================================================================
+// STATE CONTEXT TYPES
+//
+// These are deserialized from framework.events.StateExecutedData.context
+// (map<string, string>) in the Rust backend for type-safe business logic.
+// ==============================================================================
+
+message AgnetoRefiningContext {
+  string task = 1;
+  optional string question_id = 2;
+  optional string question = 3;
+  optional string refinement_id = 4;
+  optional string refined_task = 5;
+}
+
+message AgnetoPlanningContext {
+  string task = 1;
+  optional string plan_id = 2;
+  optional string plan = 3;
+  optional string curmudgeon_feedback = 4;
+  optional string superreviewer_feedback = 5;
+  bool is_retry = 6;
+}
+
+message AgnetoCurmudgeonContext {
+  string task = 1;
+  string plan = 2;
+  string feedback = 3;
+  int32 simplify_count = 4;
+}
+
+message AgnetoBeanCounterContext {
+  string task = 1;
+  string plan = 2;
+  int32 chunk_number = 3;
+  optional string chunk_description = 4;
+  repeated string files_to_modify = 5;
+  optional string previous_feedback = 6;
+}
+
+message AgnetoCoderContext {
+  string chunk_description = 1;
+  optional string implementation_plan_id = 2;
+  optional string implementation_plan = 3;
+  optional string code_application_id = 4;
+  repeated string files_modified = 5;
+  optional string feedback = 6;
+  int32 attempt = 7;
+}
+
+message AgnetoReviewerContext {
+  ReviewPhase phase = 1;        // plan_review or code_review
+  optional string plan = 2;
+  optional string chunk_description = 3;
+  optional string review_id = 4;
+  string feedback = 5;
+  optional string concern = 6;  // If needs_human
+  int32 attempt = 7;
+}
+
+message AgnetoSuperReviewerContext {
+  string task = 1;
+  optional string review_id = 2;
+  string summary = 3;
+  repeated string issues_found = 4;
+  optional string concern = 5;
+}
+
+message AgnetoGardenerContext {
+  string task = 1;
+  repeated string files_updated = 2;
+  string summary = 3;
+}

@@ -147,32 +147,6 @@ class LogUI {
   }
 
   /**
-   * Apply indentation to multi-line message strings
-   */
-  private applyIndentToMultiline(message: string): string {
-    if (this.indentLevel === 0) {
-      return message;
-    }
-
-    // Apply continuation prefix to subsequent lines
-    const lines = message.split('\n');
-    if (lines.length <= 1) {
-      return message;
-    }
-
-    const continuationPrefix = chalk.dim('│  '.repeat(this.indentLevel));
-
-    return lines
-      .map((line, index) => {
-        if (index === 0) {
-          return line; // First line already has the prefix from the caller
-        }
-        return continuationPrefix + line;
-      })
-      .join('\n');
-  }
-
-  /**
    * Validate if a string is a valid log level
    */
   private isValidLogLevel(level: string): boolean {
@@ -280,12 +254,11 @@ class LogUI {
       this.clearToolStatus();
       const badge = this.generatePhaseBadge();
       const prefix = this.getIndentPrefix();
-      const indentedMessage = this.applyIndentToMultiline(s);
       if (!this.silent) {
         if (prefix) {
-          console.log(prefix + badge + chalk.green("🙋 Orchestrator:"), indentedMessage);
+          console.log(prefix + badge + chalk.green("🙋 Orchestrator:"), s);
         } else {
-          console.log(badge + chalk.green("🙋 Orchestrator:"), indentedMessage);
+          console.log(badge + chalk.green("🙋 Orchestrator:"), s);
         }
       }
     }
@@ -360,12 +333,11 @@ class LogUI {
     if (this.shouldLog('info')) {
       const badge = this.currentPhase ? this.generatePhaseBadge() : '';
       const prefix = this.getIndentPrefix();
-      const indentedMessage = this.applyIndentToMultiline(s);
       if (!this.silent) {
         if (prefix) {
-          console.log(prefix + badge + chalk.blue("ℹ️ Info:"), indentedMessage);
+          console.log(prefix + badge + chalk.blue("ℹ️ Info:"), s);
         } else {
-          console.log(badge + chalk.blue("ℹ️ Info:"), indentedMessage);
+          console.log(badge + chalk.blue("ℹ️ Info:"), s);
         }
       }
     }
@@ -374,12 +346,11 @@ class LogUI {
   rawInfo(s: string): void {
     if (this.shouldLog('info')) {
       const prefix = this.getIndentPrefix();
-      const indentedMessage = this.applyIndentToMultiline(s);
       if (!this.silent) {
         if (prefix) {
-          console.log(prefix + indentedMessage);
+          console.log(prefix + s);
         } else {
-          console.log(indentedMessage);
+          console.log(s);
         }
       }
     }
@@ -389,12 +360,11 @@ class LogUI {
     if (this.shouldLog('info')) {
       const badge = this.currentPhase ? this.generatePhaseBadge() : '';
       const prefix = this.getIndentPrefix();
-      const indentedMessage = this.applyIndentToMultiline(s);
       if (!this.silent) {
         if (prefix) {
-          console.log(prefix + badge + chalk.yellowBright("⚠️ Warning:"), indentedMessage);
+          console.log(prefix + badge + chalk.yellowBright("⚠️ Warning:"), s);
         } else {
-          console.log(badge + chalk.yellowBright("⚠️ Warning:"), indentedMessage);
+          console.log(badge + chalk.yellowBright("⚠️ Warning:"), s);
         }
       }
     }

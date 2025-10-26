@@ -1,0 +1,491 @@
+# Agneto v2 State Machine Definition
+# Every state follows the same pattern: agent → interpreter → events → transitions
+
+version: "1.0"
+
+# ==============================================================================
+# TASK STATE MACHINE
+# ==============================================================================
+task_machine:
+  id: task
+  initial: init
+
+  states:
+    # ==========================================================================
+    # INIT
+    # ==========================================================================
+    init:
+      on:
+        task.start:
+          - target: refining
+            guard: {field: Options.Interactive, equals: true}
+          - target: planning
+            guard: {field: Options.Interactive, equals: false}
+
+    # ==========================================================================
+    # REFINING
+    # ==========================================================================
+    refining:
+      agent:
+        type: refiner
+        mode: plan
+        tools: [ReadFile, Grep, Bash]
+        prompt:
+          system: prompts/refiner.md
+          user: "Task: {{.Task}}"
+          context: [Task]
+
+      interpreter:
+        type: refiner
+        verdicts:
+          question:
+            # Store question, no event (wait for answer)
+            actions:
+              - {type: set_field, field: CurrentQuestion, source: interpreter_output}
+          refinement:
+            # Store refinement, no event (wait for approval)
+            actions:
+              - {type: set_field, field: PendingRefinement, source: interpreter_output}
+
+      on:
+        user.approved_refinement:
+          - target: planning
+            actions:
+              - {type: set_field, field: RefinedTask, source: PendingRefinement}
+              - {type: set_field, field: TaskToUse, source: PendingRefinement}
+
+        user.rejected_refinement:
+          - target: planning
+            actions:
+              - {type: set_field, field: TaskToUse, source: Task}
+
+    # ==========================================================================
+    # PLANNING
+    # ==========================================================================
+    planning:
+      agent:
+        type: planner
+        mode: default
+        tools: [ReadFile, Grep, Bash]
+        prompt:
+          system: prompts/planner.md
+          user: |
+            Task: {{.TaskToUse}}
+            {{if .IsRetry}}
+
+            SuperReviewer feedback:
+            {{.SuperReviewerFeedback.Summary}}
+            {{end}}
+            {{if .CurmudgeonFeedback}}
+
+            Curmudgeon feedback:
+            {{.CurmudgeonFeedback}}
+            {{end}}
+          context: [TaskToUse, CurmudgeonFeedback, SuperReviewerFeedback, IsRetry]
+
+      # Planner returns raw markdown (no interpreter needed)
+      # Success = plan created, failure = error
+
+      on:
+        plan.created:
+          - target: curmudgeoning
+            actions:
+              - {type: set_field, field: Plan, source: agent_output}
+
+        plan.failed:
+          - target: abandoned
+
+    # ==========================================================================
+    # CURMUDGEONING
+    # ==========================================================================
+    curmudgeoning:
+      agent:
+        type: curmudgeon
+        mode: default
+        tools: [ReadFile, ListDir, Grep, Bash]
+        prompt:
+          system: prompts/curmudgeon.md
+          user: |
+            Task: {{.TaskToUse}}
+
+            Plan:
+            {{.Plan}}
+          context: [TaskToUse, Plan]
+
+      interpreter:
+        type: curmudgeon
+        verdicts:
+          APPROVE:
+            emit: [curmudgeon.approved]
+            actions:
+              - {type: set_field, field: CurmudgeonFeedback, source: agent_output}
+
+          SIMPLIFY:
+            emit: [curmudgeon.simplify]
+            actions:
+              - {type: set_field, field: CurmudgeonFeedback, source: agent_output}
+
+          REJECT:
+            emit: [curmudgeon.simplify]  # Treat as simplify
+            actions:
+              - {type: set_field, field: CurmudgeonFeedback, source: agent_output}
+
+          NEEDS_HUMAN:
+            # No event, wait for user decision
+            actions:
+              - {type: set_field, field: CurmudgeonFeedback, source: agent_output}
+
+      on:
+        curmudgeon.approved:
+          # Interactive: wait for user, Non-interactive: auto-proceed
+          - target: executing
+            guard: {field: Options.NonInteractive, equals: true}
+
+        user.approved_plan:
+          - target: executing
+            actions:
+              - {type: set_field, field: UserHasReviewedPlan, value: true}
+
+        user.rejected_plan:
+          - target: planning
+            actions:
+              - {type: set_field, field: CurmudgeonFeedback, source: event_data}
+
+        curmudgeon.simplify:
+          - target: planning
+            guard: {field: SimplifyCount, operator: "<", value: 3}
+            actions:
+              - {type: increment, field: SimplifyCount}
+
+          - target: abandoned
+            guard: {field: SimplifyCount, operator: ">=", value: 3}
+
+    # ==========================================================================
+    # EXECUTING (delegates to nested machine)
+    # ==========================================================================
+    executing:
+      invoke: execution_machine
+
+      on:
+        execution.complete:
+          - target: super_reviewing
+
+        execution.failed:
+          - target: abandoned
+
+    # ==========================================================================
+    # SUPER_REVIEWING
+    # ==========================================================================
+    super_reviewing:
+      agent:
+        type: super_reviewer
+        mode: plan
+        tools: [ReadFile, Grep, Bash]
+        prompt:
+          system: prompts/super-reviewer.md
+          user: "Task: {{.TaskToUse}}"
+          context: [TaskToUse]
+
+      interpreter:
+        type: super_reviewer
+        verdicts:
+          approve:
+            emit: [superreview.passed]
+
+          needs-human:
+            emit: [superreview.needs_human]
+
+      on:
+        superreview.passed:
+          - target: gardening
+
+        superreview.needs_human:
+          # Stay in state, wait for user decision
+
+        user.approved_superreview:
+          - target: gardening
+
+        user.retry_superreview:
+          - target: planning
+            actions:
+              - {type: set_field, field: RetryFeedback, source: event_data}
+              - {type: set_field, field: IsRetry, value: true}
+
+        user.abandoned_superreview:
+          - target: abandoned
+
+    # ==========================================================================
+    # GARDENING
+    # ==========================================================================
+    gardening:
+      agent:
+        type: gardener
+        mode: default
+        tools: [ReadFile, Grep, Bash, Write, Edit]
+        prompt:
+          system: prompts/gardener.md
+          user: "Task: {{.TaskToUse}}"
+          context: [TaskToUse]
+
+      on:
+        gardening.complete:
+          - target: complete
+
+    # ==========================================================================
+    # TERMINAL STATES
+    # ==========================================================================
+    complete: {}
+
+    abandoned: {}
+
+# ==============================================================================
+# EXECUTION STATE MACHINE (nested)
+# ==============================================================================
+execution_machine:
+  id: execution
+  initial: start
+
+  states:
+    # ==========================================================================
+    # START
+    # ==========================================================================
+    start:
+      on:
+        start.chunking:
+          - target: bean_counting
+
+    # ==========================================================================
+    # BEAN_COUNTING
+    # ==========================================================================
+    bean_counting:
+      agent:
+        type: bean_counter
+        mode: plan
+        tools: [ReadFile, Grep, Bash]
+        session: {id: BeanCounterSessionId, initialized: BeanCounterInitialized}
+        prompt:
+          system: prompts/bean-counter.md
+          user: |
+            Task: {{.TaskToUse}}
+
+            Plan:
+            {{.Plan}}
+            {{if .CodeFeedback}}
+
+            Previous feedback:
+            {{.CodeFeedback}}
+            {{end}}
+          context: [TaskToUse, Plan, CodeFeedback]
+
+      interpreter:
+        type: bean_counter
+        verdicts:
+          TASK_COMPLETE:
+            emit: [task.complete]
+
+          WORK_CHUNK:
+            emit: [chunk.ready]
+            actions:
+              - {type: set_field, field: CurrentChunk, source: interpreter_output}
+
+      on:
+        chunk.ready:
+          - target: planning
+            actions:
+              # Reset sessions for new chunk
+              - {type: generate_uuid, field: CoderSessionId}
+              - {type: generate_uuid, field: ReviewerSessionId}
+              - {type: set_field, field: CoderInitialized, value: false}
+              - {type: set_field, field: ReviewerInitialized, value: false}
+
+        task.complete:
+          - target: complete
+
+    # ==========================================================================
+    # PLANNING (Coder proposes)
+    # ==========================================================================
+    planning:
+      agent:
+        type: coder
+        mode: plan
+        tools: [ReadFile, Grep, Bash]
+        session: {id: CoderSessionId, initialized: CoderInitialized}
+        prompt:
+          system: prompts/coder.md
+          user: |
+            Chunk: {{.CurrentChunk.Description}}
+            {{if .PlanFeedback}}
+
+            Feedback:
+            {{.PlanFeedback}}
+            {{end}}
+          context: [CurrentChunk, PlanFeedback]
+
+      on:
+        plan.proposed:
+          - target: plan_review
+            actions:
+              - {type: increment, field: PlanAttempts}
+              - {type: set_field, field: CurrentPlan, source: agent_output}
+
+        max_attempts:
+          - target: failed
+
+    # ==========================================================================
+    # PLAN_REVIEW (Reviewer reviews plan)
+    # ==========================================================================
+    plan_review:
+      agent:
+        type: reviewer
+        mode: plan
+        tools: [ReadFile, Grep, Bash]
+        session: {id: ReviewerSessionId, initialized: ReviewerInitialized}
+        prompt:
+          system: prompts/reviewer.md
+          user: |
+            Plan: {{.CurrentPlan}}
+
+            Chunk: {{.CurrentChunk}}
+          context: [CurrentPlan, CurrentChunk]
+
+      interpreter:
+        type: reviewer
+        verdicts:
+          approve:
+            emit: [plan.approved]
+
+          already_complete:
+            emit: [code.approved]
+
+          revise:
+            emit: [plan.revision_requested]
+            actions:
+              - {type: set_field, field: PlanFeedback, source: agent_output}
+
+          reject:
+            emit: [plan.rejected]
+            actions:
+              - {type: set_field, field: PlanFeedback, source: agent_output}
+
+          needs_human:
+            # Wait for user decision
+
+      on:
+        plan.approved:
+          - target: implementing
+            actions:
+              - {type: set_field, field: CodeAttempts, value: 0}
+
+        code.approved:
+          # Already complete, skip to next chunk
+          - target: bean_counting
+
+        plan.revision_requested:
+          - target: planning
+            guard: {field: PlanAttempts, operator: "<", value: 7}
+          - target: failed
+            guard: {field: PlanAttempts, operator: ">=", value: 7}
+
+        plan.rejected:
+          - target: planning
+            actions:
+              - {type: set_field, field: PlanAttempts, value: 0}
+
+    # ==========================================================================
+    # IMPLEMENTING (Coder implements)
+    # ==========================================================================
+    implementing:
+      agent:
+        type: coder
+        mode: default
+        tools: [ReadFile, Grep, Bash, Write, Edit, MultiEdit]
+        session: {id: CoderSessionId, initialized: CoderInitialized}
+        prompt:
+          system: prompts/coder.md
+          user: |
+            Plan: {{.CurrentPlan}}
+            {{if .CodeFeedback}}
+
+            Feedback:
+            {{.CodeFeedback}}
+            {{end}}
+          context: [CurrentPlan, CodeFeedback]
+
+      on:
+        code.applied:
+          - target: code_review
+            actions:
+              - {type: increment, field: CodeAttempts}
+
+        max_attempts:
+          - target: failed
+
+    # ==========================================================================
+    # CODE_REVIEW (Reviewer reviews code)
+    # ==========================================================================
+    code_review:
+      agent:
+        type: reviewer
+        mode: plan
+        tools: [ReadFile, Grep, Bash]
+        session: {id: ReviewerSessionId, initialized: ReviewerInitialized}
+        prompt:
+          system: prompts/reviewer.md
+          user: |
+            Plan: {{.CurrentPlan}}
+
+            Chunk: {{.CurrentChunk}}
+          context: [CurrentPlan, CurrentChunk]
+
+      interpreter:
+        type: reviewer
+        verdicts:
+          approve:
+            emit: [code.approved]
+
+          revise:
+            emit: [code.revision_requested]
+            actions:
+              - {type: set_field, field: CodeFeedback, source: agent_output}
+
+          reject:
+            emit: [code.rejected]
+            actions:
+              - {type: set_field, field: CodeFeedback, source: agent_output}
+
+          needs_human:
+            # Wait for user decision
+
+      on:
+        code.approved:
+          - target: bean_counting
+            actions:
+              # Commit changes (side effect)
+              - {type: commit_changes}
+              # Clear chunk context
+              - {type: clear_field, field: CurrentPlan}
+              - {type: clear_field, field: CurrentChunk}
+              - {type: clear_field, field: PlanFeedback}
+              - {type: clear_field, field: CodeFeedback}
+
+        code.revision_requested:
+          - target: implementing
+            guard: {field: CodeAttempts, operator: "<", value: 7}
+          - target: failed
+            guard: {field: CodeAttempts, operator: ">=", value: 7}
+
+        code.rejected:
+          - target: bean_counting
+            actions:
+              - {type: revert_commit}
+              - {type: set_field, field: CodeAttempts, value: 0}
+
+    # ==========================================================================
+    # TERMINAL STATES
+    # ==========================================================================
+    complete: {}
+
+    failed: {}
+
+    aborted: {}
+  

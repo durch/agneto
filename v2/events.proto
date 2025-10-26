@@ -1,0 +1,421 @@
+syntax = "proto3";
+
+package framework.events;
+
+// ==============================================================================
+// AGENT ORCHESTRATION FRAMEWORK - EVENTS
+//
+// This schema defines a general-purpose event-sourced agent orchestration
+// framework for building agent-based workflows with state machines.
+//
+// Design Philosophy:
+// - Framework is application-agnostic (no domain-specific types)
+// - All discriminators use strings for flexibility across languages
+// - Applications deserialize into typed structures at their boundaries
+// - Supports Rust backend, Go TUI, Flutter mobile with minimal coupling
+//
+// Applications (Agneto, research pipelines, etc.) define their own proto
+// with application-specific enums and context types.
+// ==============================================================================
+
+// ==============================================================================
+// CORE EVENT WRAPPER
+// ==============================================================================
+
+message Event {
+  // Identity
+  string id = 1;                    // UUID
+  string workflow_id = 2;           // Which workflow instance (replaces task_id)
+  EventType type = 3;               // Event type discriminator
+  int64 timestamp_ms = 4;           // When it happened
+  int64 sequence = 5;               // Monotonic sequence per workflow stream
+
+  // Causality (for debugging and replay)
+  string causation_id = 6;          // Event that triggered this one
+  string correlation_id = 7;        // Root command that started the chain
+
+  // Metadata (present on all agent-generated events)
+  optional AgentMetadata agent_metadata = 8;
+
+  // Event payload
+  oneof data {
+    // Framework: Workflow lifecycle
+    WorkflowStartedData workflow_started = 10;
+    WorkflowCompletedData workflow_completed = 11;
+    WorkflowAbandonedData workflow_abandoned = 12;
+
+    // Framework: State machine execution
+    StateExecutedData state_executed = 20;
+    StateTransitionedData state_transitioned = 21;
+
+    // Framework: User interaction
+    AwaitingUserInputData awaiting_user_input = 30;
+    UserResponseData user_response = 31;
+    AwaitFulfilledData await_fulfilled = 32;
+
+    // Framework: Ephemeral streaming (high frequency, not persisted)
+    AgentStartedData agent_started = 100;
+    AgentCompletedData agent_completed = 101;
+    AgentTextChunkData agent_text_chunk = 102;
+    ToolExecutingData tool_executing = 103;
+    ToolCompletedData tool_completed = 104;
+  }
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+
+  // Workflow lifecycle
+  WORKFLOW_STARTED = 1;
+  WORKFLOW_COMPLETED = 2;
+  WORKFLOW_ABANDONED = 3;
+
+  // State execution
+  STATE_EXECUTED = 10;
+  STATE_TRANSITIONED = 11;
+
+  // User interaction
+  AWAITING_USER_INPUT = 20;
+  USER_RESPONSE = 21;
+  AWAIT_FULFILLED = 22;
+
+  // Ephemeral (not persisted in durable stream)
+  AGENT_STARTED = 100;
+  AGENT_COMPLETED = 101;
+  AGENT_TEXT_CHUNK = 102;
+  TOOL_EXECUTING = 103;
+  TOOL_COMPLETED = 104;
+}
+
+// ==============================================================================
+// FRAMEWORK: COMMON ENUMS
+// ==============================================================================
+
+// Response actions for user interaction
+enum ResponseAction {
+  RESPONSE_ACTION_UNSPECIFIED = 0;
+  APPROVE = 1;
+  REJECT = 2;
+  RETRY = 3;
+  ABANDON = 4;
+  ANSWER = 5;
+}
+
+// ==============================================================================
+// FRAMEWORK: METADATA
+// ==============================================================================
+
+// Agent execution metadata (present on all agent-generated events)
+message AgentMetadata {
+  string agent_type = 1;      // "curmudgeon", "coder", "fact-checker", etc.
+  double cost_usd = 2;        // Cost of agent LLM call
+  int64 duration_ms = 3;      // Wall-clock time for agent
+  TokenUsage tokens = 4;      // Token breakdown for agent
+  string session_id = 5;      // LLM session ID (for continuity)
+  optional InterpreterMetadata interpreter = 6;  // Interpreter call (if used)
+  bool session_initialized = 7;  // Was session created (true) or resumed (false)?
+}
+
+// Interpreter execution metadata (for verdict extraction)
+message InterpreterMetadata {
+  string model = 1;           // "sonnet", "haiku", etc.
+  double cost_usd = 2;        // Cost of interpreter LLM call
+  int64 duration_ms = 3;      // Wall-clock time
+  TokenUsage tokens = 4;      // Token breakdown
+}
+
+// Token usage breakdown
+message TokenUsage {
+  int32 input = 1;
+  int32 cache_creation = 2;
+  int32 cache_read = 3;
+  int32 output = 4;
+}
+
+// ==============================================================================
+// FRAMEWORK: WORKFLOW LIFECYCLE EVENTS
+// ==============================================================================
+
+message WorkflowStartedData {
+  string workflow_type = 1;         // "agneto-code-gen", "research-workflow", etc.
+  string description = 2;           // Human-readable workflow description
+  map<string, string> config = 3;  // Application-specific configuration
+}
+
+message WorkflowCompletedData {
+  string workflow_type = 1;
+  double total_cost_usd = 2;
+  int64 total_duration_ms = 3;
+  map<string, string> summary = 4;  // Application-specific summary
+}
+
+message WorkflowAbandonedData {
+  string workflow_type = 1;
+  string last_state = 2;             // State machine state at abandonment
+  string failure_reason = 3;         // Application-specific failure reason
+  map<string, string> details = 4;  // Additional failure context
+}
+
+// ==============================================================================
+// FRAMEWORK: STATE EXECUTION EVENTS
+// ==============================================================================
+
+message StateExecutedData {
+  string execution_id = 1;           // UUID for this specific execution (for await references)
+  string machine = 2;                // Machine identifier ("task", "execution", etc.)
+  string state = 3;                  // State identifier ("planning", "curmudgeoning", etc.)
+  string agent_type = 4;             // Agent identifier ("curmudgeon", "planner", "coder")
+  string agent_output = 5;           // Full LLM text output
+  string verdict = 6;                // Agent decision ("approve", "simplify", "needs_human")
+  int32 retry_count = 7;             // Current retry attempt (0 = first try)
+  map<string, string> context = 8;  // State-specific context (application defines structure)
+}
+
+message StateTransitionedData {
+  string machine = 1;      // Machine identifier
+  string from_state = 2;   // Previous state identifier
+  string to_state = 3;     // New state identifier
+  string trigger = 4;      // What caused transition (verdict, event, etc.)
+}
+
+// ==============================================================================
+// FRAMEWORK: USER INTERACTION EVENTS
+// ==============================================================================
+
+message AwaitingUserInputData {
+  string await_id = 1;            // UUID for this wait
+  string event_id = 2;            // Event that triggered wait (execution_id from StateExecuted)
+  string await_type = 3;          // Type of input needed ("plan_approval", "question_answer", etc.)
+  optional int64 deadline_ms = 4; // Optional timeout (ms)
+  map<string, string> context = 5; // Additional context for the await
+}
+
+message UserResponseData {
+  string await_id = 1;          // Which wait this responds to
+  string event_id = 2;          // Reference to what they're responding to
+  ResponseAction action = 3;    // What action user took
+  optional string payload = 4;  // Feedback text, answer text, etc.
+  optional string snapshot = 5; // Copy of approved content (for audit trail)
+}
+
+message AwaitFulfilledData {
+  string await_id = 1;          // Which wait was fulfilled
+  string response_event_id = 2; // UserResponse event that fulfilled it
+  ResponseAction action = 3;    // What action was taken
+}
+
+// ==============================================================================
+// FRAMEWORK: EPHEMERAL STREAMING EVENTS
+// ==============================================================================
+
+message AgentStartedData {
+  string agent_type = 1;
+  string task = 2;
+  int64 started_at_ms = 3;
+}
+
+message AgentCompletedData {
+  string agent_type = 1;
+  string output = 2;           // Full text output
+  int64 completed_at_ms = 3;
+}
+
+message AgentTextChunkData {
+  string agent_type = 1;
+  string text = 2;             // Incremental text chunk
+  bool is_final = 3;           // Last chunk?
+}
+
+message ToolExecutingData {
+  string agent_type = 1;
+  string tool = 2;             // "ReadFile", "Grep", "Bash", etc.
+  string summary = 3;          // "Reading src/main.rs"
+}
+
+message ToolCompletedData {
+  string agent_type = 1;
+  string tool = 2;
+  bool is_error = 3;
+  optional string error_message = 4;
+}
+
+// ==============================================================================
+// APPLICATION USAGE GUIDE
+// ==============================================================================
+//
+// This framework is designed to be language-agnostic and application-agnostic.
+// Applications define their own proto files with domain-specific types, then
+// deserialize framework events at their boundaries.
+//
+// ## Rust Backend Pattern (Type-Safe Business Logic)
+//
+// ```rust
+// use framework::events::{Event, StateExecutedData};
+// use agneto::types::{AgnetoTaskState, CurmudgeonVerdict, AgnetoCoderContext};
+// use std::collections::HashMap;
+//
+// // 1. Receive event from NATS
+// async fn handle_event(event: Event) {
+//     match event.data {
+//         Some(Data::StateExecuted(data)) => {
+//             // 2. Deserialize string discriminators into typed enums
+//             let state = AgnetoTaskState::from_str(&data.state)?;
+//             let verdict = CurmudgeonVerdict::from_str(&data.verdict)?;
+//
+//             // 3. Deserialize context map into typed struct
+//             let context: AgnetoCoderContext = deserialize_context(&data.context)?;
+//
+//             // 4. Type-safe state machine logic
+//             match (state, verdict) {
+//                 (AgnetoTaskState::TASK_CURMUDGEONING, CurmudgeonVerdict::CURMUDGEON_APPROVE) => {
+//                     transition_to(AgnetoTaskState::TASK_EXECUTING).await;
+//                 }
+//                 _ => {}
+//             }
+//         }
+//         _ => {}
+//     }
+// }
+//
+// // Helper: Deserialize map<string,string> into typed protobuf message
+// fn deserialize_context<T: prost::Message + Default>(
+//     context: &HashMap<String, String>
+// ) -> Result<T, Error> {
+//     // Serialize map to JSON, then parse into protobuf
+//     let json = serde_json::to_string(context)?;
+//     let message = serde_json::from_str::<T>(&json)?;
+//     Ok(message)
+// }
+// ```
+//
+// ## Go TUI Pattern (Display Strings Directly)
+//
+// ```go
+// import (
+//     pb "github.com/durch/agneto/v2/proto/framework/events"
+// )
+//
+// // 1. Receive event from NATS
+// func handleEvent(event *pb.Event) {
+//     switch data := event.Data.(type) {
+//     case *pb.Event_StateExecuted:
+//         // 2. Work with strings directly - no deserialization needed
+//         fmt.Printf("State: %s\n", data.StateExecuted.State)
+//         fmt.Printf("Verdict: %s\n", data.StateExecuted.Verdict)
+//
+//         // 3. Display context as key-value pairs
+//         for k, v := range data.StateExecuted.Context {
+//             fmt.Printf("  %s: %s\n", k, v)
+//         }
+//     }
+// }
+// ```
+//
+// ## Flutter Mobile Pattern (JSON-Based)
+//
+// ```dart
+// import 'package:agneto/generated/framework/events.pb.dart';
+//
+// // 1. Receive event from WebSocket/HTTP
+// void handleEvent(Event event) {
+//   if (event.hasStateExecuted()) {
+//     final data = event.stateExecuted;
+//
+//     // 2. Work with strings - Flutter renders directly
+//     setState(() {
+//       currentState = data.state;
+//       verdict = data.verdict;
+//       contextData = data.context; // Map<String, String>
+//     });
+//   }
+// }
+// ```
+//
+// ## Benefits of This Approach
+//
+// 1. **Framework Reusability**: events.proto can be used in ANY agent workflow
+//    (research pipelines, data processing, testing, etc.) without modification.
+//
+// 2. **Language Flexibility**: Each language uses the patterns natural to it:
+//    - Rust: Typed enums for exhaustive matching
+//    - Go: Strings for simple display
+//    - Dart: JSON for reactive UIs
+//
+// 3. **Compile-Time Safety Where It Matters**: Business logic in Rust backend
+//    gets full type safety. UIs work with flexible strings.
+//
+// 4. **No Cross-Language Coupling**: Go TUI doesn't need Agneto-specific enums.
+//    Mobile app doesn't need Curmudgeon types. Only Rust backend imports
+//    agneto.proto for business logic.
+//
+// 5. **Testability**: Framework events can be replayed across applications.
+//    Rust tests use typed enums. Integration tests use raw strings.
+//
+// ## String Mapping Examples (Rust)
+//
+// ```rust
+// // State strings match proto enum names (lowercase with underscores)
+// impl FromStr for AgnetoTaskState {
+//     fn from_str(s: &str) -> Result<Self, Error> {
+//         match s {
+//             "task_init" => Ok(Self::TASK_INIT),
+//             "task_refining" => Ok(Self::TASK_REFINING),
+//             "task_planning" => Ok(Self::TASK_PLANNING),
+//             "task_curmudgeoning" => Ok(Self::TASK_CURMUDGEONING),
+//             "task_executing" => Ok(Self::TASK_EXECUTING),
+//             "task_super_reviewing" => Ok(Self::TASK_SUPER_REVIEWING),
+//             "task_gardening" => Ok(Self::TASK_GARDENING),
+//             "task_complete" => Ok(Self::TASK_COMPLETE),
+//             "task_abandoned" => Ok(Self::TASK_ABANDONED),
+//             _ => Err(Error::UnknownState(s.to_string())),
+//         }
+//     }
+// }
+//
+// // Verdict strings are action-oriented (lowercase)
+// impl FromStr for CurmudgeonVerdict {
+//     fn from_str(s: &str) -> Result<Self, Error> {
+//         match s {
+//             "approve" => Ok(Self::CURMUDGEON_APPROVE),
+//             "simplify" => Ok(Self::CURMUDGEON_SIMPLIFY),
+//             "reject" => Ok(Self::CURMUDGEON_REJECT),
+//             "needs_human" => Ok(Self::CURMUDGEON_NEEDS_HUMAN),
+//             _ => Err(Error::UnknownVerdict(s.to_string())),
+//         }
+//     }
+// }
+// ```
+//
+// ## Context Serialization (Rust → Framework Event)
+//
+// ```rust
+// // When emitting events, serialize typed context to map<string, string>
+// fn emit_state_executed(
+//     context: AgnetoCoderContext,
+//     verdict: CurmudgeonVerdict,
+// ) -> StateExecutedData {
+//     // Serialize protobuf message to map
+//     let context_map = serialize_to_map(&context)?;
+//
+//     StateExecutedData {
+//         execution_id: Uuid::new_v4().to_string(),
+//         machine: "task".to_string(),
+//         state: "curmudgeoning".to_string(),
+//         agent_type: "curmudgeon".to_string(),
+//         verdict: verdict.to_string().to_lowercase(),
+//         context: context_map,
+//         ..Default::default()
+//     }
+// }
+//
+// fn serialize_to_map<T: prost::Message>(msg: &T) -> HashMap<String, String> {
+//     let json = serde_json::to_value(msg).unwrap();
+//     json.as_object()
+//         .unwrap()
+//         .iter()
+//         .map(|(k, v)| (k.clone(), v.to_string()))
+//         .collect()
+// }
+// ```
+//
+// ==============================================================================

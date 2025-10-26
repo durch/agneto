@@ -1,0 +1,17 @@
+[
+  {
+    "id": "provide-context",
+    "label": "Provide Context",
+    "key": "",
+    "input_type": "multiline",
+    "event": {
+      "type": "context.provided",
+      "message": "User provided context",
+      "pane": "right",
+      "data": {
+        "source": "tui",
+        "action": "provide_context"
+      }
+    }
+  }
+]

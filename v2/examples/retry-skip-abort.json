@@ -1,0 +1,44 @@
+[
+  {
+    "id": "retry",
+    "label": "Retry",
+    "key": "r",
+    "event": {
+      "type": "user.retry",
+      "message": "User requested retry",
+      "pane": "left",
+      "data": {
+        "action": "retry",
+        "attempt": 2
+      }
+    }
+  },
+  {
+    "id": "skip",
+    "label": "Skip",
+    "key": "s",
+    "event": {
+      "type": "user.skip",
+      "message": "User skipped the failed operation",
+      "pane": "left",
+      "data": {
+        "action": "skip",
+        "skipped": true
+      }
+    }
+  },
+  {
+    "id": "abort",
+    "label": "Abort",
+    "key": "a",
+    "event": {
+      "type": "user.abort",
+      "message": "User aborted the entire task",
+      "pane": "right",
+      "data": {
+        "action": "abort",
+        "reason": "user_decision"
+      }
+    }
+  }
+]

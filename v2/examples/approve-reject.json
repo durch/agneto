@@ -1,0 +1,30 @@
+[
+  {
+    "id": "approve",
+    "label": "Approve",
+    "key": "a",
+    "event": {
+      "type": "user.approved",
+      "message": "User approved the plan",
+      "pane": "left",
+      "data": {
+        "action": "approve",
+        "approved_via": "tui"
+      }
+    }
+  },
+  {
+    "id": "reject",
+    "label": "Reject",
+    "key": "r",
+    "event": {
+      "type": "user.rejected",
+      "message": "User rejected the plan",
+      "pane": "right",
+      "data": {
+        "action": "reject",
+        "reason": "user_decision"
+      }
+    }
+  }
+]

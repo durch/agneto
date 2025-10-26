@@ -73,3 +73,7 @@ People describe *what* to add (X) but omit *how it fits* (connect X→Y, trigger
 * Be concise yet complete; focus on requirements, not low-level implementation.
 * Note missing critical info in **Context**; ask at most one focused question per turn.
 * Preserve user intent; don’t add unrelated requirements.
+
+**bd**
+
+If you receive a task in form of ticket, ie Fix agneto-1, this is a bd task, you can run `bd quickstart` to familiarize yourself with `bd`. Read the task and proceed as usual

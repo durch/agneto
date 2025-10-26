@@ -1,0 +1,47 @@
+[
+  {
+    "id": "option1",
+    "label": "Option 1: Fast Path",
+    "key": "1",
+    "event": {
+      "type": "user.chose.1",
+      "message": "User selected fast path",
+      "pane": "left",
+      "data": {
+        "choice": 1,
+        "path": "fast",
+        "description": "Optimized for speed"
+      }
+    }
+  },
+  {
+    "id": "option2",
+    "label": "Option 2: Safe Path",
+    "key": "2",
+    "event": {
+      "type": "user.chose.2",
+      "message": "User selected safe path",
+      "pane": "left",
+      "data": {
+        "choice": 2,
+        "path": "safe",
+        "description": "Conservative approach"
+      }
+    }
+  },
+  {
+    "id": "option3",
+    "label": "Option 3: Experimental",
+    "key": "3",
+    "event": {
+      "type": "user.chose.3",
+      "message": "User selected experimental path",
+      "pane": "right",
+      "data": {
+        "choice": 3,
+        "path": "experimental",
+        "description": "Bleeding edge features"
+      }
+    }
+  }
+]

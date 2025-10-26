@@ -1,9 +1,9 @@
 {
   "prompts": {
-    "refiner": "Agneto is hard to test due to Ink limitations, and long running tasks, do not request or plan for tests. Implementation should make sure that the code is correct. And verify compilation with npm run build.",
-    "planner": "Agneto is hard to test due to Ink limitations, and long running tasks, do not request or plan for tests. Implementation should make sure that the code is correct. And verify compilation with npm run build.",
-    "bean-counter": "Agneto is hard to test due to Ink limitations, and long running tasks, do not request or plan for tests. Implementation should make sure that the code is correct. And verify compilation with npm run build.",
-    "super-reviewer": "Agneto is hard to test due to Ink limitations, and long running tasks, do not focus in tests during your reviews. Make sure that the code is correct. And verify compilation with npm run build.",
-    "reviewer": "Do not request from Coder to run agneto, Ink UI cannot be tested easily. Make sure that the code is correct. And verify compilation with npm run build."
+    "refiner": "Agneto is hard to test due to Ink limitations, and long running tasks, DO NOT plan for running it, (npm start -- 'Task'). Implementation should make sure that the code is correct. And verify compilation with npm run build.",
+    "planner": "Agneto is hard to test due to Ink limitations, and long running tasks, DO NOT plan for running it, (npm start -- 'Task'). Implementation should make sure that the code is correct. And verify compilation with npm run build.",
+    "bean-counter": "Agneto is hard to test due to Ink limitations, and long running tasks, DO NOT request running it, (npm start -- 'Task'). Implementation should make sure that the code is correct. And verify compilation with npm run build.",
+    "super-reviewer": "Agneto is hard to test due to Ink limitations, and long running tasks, DO NOT focus on tests during your reviews. Make sure that the code is correct. And verify compilation with npm run build.",
+    "reviewer": "DO NOT request from Coder to run agneto, Ink UI cannot be tested easily. Make sure that the code is correct. And verify compilation with npm run build."
   }
 }
