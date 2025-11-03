@@ -97,6 +97,10 @@ export interface StateMachineContext {
   needsHumanReview: boolean;
   humanReviewContext?: string;
 
+  // bd integration
+  bdEpicId?: string;   // bd epic ID for entire task
+  bdChunkId?: string;  // Current chunk's bd issue ID
+
   // Configuration
   maxPlanAttempts: number;
   maxCodeAttempts: number;
@@ -215,6 +219,23 @@ export class CoderReviewerStateMachine extends EventEmitter {
     this.toolStatus = null;
     // Emit event with null values to notify UI to clear tool status display
     this.emit('tool:status', { agent: null, tool: null, summary: null });
+  }
+
+  // bd integration accessors
+  setBdEpicId(id: string): void {
+    this.context.bdEpicId = id;
+  }
+
+  getBdEpicId(): string | undefined {
+    return this.context.bdEpicId;
+  }
+
+  setBdChunkId(id: string): void {
+    this.context.bdChunkId = id;
+  }
+
+  getBdChunkId(): string | undefined {
+    return this.context.bdChunkId;
   }
 
   // Setters for testing and external manipulation

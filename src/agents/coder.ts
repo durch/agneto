@@ -31,9 +31,13 @@ export async function proposePlan(
             log.coder("🤖 Coder: Using custom prompt from .agneto.json");
         }
 
+        // Get bd chunk ID from state machine
+        const bdChunkId = stateMachine?.getBdChunkId();
+        const bdContext = bdChunkId ? `bd issue: ${bdChunkId}\n\n` : '';
+
         messages.push(
             { role: "system", content: sys },
-            { role: "user", content: `Current Work Chunk:\n\n${stepDescription}\n\n[PLANNING MODE]\n\nPropose your implementation approach for this chunk.` }
+            { role: "user", content: `${bdContext}Current Work Chunk:\n\n${stepDescription}\n\n[PLANNING MODE]\n\nPropose your implementation approach for this chunk.` }
         );
     } else {
         // Subsequent calls: feedback on previous plan proposal

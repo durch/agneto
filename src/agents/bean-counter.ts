@@ -15,6 +15,7 @@ export interface BeanCounterChunk {
   description: string;
   requirements: string[];
   context: string;
+  bdIssueId?: string;  // bd issue ID for chunk (present for WORK_CHUNK)
 }
 
 export interface BeanCounterResult {
@@ -48,11 +49,15 @@ export async function getNextChunk(
       log.beanCounter("🧮 Bean Counter: Using custom prompt from .agneto.json");
     }
 
+    // Get bd epic ID from state machine
+    const bdEpicId = stateMachine?.getBdEpicId();
+    const bdContext = bdEpicId ? `bd epic: ${bdEpicId}\n\n` : '';
+
     messages.push(
       { role: "system", content: sys },
       {
         role: "user",
-        content: `High-Level Plan:\n\n${planMd}\n\nWhat's the next chunk to work on?`,
+        content: `${bdContext}High-Level Plan:\n\n${planMd}\n\nWhat's the next chunk to work on?`,
       }
     );
   } else {

@@ -31,6 +31,7 @@ export interface BeanCounterInterpretation {
   description: string;
   requirements: string[];
   context: string;
+  bdIssueId?: string;  // bd issue ID for chunk (present for WORK_CHUNK)
 }
 
 export interface SuperReviewerInterpretation {
@@ -430,11 +431,16 @@ function parseBeanCounterKeywords(
   // Determine chunk type based on keywords
   const type: "WORK_CHUNK" | "TASK_COMPLETE" = lowerResponse?.includes("task_complete") ? "TASK_COMPLETE" : "WORK_CHUNK";
 
+  // Extract bd issue ID if present (pattern: "bd issue: agneto-123-1" or "bd-123-1")
+  const bdMatch = originalResponse?.match(/bd\s+issue:\s*([a-z]+-\d+-\d+)/i);
+  const bdIssueId = bdMatch ? bdMatch[1] : undefined;
+
   return {
     type,
     description: extractDescription(originalResponse) || "Continue with next chunk",
     requirements: extractRequirements(originalResponse) || [],
     context: extractContext(originalResponse) || "",
+    bdIssueId,
   };
 }
 

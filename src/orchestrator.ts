@@ -96,6 +96,48 @@ async function waitForPlanApproval(
   return await commandBus.waitForAnyCommand<PlanFeedback>(['plan:approve', 'plan:reject']);
 }
 
+/**
+ * Initialize bd epic for task tracking
+ * @returns The bd epic ID
+ */
+async function initializeBdEpic(taskId: string, taskDescription: string, cwd: string): Promise<string> {
+  // Check if bd is available
+  try {
+    execSync('which bd', { stdio: 'pipe' });
+  } catch (error) {
+    throw new Error(
+      'bd (beads) is not installed or not in PATH.\n' +
+      'Install with: npm install -g beads-cli\n' +
+      'Or see: https://github.com/durch/beads'
+    );
+  }
+
+  try {
+    // Create epic
+    const result = execSync(
+      `bd create "agneto-${taskId}: ${taskDescription}" -t epic -p 1 --json`,
+      { cwd, encoding: 'utf8' }
+    );
+    const parsed = JSON.parse(result);
+    originalLog.orchestrator(`📋 Created bd epic: ${parsed.id}`);
+    return parsed.id;
+  } catch (error) {
+    throw new Error(`Failed to initialize bd epic: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Close bd epic when task completes
+ */
+async function closeBdEpic(epicId: string, cwd: string): Promise<void> {
+  try {
+    execSync(`bd close ${epicId} --reason "Task complete"`, { cwd, encoding: 'utf8' });
+    originalLog.orchestrator(`📋 Closed bd epic: ${epicId}`);
+  } catch (error) {
+    originalLog.warn(`Failed to close bd epic ${epicId}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export async function runTask(taskId: string, humanTask: string, options?: TaskOptions) {
     const provider = await selectProvider();
     const { dir: cwd } = ensureWorktree(taskId, options?.baseBranch);
@@ -801,6 +843,11 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                         // Initialize the execution state machine
                         executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
                         taskStateMachine.setExecutionStateMachine(executionStateMachine);
+
+                        // Initialize bd epic for tracking
+                        const bdEpicId = await initializeBdEpic(taskId, humanTask, cwd);
+                        executionStateMachine.setBdEpicId(bdEpicId);
+
                         executionStateMachine.transition(Event.START_CHUNKING);
                     }
 
@@ -957,6 +1004,14 @@ export async function runTask(taskId: string, humanTask: string, options?: TaskO
                 case TaskState.TASK_COMPLETE:
                     bell();
                     log.orchestrator("🎉 Task completed successfully!");
+
+                    // Close bd epic if it exists
+                    const executionStateMachine = taskStateMachine.getExecutionStateMachine();
+                    const bdEpicId = executionStateMachine?.getBdEpicId();
+                    if (bdEpicId) {
+                        await closeBdEpic(bdEpicId, cwd);
+                    }
+
                     taskCompleted = true;
                     break;
 
@@ -1246,12 +1301,32 @@ async function runRestoredTask(
                             // Initialize the execution state machine
                             executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
                             taskStateMachine.setExecutionStateMachine(executionStateMachine);
+
+                            // Initialize bd epic for tracking
+                            const restoredTaskId = taskStateMachine.getContext().taskId;
+                            const restoredHumanTask = taskStateMachine.getContext().humanTask;
+                            const bdEpicId = await initializeBdEpic(restoredTaskId, restoredHumanTask, cwd);
+                            executionStateMachine.setBdEpicId(bdEpicId);
+
                             executionStateMachine.transition(Event.START_CHUNKING);
                         } else if (taskStateMachine.getContext().retryFeedback) {
                             // We're retrying after SuperReviewer feedback - reset the state machine
                             log.orchestrator("🔄 Resetting execution state machine for retry cycle");
                             executionStateMachine = new CoderReviewerStateMachine(7, 7, taskStateMachine.getBaselineCommit(), auditLogger);
                             taskStateMachine.setExecutionStateMachine(executionStateMachine);
+
+                            // Reuse existing bd epic (don't create a new one on retry)
+                            const existingEpicId = taskStateMachine.getExecutionStateMachine()?.getBdEpicId();
+                            if (existingEpicId) {
+                                executionStateMachine.setBdEpicId(existingEpicId);
+                            } else {
+                                // Fallback: create new epic if none exists
+                                const retryTaskId = taskStateMachine.getContext().taskId;
+                                const retryHumanTask = taskStateMachine.getContext().humanTask;
+                                const bdEpicId = await initializeBdEpic(retryTaskId, retryHumanTask, cwd);
+                                executionStateMachine.setBdEpicId(bdEpicId);
+                            }
+
                             executionStateMachine.transition(Event.START_CHUNKING);
                         }
 
@@ -1406,6 +1481,14 @@ async function runRestoredTask(
 
                     case TaskState.TASK_COMPLETE:
                         log.orchestrator("🎉 Task completed successfully!");
+
+                        // Close bd epic if it exists
+                        const restoredExecutionStateMachine = taskStateMachine.getExecutionStateMachine();
+                        const restoredBdEpicId = restoredExecutionStateMachine?.getBdEpicId();
+                        if (restoredBdEpicId) {
+                            await closeBdEpic(restoredBdEpicId, cwd);
+                        }
+
                         taskCompleted = true;
                         break;
 
@@ -1523,6 +1606,23 @@ async function runExecutionStateMachine(
 
                     if (chunk.type === "TASK_COMPLETE") {
                         log.orchestrator("🎉 Bean Counter: Task completed!");
+
+                        // Validate bd epic is actually closed (safety net)
+                        const epicId = stateMachine.getBdEpicId();
+                        if (epicId) {
+                            try {
+                                const epicStatus = execSync(`bd show ${epicId} --json`, { cwd, encoding: 'utf8' });
+                                const epic = JSON.parse(epicStatus);
+
+                                if (epic.status !== 'closed') {
+                                    log.warn(`⚠️ Bean Counter declared task complete but bd epic ${epicId} is still ${epic.status}`);
+                                    log.warn('This may indicate premature completion. Proceeding anyway (trust agent judgment).');
+                                }
+                            } catch (error) {
+                                log.warn(`Could not validate bd epic status: ${error instanceof Error ? error.message : String(error)}`);
+                            }
+                        }
+
                         stateMachine.setAgentOutput('bean', rawResponse);
                         stateMachine.transition(Event.TASK_COMPLETED);
                     } else {
@@ -1530,6 +1630,12 @@ async function runExecutionStateMachine(
 
                         // Capture Bean Counter output for UI (use raw formatted markdown)
                         stateMachine.setAgentOutput('bean', rawResponse);
+
+                        // Store bd chunk ID if present
+                        if (chunk.bdIssueId) {
+                            stateMachine.setBdChunkId(chunk.bdIssueId);
+                            log.orchestrator(`📋 bd issue: ${chunk.bdIssueId}`);
+                        }
 
                         // Session strategy: Both agents get fresh sessions per chunk
                         // This prevents context accumulation and ensures clean state for each work unit

@@ -32,9 +32,13 @@ export async function reviewPlan(
             log.review("👀 Reviewer: Using custom prompt from .agneto.json");
         }
 
+        // Get bd chunk ID from state machine
+        const bdChunkId = stateMachine?.getBdChunkId();
+        const bdContext = bdChunkId ? `bd issue: ${bdChunkId}\n\n` : '';
+
         messages.push(
             { role: "system", content: sys },
-            { role: "user", content: `Current Work Chunk:\n\nDescription: ${chunkContext.description}\n\nRequirements:\n${chunkContext.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${chunkContext.context}\n\n[PLAN REVIEW MODE]\n\nThe Coder proposes the following approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this approach against the chunk requirements above.` }
+            { role: "user", content: `${bdContext}Current Work Chunk:\n\nDescription: ${chunkContext.description}\n\nRequirements:\n${chunkContext.requirements.map(r => `- ${r}`).join('\n')}\n\nContext: ${chunkContext.context}\n\n[PLAN REVIEW MODE]\n\nThe Coder proposes the following approach:\n\nDescription: ${proposal.description}\n\nSteps:\n${proposal.steps.map(s => `- ${s}`).join('\n')}\n\nAffected Files:\n${proposal.affectedFiles.map(f => `- ${f}`).join('\n')}\n\nReview this approach against the chunk requirements above.` }
         );
     } else {
         // Subsequent calls: reviewing revised plan

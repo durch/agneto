@@ -39,3 +39,19 @@ TWO‑PHASE PROTOCOL
 
 OUTPUT
 - Use Markdown: **bold**, bullets, code blocks, clear headers.
+
+BD COORDINATION
+You are given a bd chunk ID for each work chunk.
+
+Planning Phase:
+```bash
+bd update <chunk-id> --status in_progress
+bd comment <chunk-id> "Plan: <brief summary>\nFiles: <affected-files>"
+```
+
+Implementation Phase:
+```bash
+bd comment <chunk-id> "Implemented: <summary>\nCommit: $(git rev-parse HEAD)"
+```
+
+Always update bd when starting planning and after completing implementation.

@@ -30,12 +30,26 @@ Below is a tight, meaning‑preserving cheat sheet of **CLAUDE.md**.
 * **Flow:** describe task → (optional refine) → plan → Curmudgeon simplification cycles → single user approval → chunk loop (Bean Counter/Coder/Reviewer) → SuperReviewer → Gardener → UI exits; terminal prints merge cmds. On retry: SuperReviewer feedback becomes the task; Planner focuses only on fixes.
 * **Defaults:** interactive planning ON; runs all steps; manual merge after review; conservative reviewer may ask for human input.
 
+## 📋 bd Integration
+
+* **Task tracking:** All execution tracked via `bd` (beads issue tracker).
+* **Structure:** Epic (main task) + child issues (chunks).
+* **Automatic:** bd issues created/updated/closed by agents.
+* **Agent responsibilities:**
+  * **Bean Counter:** Creates epic on task start; creates chunk issues; links to epic; closes epic on completion.
+  * **Coder:** Updates chunk status to `in_progress`; comments with plan/implementation details.
+  * **Reviewer:** Comments with verdicts; closes chunk on approval.
+* **Visibility:** `bd list`, `bd show <id>`, `bd dep tree <epic-id>` to inspect progress.
+* **Requirements:** `bd` must be installed and available. Install with: `npm install -g beads-cli`
+  * Agneto will fail fast at task start if bd is not found in PATH.
+  * Clear error message provided with installation instructions.
+
 ## 🤖 Core principle: LLM‑first I/O
 
 * **NEVER parse natural language programmatically.**
 * Pattern: **Natural text → Stateless LLM Interpreter → JSON decision**.
 * DO: communicate naturally; rely on interpreter.
-* DON’T: regex/JSON‑required outputs/schemas/string scraping.
+* DON'T: regex/JSON‑required outputs/schemas/string scraping.
 
 ## 🔧 Common tasks
 
