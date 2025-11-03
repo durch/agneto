@@ -4,6 +4,7 @@ import chalk from "chalk";
 import { readFileSync } from "node:fs";
 import { runTask } from "./orchestrator.js";
 import { generateTaskId, generateTaskName } from "./utils/id-generator.js";
+import { setTmuxPaneTitle } from "./utils/tmux.js";
 import { selectProvider } from "./providers/index.js";
 import { RecoveryService } from "./audit/index.js";
 
@@ -207,6 +208,9 @@ Examples:
                 taskId = await generateTaskName(provider, taskOrId);
                 taskDescription = taskOrId;
             }
+
+            // Set tmux pane title for visibility across concurrent tasks
+            setTmuxPaneTitle(taskId);
 
             // Check for existing checkpoints before starting task
             let recoveryDecision: RecoveryDecision | undefined;
