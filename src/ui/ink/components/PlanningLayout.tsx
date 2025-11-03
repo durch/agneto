@@ -12,6 +12,7 @@ import { TextInputModal } from './TextInputModal.js';
 import { MarkdownText } from './MarkdownText.js';
 import { Spinner } from './Spinner.js';
 import { PlanningStatusLine } from './PlanningStatusLine.js';
+import { bell } from '../../../utils/terminal-bell.js';
 
 // TypeScript interface for PlanningLayout props
 interface PlanningLayoutProps {
@@ -180,6 +181,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     };
 
     const handleRefinementAwaitingApproval = () => {
+      bell();
       if (process.env.DEBUG) {
         console.log('[PlanningLayout.tsx] handleRefinementAwaitingApproval: showing refinement approval menu');
       }
@@ -187,17 +189,23 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
     };
 
     const handleSuperReviewAwaitingApproval = () => {
+      bell();
       if (process.env.DEBUG) {
         console.log('[PlanningLayout.tsx] handleSuperReviewAwaitingApproval: showing superreview approval menu');
       }
       setShowSuperReviewApproval(true);
     };
 
+    const handleQuestionAsked = () => {
+      bell();
+      handleDataUpdate();
+    };
+
     // Subscribe to events
     taskStateMachine.on('activity:updated', handleDataUpdate);
     taskStateMachine.on('plan:ready', handleDataUpdate);
     taskStateMachine.on('refinement:ready', handleDataUpdate);
-    taskStateMachine.on('question:asked', handleDataUpdate);
+    taskStateMachine.on('question:asked', handleQuestionAsked);
     taskStateMachine.on('question:answering', handleDataUpdate);
     taskStateMachine.on('curmudgeon:feedback', handleDataUpdate);
     taskStateMachine.on('plan:awaiting_approval', handlePlanAwaitingApproval);
@@ -216,7 +224,7 @@ export const PlanningLayout: React.FC<PlanningLayoutProps> = ({
       taskStateMachine.off('activity:updated', handleDataUpdate);
       taskStateMachine.off('plan:ready', handleDataUpdate);
       taskStateMachine.off('refinement:ready', handleDataUpdate);
-      taskStateMachine.off('question:asked', handleDataUpdate);
+      taskStateMachine.off('question:asked', handleQuestionAsked);
       taskStateMachine.off('question:answering', handleDataUpdate);
       taskStateMachine.off('curmudgeon:feedback', handleDataUpdate);
       taskStateMachine.off('plan:awaiting_approval', handlePlanAwaitingApproval);
