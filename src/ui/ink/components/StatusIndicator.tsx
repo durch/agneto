@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Text } from 'ink';
 
 interface StatusIndicatorProps {
@@ -7,28 +7,12 @@ interface StatusIndicatorProps {
 }
 
 /**
- * StatusIndicator - Self-contained animated status indicator
+ * StatusIndicator - Static status indicator
  *
- * Memoized component that manages its own animation state.
- * Only this component re-renders during animation, preventing
- * parent component flickering.
+ * Memoized component that shows active/inactive state with different symbols.
+ * Active: filled circle (●), Inactive: hollow circle (○)
  */
 export const StatusIndicator = React.memo<StatusIndicatorProps>(({ agent, isActive }) => {
-  const [blinkOn, setBlinkOn] = useState(true);
-
-  // Animation effect - only runs when component is active
-  useEffect(() => {
-    if (!isActive) {
-      return; // No animation when inactive
-    }
-
-    const intervalId = setInterval(() => {
-      setBlinkOn((prev) => !prev);
-    }, 750);
-
-    return () => clearInterval(intervalId);
-  }, [isActive]);
-
   // Determine color based on agent type
   const getColor = (): string => {
     if (!isActive) return 'gray';
@@ -45,8 +29,8 @@ export const StatusIndicator = React.memo<StatusIndicatorProps>(({ agent, isActi
     }
   };
 
-  // Determine symbol - blink between filled and empty when active
-  const symbol = isActive && blinkOn ? '● ' : '○ ';
+  // Determine symbol - filled when active, hollow when inactive
+  const symbol = isActive ? '● ' : '○ ';
   const color = getColor();
 
   return <Text color={color}>{symbol}</Text>;
