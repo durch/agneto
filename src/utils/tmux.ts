@@ -1,11 +1,6 @@
 import { execSync } from "node:child_process";
 
 export function setTmuxPaneTitle(title: string): void {
-    // Only run if inside a tmux session
-    if (!process.env.TMUX) {
-        return;
-    }
-
     // Escape double quotes to prevent command injection
     const escapedTitle = title.replace(/"/g, '\\"');
 
